@@ -13,7 +13,7 @@ AI-powered social media manager that generates content and images, then publishe
 | **API** | NVIDIA Integrate API (`https://integrate.api.nvidia.com/v1/chat/completions`) |
 | **Auth** | Bearer token (`NVIDIA_API_KEY`) |
 | **Parameters** | `max_tokens: 1500`, `temperature: 0.7`, `chat_template_kwargs: { thinking: false }` |
-| **Output** | JSON with `platforms.{linkedin}.caption` (100-150 words), `hashtags` (1 item), `image_prompt` |
+| **Output** | JSON with `platforms.{linkedin}.caption` (100-150 words), `hashtags` (8-12 items), `image_prompt` |
 
 ---
 
@@ -22,7 +22,7 @@ AI-powered social media manager that generates content and images, then publishe
 
 | Component | Details |
 |-----------|---------|
-| **Model** | `minimaxai/minimax-m3` |
+| **Model** | `minimaxai/minimax-m3` → fallback `meta/llama-3.2-11b-vision-instruct` |
 | **API** | NVIDIA Integrate API (`https://integrate.api.nvidia.com/v1/chat/completions`) |
 | **Auth** | Bearer token (`NVIDIA_API_KEY`) |
 | **Input** | Base64 image + prompt in single multimodal request |
@@ -31,16 +31,16 @@ AI-powered social media manager that generates content and images, then publishe
 ---
 
 ### 3. Text-to-Image Generation
-**Trigger:** User enters a prompt → clicks "Generate Image"
+**Trigger:** User enters a prompt → chooses aspect ratio → clicks "Generate Image"
 
 | Component | Details |
 |-----------|---------|
-| **Primary Model** | `vendouple/nano-banana-pro` |
-| **Fallback Models** | `flux`, `zimage` |
+| **Primary Model** | `gpt-image-2` (only — no fallback, hold on failure) |
+| **Fallback Models** | `none` (hold) |
 | **API** | Pollinations (`https://gen.pollinations.ai/v1/images/generations`) |
 | **Auth** | Bearer token (`POLLINATIONS_API_KEY`) |
-| **Parameters** | `size: 768x768`, `response_format: b64_json`, `n: 1` |
-| **Timeout** | 60s per model attempt |
+| **Parameters** | `size: 768x768` / `1280x720` / `720x1280` / `1024x768` (per aspect ratio), `response_format: b64_json`, `n: 1` |
+| **Timeout** | 30s |
 | **Output** | Base64 image data URL (auto-detects PNG/JPEG) |
 
 ---
@@ -124,7 +124,7 @@ scheduled-posts.json               # Local storage
 ## Notes
 
 - **Nemotron** uses `thinking: false` to disable chain-of-thought (avoids 30s+ latency).
-- **Image generation** has automatic fallback: nano-banana-pro → flux → zimage.
+- **Image generation** uses **only** `gpt-image-2` (no fallback, no nano-banana-pro) — hold and retry on failure.
 - **Only LinkedIn** is active; Instagram/Facebook/Twitter are stubbed for future.
 - **Images** are compressed to 1024px JPEG (80%) for API calls; original preserved for preview/publish.
 - **Post scheduler** enforces 5-minute minimum buffer from current time.

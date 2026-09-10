@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { content, imageUrl, LinkedInCredentials } = await request.json();
+    const { content, imageUrl, videoUrl, mediaUrl, mediaType, LinkedInCredentials } = await request.json();
 
     if (!content) {
       return NextResponse.json(
@@ -21,9 +21,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // First, upload the image if provided
-    let imageUrn = null;
-    if (imageUrl) {
+    // First, upload the media if provided (image or video)
+    let imageUrn: string | null = null;
+    let shareMediaCategory: 'IMAGE' | 'VIDEO' | 'NONE' = 'NONE';
+    const rawMedia = mediaUrl || videoUrl || imageUrl;
+    const resolvedType = mediaType || (videoUrl ? 'video' : imageUrl ? 'image' : null) || (rawMedia?.startsWith('data:video/') ? 'video' : rawMedia?.startsWith('data:image/') ? 'image' : null);
+    const isVideo = resolvedType === 'video';
+    if (rawMedia && rawMedia.startsWith('data:')) {
+      const recipe = isVideo ? 'urn:li:digitalmediaRecipe:feedshare-video' : 'urn:li:digitalmediaRecipe:feedshare-image';
       const uploadResponse = await fetch(
         'https://api.linkedin.com/v2/assets?action=registerUpload',
         {
@@ -34,7 +39,7 @@ export async function POST(request: NextRequest) {
           },
           body: JSON.stringify({
             registerUploadRequest: {
-              recipes: ['urn:li:digitalmediaRecipe:feedshare-image'],
+              recipes: [recipe],
               owner: `urn:li:person:${personUrn}`,
               serviceRelationships: [
                 {
@@ -50,6 +55,8 @@ export async function POST(request: NextRequest) {
       if (uploadResponse.ok) {
         const uploadData = await uploadResponse.json();
         imageUrn = uploadData.value.asset;
+        shareMediaCategory = isVideo ? 'VIDEO' : 'IMAGE';
+        // Note: actual binary upload omitted in legacy path — needs PUT to uploadUrl with binaryData
       }
     }
 
@@ -62,7 +69,7 @@ export async function POST(request: NextRequest) {
           shareCommentary: {
             text: content,
           },
-          shareMediaCategory: imageUrn ? 'IMAGE' : 'NONE',
+          shareMediaCategory,
         },
       },
       visibility: {

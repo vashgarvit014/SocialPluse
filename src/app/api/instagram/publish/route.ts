@@ -2,21 +2,37 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { content, imageUrl, accessToken, userId } = await request.json();
+    const { content, imageUrl, videoUrl, mediaUrl, mediaType, accessToken, userId } = await request.json();
 
     if (!content || !accessToken) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Step 1: Create media container
+    const rawMedia = mediaUrl || videoUrl || imageUrl;
+    const resolvedType = mediaType || (videoUrl ? 'video' : imageUrl ? 'image' : null);
+    const isVideo = resolvedType === 'video';
+
+    if (isVideo && rawMedia?.startsWith('data:')) {
+      return NextResponse.json({ error: 'Instagram video publish requires a public URL (data: URLs are rejected by IG). Upload video to external storage first.' }, { status: 400 });
+    }
+
+    // Step 1: Create media container (image vs video)
+    const containerBody: Record<string, unknown> = {
+      caption: content,
+      access_token: accessToken,
+    };
+    if (isVideo) {
+      containerBody.video_url = rawMedia;
+      containerBody.media_type = 'VIDEO';
+    } else {
+      containerBody.image_url = rawMedia?.startsWith('data:') ? undefined : rawMedia || imageUrl?.startsWith('data:') ? undefined : imageUrl,
+      containerBody.media_type = undefined;
+    }
+
     const containerResponse = await fetch('https://graph.instagram.com/me/media', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image_url: imageUrl?.startsWith('data:') ? undefined : imageUrl,
-        caption: content,
-        access_token: accessToken,
-      }),
+      body: JSON.stringify(containerBody),
     });
 
     if (!containerResponse.ok) {

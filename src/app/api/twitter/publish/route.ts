@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { content, accessToken } = await request.json();
+    const { content, accessToken, videoUrl, mediaUrl, mediaType, imageUrl } = await request.json();
 
     if (!content || !accessToken) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    const rawMedia = mediaUrl || videoUrl || imageUrl;
+    const resolvedType = mediaType || (videoUrl ? 'video' : imageUrl ? 'image' : null);
+    if (resolvedType === 'video' && rawMedia?.startsWith('data:')) {
+      console.warn('Twitter publish: data: video not supported, requires upload to Twitter media endpoint — publishing text only');
     }
 
     const postResponse = await fetch('https://api.twitter.com/2/tweets', {

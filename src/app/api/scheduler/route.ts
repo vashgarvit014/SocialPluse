@@ -4,10 +4,16 @@ import { join } from 'path';
 
 const DATA_FILE = join(process.cwd(), 'scheduled-posts.json');
 
+interface MediaItem { id: string; url: string; type: 'image' | 'video'; name?: string }
 interface ScheduledPost {
   id: string;
   content: string;
   imageUrl: string;
+  videoUrl?: string;
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video' | null;
+  mediaUrls?: string[];
+  mediaList?: MediaItem[];
   platforms: string[];
   accounts: Array<{ platform: string; accessToken: string; userId: string }>;
   scheduledAt: string;
@@ -30,7 +36,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const { content, imageUrl, platforms, accounts, scheduledAt } = await request.json();
+  const { content, imageUrl, videoUrl, mediaUrl, mediaType, mediaUrls, mediaList, platforms, accounts, scheduledAt } = await request.json();
 
   if (!content || !platforms?.length || !scheduledAt) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -43,10 +49,22 @@ export async function POST(request: NextRequest) {
   }
 
   const posts = loadPosts();
+  // Backward compat: keep imageUrl, add video/media fields + multi
+  const resolvedMediaType: 'image' | 'video' | null = mediaType || (videoUrl ? 'video' : imageUrl ? 'image' : null);
+  const resolvedMediaUrl = mediaUrl || videoUrl || imageUrl || '';
+  const resolvedVideoUrl = videoUrl || (resolvedMediaType === 'video' ? resolvedMediaUrl : '');
+  const resolvedImageUrl = imageUrl || (resolvedMediaType === 'image' ? resolvedMediaUrl : '');
+  const resolvedMediaUrls: string[] | undefined = mediaUrls || (mediaList as MediaItem[] | undefined)?.map(m => m.url) || (resolvedMediaUrl ? [resolvedMediaUrl] : undefined);
+  const resolvedMediaList: MediaItem[] | undefined = mediaList || resolvedMediaUrls?.map((url, idx) => ({ id: `m${idx}`, url, type: url.startsWith('data:video/') ? 'video' as const : 'image' as const }));
   const newPost: ScheduledPost = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     content,
-    imageUrl: imageUrl || '',
+    imageUrl: resolvedImageUrl || '',
+    videoUrl: resolvedVideoUrl || undefined,
+    mediaUrl: resolvedMediaUrl || undefined,
+    mediaType: resolvedMediaType,
+    mediaUrls: resolvedMediaUrls,
+    mediaList: resolvedMediaList,
     platforms,
     accounts: accounts || [],
     scheduledAt,

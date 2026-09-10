@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { storeLinkedInToken } from '../vault';
 
 const LINKEDIN_CLIENT_ID = process.env.LINKEDIN_CLIENT_ID || '';
 const LINKEDIN_CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET || '';
@@ -46,14 +47,18 @@ export async function GET(request: NextRequest) {
     }
 
     const profileData = await profileResponse.json();
+    const userId = profileData.sub || '';
+
+    // Store the token server-side only. The browser receives the user id
+    // (no access token in URL, storage, or API responses).
+    storeLinkedInToken(userId, accessToken);
 
     const params = new URLSearchParams({
       platform: 'linkedin',
       connected: 'true',
       name: profileData.name || '',
       email: profileData.email || '',
-      access_token: accessToken,
-      user_id: profileData.sub || '',
+      user_id: userId,
     });
 
     return NextResponse.redirect(new URL(`/?${params.toString()}`, request.url));

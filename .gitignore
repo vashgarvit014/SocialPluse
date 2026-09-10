@@ -33,6 +33,14 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# server-side OAuth token vault (never commit)
+/linkedin-tokens.json
+/facebook-tokens.json
+
+# Canva Connect API session store - short-lived correlation ids only (no
+# tokens live here), but it's local transient state, not project source.
+/canva-sessions.json
+
 # vercel
 .vercel
 
