@@ -89,6 +89,12 @@ const selectBtn = (active: boolean): React.CSSProperties => ({
 // Types — props mirror existing page.tsx state/handlers (no logic moved)
 // ---------------------------------------------------------------------------
 export interface StudioWorkspaceProps {
+  wizardState: Record<string, unknown>;
+  setWizardState: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
+  saveFullDraft: () => void;
+  updateAltText: (id: string, text: string) => void;
+  generateAltText: (items: MediaItem[]) => Promise<void>;
+  altBusy: boolean;
   // topic
   prompt: string; setPrompt: (v: string) => void;
   topicMediaItems: MediaItem[]; removeTopicMedia: (id: string) => void; clearTopicMedia: () => void;
@@ -130,12 +136,19 @@ export interface StudioWorkspaceProps {
   dragOverPreview: boolean; setDragOverPreview: (v: boolean) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   generatedImage: string; generatedVideo: string;
+  // carousel (multi-image swipeable post — ordered image-only subset, 2–9)
+  isCarousel: boolean; setIsCarousel: (v: boolean) => void;
+  carouselSlides: MediaItem[]; carouselValidation: { valid: boolean; reason: string };
+  toggleCarouselSlide: (id: string) => void; moveCarouselSlide: (id: string, dir: -1 | 1) => void; removeCarouselSlide: (id: string) => void;
+  reorderCarouselSlide: (activeId: string, overId: string) => void; setMediaCover: (id: string) => void;
+  generateCarouselSlides: (count: number) => void; isGeneratingCarousel: boolean;
+  carouselSlideCount: number; setCarouselSlideCount: (v: number) => void;
   // brand
   logoImage: string; logoPosition: string; logoScale: number; logoOpacity: number;
   setLogoModalOpen: (v: boolean) => void;
   logoInputRef: React.RefObject<HTMLInputElement | null>;
   logoTargetId: string | null; setLogoTargetId: (v: string | null) => void;
-  burnedLogoIds: Record<string, boolean>;
+  burnedLogoIds: Record<string, boolean>; clearLogo: () => void;
   applyLogoToAllMedia: (logoOverride?: string, opts?: { keepOpen?: boolean }) => void; isApplyingLogo: boolean;
   // platforms / accounts
   accounts: Array<{ platform: string; connected: boolean; name: string; email: string; accessToken?: string; userId: string; pages?: Array<{ id: string; name: string }>; pageId?: string }>;
@@ -161,6 +174,11 @@ export interface StudioWorkspaceProps {
   setShowToast: (v: boolean) => void;
   platformColors: Record<string, string>;
   PlatformIcon: ({ platform, size }: { platform: string; size?: number }) => React.JSX.Element;
+  // Whapi — existing-group publishing (separate from Meta)
+  whapiConnected: boolean; whapiChannelStatus: string; whapiAccountName: string; whapiPhoneMasked: string;
+  whapiGroups: Array<{ id: string; name: string; participantsCount: number; type: string }>; whapiSelectedGroupId: string; setWhapiSelectedGroupId: (v: string) => void;
+  whapiGroupsLoading: boolean; whapiGroupsError: string; loadWhapiGroups: () => void;
+  publishToWhapi: () => void; whapiPublishing: boolean; refreshWhapiStatus: () => void; whapiLoading: boolean;
 }
 
 function formatHashtagsLocal(tags: string[]): string {

@@ -1,21 +1,30 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { finishReturn, invalidReturnState } from '@/lib/oauth-return';
+import { NextRequest } from 'next/server';
 import { storeLinkedInToken } from '../vault';
 
 const LINKEDIN_CLIENT_ID = process.env.LINKEDIN_CLIENT_ID || '';
 const LINKEDIN_CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET || '';
 const LINKEDIN_REDIRECT_URI = process.env.LINKEDIN_REDIRECT_URI || 'http://localhost:3000/api/linkedin/callback';
+// Next dev (bound with -H 0.0.0.0) bakes its own bind address into
+// request.url inside route handlers, ignoring the incoming Host header - so
+// new URL(path, request.url) resolves to http://0.0.0.0:3001/... behind the
+// Cloudflare tunnel instead of the public domain. Derive the redirect origin
+// from our own registered redirect URI instead (same fix already used by
+// Canva's APP_ORIGIN in src/lib/canva.ts).
+const APP_ORIGIN = new URL(LINKEDIN_REDIRECT_URI).origin;
 
 export async function GET(request: NextRequest) {
+  if (invalidReturnState(request)) return finishReturn(request, new URL('/?error=state_mismatch', APP_ORIGIN));
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
 
   if (error) {
-    return NextResponse.redirect(new URL(`/?error=${error}`, request.url));
+    return finishReturn(request, new URL(`/?error=${error}`, APP_ORIGIN));
   }
 
   if (!code) {
-    return NextResponse.redirect(new URL('/?error=no_code', request.url));
+    return finishReturn(request, new URL('/?error=no_code', APP_ORIGIN));
   }
 
   try {
@@ -32,7 +41,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!tokenResponse.ok) {
-      return NextResponse.redirect(new URL('/?error=token_exchange_failed', request.url));
+      return finishReturn(request, new URL('/?error=token_exchange_failed', APP_ORIGIN));
     }
 
     const tokenData = await tokenResponse.json();
@@ -43,7 +52,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!profileResponse.ok) {
-      return NextResponse.redirect(new URL('/?error=profile_fetch_failed', request.url));
+      return finishReturn(request, new URL('/?error=profile_fetch_failed', APP_ORIGIN));
     }
 
     const profileData = await profileResponse.json();
@@ -61,8 +70,8 @@ export async function GET(request: NextRequest) {
       user_id: userId,
     });
 
-    return NextResponse.redirect(new URL(`/?${params.toString()}`, request.url));
+    return finishReturn(request, new URL(`/?${params.toString()}`, APP_ORIGIN));
   } catch (error) {
-    return NextResponse.redirect(new URL('/?error=callback_failed', request.url));
+    return finishReturn(request, new URL('/?error=callback_failed', APP_ORIGIN));
   }
 }

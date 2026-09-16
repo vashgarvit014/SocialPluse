@@ -7,6 +7,15 @@ const TEXT_MODEL = process.env.NVIDIA_TEXT_MODEL || 'nvidia/nemotron-3.5-lightni
 const TEXT_FALLBACK_MODEL = process.env.NVIDIA_TEXT_FALLBACK_MODEL || 'nvidia/nemotron-3.5-lightning-30b-a3b';
 const VISION_MODEL = 'meta/llama-3.2-11b-vision-instruct';
 const TEXT_TIMEOUT_MS = 120_000;
+
+// Mercury 2.5 (Inception Labs) is the primary text model — Nemotron 3.5
+// Lightning (NVIDIA) is the fallback for all scenario + import-equivalent
+// text generation paths. Vision stays on NVIDIA.
+const INCEPTION_BASE_URL = process.env.INCEPTION_BASE_URL || 'https://api.inceptionlabs.ai/v1';
+const INCEPTION_API_URL = `${INCEPTION_BASE_URL.replace(/\/$/, '')}/chat/completions`;
+const INCEPTION_API_KEY = process.env.INCEPTION_API_KEY;
+const MERCURY_MODEL = process.env.INCEPTION_TEXT_MODEL || 'mercury-2.5';
+const MERCURY_REASONING_EFFORT = process.env.INCEPTION_REASONING_EFFORT || 'low';
 // minimaxai/minimax-m3 reached end-of-life on 2026-09-09 (NVIDIA returns 410
 // Gone), and llama-90b-vision hangs past 60s - so the 11b Llama vision model
 // is currently the only usable vision model on this endpoint.
@@ -132,6 +141,54 @@ function extractJSON(text: string): string | null {
   return null;
 }
 
+
+async function callMercury(prompt: string, systemPrompt: string, timeoutMs = TEXT_TIMEOUT_MS, model = MERCURY_MODEL): Promise<string> {
+  // Test hook: prompts containing __FORCE_MERCURY_FAIL__ simulate a Mercury
+  // outage so the Nemotron fallback path can be exercised live without
+  // touching env vars.
+  if (prompt.includes('__FORCE_MERCURY_FAIL__')) {
+    console.warn(`[Mercury:${model}] forced failure for fallback test (prompt contained __FORCE_MERCURY_FAIL__)`);
+    throw new Error('Mercury API error: 503 (forced fallback test)');
+  }
+  if (!INCEPTION_API_KEY) throw new Error('Inception API key not configured');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(INCEPTION_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${INCEPTION_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        reasoning_effort: MERCURY_REASONING_EFFORT,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt },
+        ],
+        max_tokens: 900,
+        temperature: 0.6,
+        top_p: 0.9,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Mercury:${model}] API error:`, response.status, errorText.slice(0, 500));
+      throw new Error(`Mercury API error: ${response.status}`);
+    }
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    console.log(`[Mercury:${model}] content: ${content.length} chars in <${timeoutMs}ms`);
+    return content.trim();
+  } catch (err) {
+    clearTimeout(timer);
+    if ((err as Error).name === 'AbortError') throw new Error(`Mercury API timeout (${Math.round(timeoutMs / 1000)}s) — please retry`);
+    throw err;
+  }
+}
 
 async function callNVIDIA(prompt: string, systemPrompt: string, timeoutMs = TEXT_TIMEOUT_MS, model = TEXT_MODEL): Promise<string> {
   if (!NVIDIA_API_KEY) throw new Error('NVIDIA API key not configured');
@@ -341,7 +398,8 @@ async function generateContent(prompt: string, platforms: string[], tone: string
     const winner = await raceToFirst(VISION_MODELS.map(raceDirect));
     if (winner) return winner.result;
 
-    // Attempt 2: analyze images separately with each model (45s each), then Nemotron text.
+    // Attempt 2: analyze images separately with each model (45s each), then
+    // Mercury primary → Nemotron fallback for the text step (same as Scenario 1).
     // Analysis calls are wrapped in withVisionRetry — NVIDIA vision 5xx's
     // transiently even on normalized images, and one retry usually succeeds.
     for (const model of VISION_MODELS) {
@@ -352,13 +410,32 @@ async function generateContent(prompt: string, platforms: string[], tone: string
           const userPrompt = prompt
             ? `Topic: ${prompt}\n\nImage analysis (${imgs.length} image${imgs.length === 1 ? '' : 's'}): ${desc}`
             : `Create a social media post based on these images: ${desc}`;
-          const raw = await callNVIDIA(userPrompt, systemPrompt, TEXT_TIMEOUT_MS);
+          // Mercury primary for the caption step
+          try {
+            const raw = await callMercury(userPrompt, systemPrompt, TEXT_TIMEOUT_MS, MERCURY_MODEL);
+            const result = parseAndValidate(raw);
+            if (result) return result;
+            console.log(`[Image] Two-step Mercury via ${model}: first draft unparseable, trying Nemotron fallback…`);
+          } catch (e) {
+            const msg = (e as Error).message;
+            console.log(`[Image] Two-step Mercury via ${model} failed: ${msg}`);
+            if (/timeout/i.test(msg)) throw e;
+          }
+          const raw = await callNVIDIA(userPrompt, systemPrompt, TEXT_TIMEOUT_MS, TEXT_MODEL);
           const result = parseAndValidate(raw);
           if (result) return result;
-          // One strict retry: unparseable first drafts are common from vision
-          // models, and a JSON-only nudge usually fixes them.
+          // One strict retry: unparseable first drafts are common, and a
+          // JSON-only nudge usually fixes them. Try Mercury strict first, then Nemotron strict.
           console.log(`[Image] Two-step via ${model}: first draft unparseable, strict retry…`);
-          const rawStrict = await callNVIDIA(userPrompt, systemPrompt + '\n\nSTRICT JSON ONLY: Respond with just the JSON object starting with { and ending with }. No explanation, no markdown, no line breaks inside strings.', TEXT_TIMEOUT_MS);
+          const strictSystem = systemPrompt + '\n\nSTRICT JSON ONLY: Respond with just the JSON object starting with { and ending with }. No explanation, no markdown, no line breaks inside strings.';
+          try {
+            const rawStrictMercury = await callMercury(userPrompt, strictSystem, TEXT_TIMEOUT_MS, MERCURY_MODEL);
+            const resultStrictMercury = parseAndValidate(rawStrictMercury);
+            if (resultStrictMercury) return resultStrictMercury;
+          } catch (e) {
+            console.log(`[Image] Two-step Mercury strict via ${model} failed: ${(e as Error).message}`);
+          }
+          const rawStrict = await callNVIDIA(userPrompt, strictSystem, TEXT_TIMEOUT_MS, TEXT_FALLBACK_MODEL !== TEXT_MODEL ? TEXT_FALLBACK_MODEL : TEXT_MODEL);
           const resultStrict = parseAndValidate(rawStrict);
           if (resultStrict) return resultStrict;
         }
@@ -370,26 +447,49 @@ async function generateContent(prompt: string, platforms: string[], tone: string
     throw new Error('Vision models are slow right now — please retry, or generate without an image.');
   }
 
-  // TEXT-ONLY PATH (Scenario 1): NVIDIA text provider. Nemotron-3.5 is
-  // primary (user request, 2026-09-10); Llama-3.2-11B is fallback.
-  // DeepSeek Flash was removed 2026-09-10 after it timed out on every
-  // live call (>120s).
+  // TEXT-ONLY PATH (Scenario 1 + import-equivalent): Mercury 2.5
+  // (Inception Labs, diffusion, reasoning_effort low) is primary —
+  // Nemotron 3.5 Lightning (NVIDIA, nvidia/nemotron-3.5-lightning-30b-a3b)
+  // is the fallback for every scenario/import. Vision stays NVIDIA-only.
+  // Mercury is diffusion-parallel and typically 2–5s; Nemotron is slower
+  // (12–70s) and kept strictly as the fallback.
   const cleanedPrompt = cleanTopic(prompt) || 'Create a social media post';
   const userPrompt = `Write the post about: "${cleanedPrompt}". Transform the request into a final post — do NOT echo the instruction. Topic tone: ${tone}.`;
+  // 1) Mercury primary
+  try {
+    const raw = await callMercury(userPrompt, systemPrompt, TEXT_TIMEOUT_MS, MERCURY_MODEL);
+    const result = parseAndValidate(raw);
+    if (result) return result;
+    console.log(`[Text:${MERCURY_MODEL}] first call unparseable, trying Nemotron fallback…`);
+  } catch (e) {
+    const message = (e as Error).message;
+    console.log(`[Text:${MERCURY_MODEL}] first call failed:`, message);
+    // Keep public Cloudflare requests inside one 120s window. Retrying
+    // after a timeout pushes the response past Cloudflare's budget and
+    // turns a useful app error into a 524 at the browser.
+    if (/timeout/i.test(message)) throw e;
+  }
+  // 2) Nemotron fallback
   try {
     const raw = await callNVIDIA(userPrompt, systemPrompt, TEXT_TIMEOUT_MS, TEXT_MODEL);
     const result = parseAndValidate(raw);
     if (result) return result;
   } catch (e) {
     const message = (e as Error).message;
-    console.log(`[Text:${TEXT_MODEL}] first call failed:`, message);
-    // Keep public Cloudflare requests inside one 120s model window. Retrying
-    // after a model timeout pushes the response past Cloudflare's request
-    // budget and turns a useful app error into a 524 at the browser.
+    console.log(`[Text:${TEXT_MODEL}] fallback call failed:`, message);
     if (/timeout/i.test(message)) throw e;
   }
+  // 3) Strict retry — Mercury strict first, then Nemotron strict
   const retrySystem = systemPrompt + '\n\nSTRICT JSON ONLY: Respond with just the JSON object starting with { and ending with }. No explanation. Do NOT start caption with "I want you to generate".';
-  const raw2 = await callNVIDIA(userPrompt, retrySystem, TEXT_TIMEOUT_MS, TEXT_FALLBACK_MODEL);
+  try {
+    const rawStrictMercury = await callMercury(userPrompt, retrySystem, TEXT_TIMEOUT_MS, MERCURY_MODEL);
+    const resultStrictMercury = parseAndValidate(rawStrictMercury);
+    if (resultStrictMercury) return resultStrictMercury;
+    console.log(`[Text:${MERCURY_MODEL}] strict retry unparseable, trying Nemotron strict…`);
+  } catch (e) {
+    console.log(`[Text:${MERCURY_MODEL}] strict retry failed: ${(e as Error).message}`);
+  }
+  const raw2 = await callNVIDIA(userPrompt, retrySystem, TEXT_TIMEOUT_MS, TEXT_FALLBACK_MODEL !== TEXT_MODEL ? TEXT_FALLBACK_MODEL : TEXT_MODEL);
   const result2 = parseAndValidate(raw2);
   if (result2) return result2;
   throw new Error('AI is echoing the prompt — please rewrite your topic more concisely (e.g., "Car launch event with Grand Reveal, Key Features, Live Launch...") and try again.');

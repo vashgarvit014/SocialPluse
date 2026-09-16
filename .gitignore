@@ -41,9 +41,15 @@ yarn-error.log*
 # tokens live here), but it's local transient state, not project source.
 /canva-sessions.json
 
+# WhatsApp webhook event log - local inspection log, not project source.
+/whatsapp-events.log
+
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Temporary Instagram publishing media
+/.instagram-media/

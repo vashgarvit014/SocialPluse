@@ -1,73 +1,228 @@
+import { altPayload, mediaAlt } from '@/lib/alt-capabilities';
+import { prepareInstagramMedia } from '@/lib/instagram-media';
 import { NextRequest, NextResponse } from 'next/server';
+import { getInstagramAccount } from '../../facebook/vault';
+
+// Instagram Business/Creator publishing goes through graph.facebook.com using
+// the linked Page's access token (NOT graph.instagram.com - that's a
+// different, newer API for accounts connected via direct Instagram login,
+// which this app doesn't use). Two-step like Facebook video posts: create a
+// media container, then publish it.
+const GRAPH = 'https://graph.facebook.com/v21.0';
+
+// Same in-memory duplicate-attempt guard as linkedin/publish and
+// facebook/publish - one attempt ID = one Instagram request.
+const seenAttempts = new Map<string, number>();
+const ATTEMPT_TTL_MS = 15 * 60 * 1000;
+
+function isDuplicateAttempt(attemptId: string): boolean {
+  const now = Date.now();
+  for (const [id, ts] of seenAttempts) {
+    if (now - ts > ATTEMPT_TTL_MS) seenAttempts.delete(id);
+  }
+  if (seenAttempts.has(attemptId)) return true;
+  seenAttempts.set(attemptId, now);
+  return false;
+}
+
+function err(code: string, message: string, status: number, attemptId?: string) {
+  return NextResponse.json({ success: false, code, message, attemptId }, { status });
+}
+
+function graphError(status: number, body: string, context: string): { code: string; message: string } {
+  let detail = '';
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string; code?: number; type?: string } };
+    detail = parsed.error?.message || '';
+    if (parsed.error?.type === 'OAuthException' && /expired|invalid|session/i.test(detail)) {
+      return { code: 'INSTAGRAM_AUTH_EXPIRED', message: `Instagram session expired during ${context}. Please reconnect (via Facebook) and try again.` };
+    }
+    if (parsed.error?.code === 200 || parsed.error?.code === 10) {
+      return { code: 'INSTAGRAM_PERMISSION_DENIED', message: `Instagram denied permission during ${context} (403). Check the linked account's scopes, then try again.` };
+    }
+  } catch { /* fall through to status mapping */ }
+  if (status === 401) {
+    return { code: 'INSTAGRAM_AUTH_EXPIRED', message: `Instagram authentication expired during ${context} (401). Please reconnect (via Facebook) and try again.` };
+  }
+  if (status === 403) {
+    return { code: 'INSTAGRAM_PERMISSION_DENIED', message: `Instagram denied permission during ${context} (403). Check the linked account's scopes, then try again.` };
+  }
+  if (status === 429) {
+    return { code: 'INSTAGRAM_RATE_LIMIT', message: 'Instagram rate limit reached (429). Please wait a while and try again manually.' };
+  }
+  const suffix = detail ? ` ${detail.slice(0, 200)}` : '';
+  return { code: 'INSTAGRAM_PUBLISH_FAILED', message: `Instagram request failed during ${context} (${status}).${suffix} Please try again manually.` };
+}
+
+async function waitForContainer(id: string, token: string) {
+  for (let check = 0; check < 12; check++) {
+    const response = await fetch(`${GRAPH}/${id}?fields=status_code,status`, {
+      headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new Error(graphError(response.status, await response.text(), 'media processing').message);
+    const data = await response.json();
+    if (data.status_code === 'FINISHED') return;
+    if (data.status_code === 'ERROR' || data.status_code === 'EXPIRED') throw new Error('Instagram could not process this media. Check its format and try again. The post was not published.');
+    if (check < 11) await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+  throw new Error('Instagram is still processing the media. The post was not published; try again later.');
+}
 
 export async function POST(request: NextRequest) {
+  let body: Record<string, unknown>;
   try {
-    const { content, imageUrl, videoUrl, mediaUrl, mediaType, accessToken, userId } = await request.json();
+    body = await request.json();
+  } catch {
+    return err('INSTAGRAM_PUBLISH_FAILED', 'Invalid request body.', 400);
+  }
 
-    if (!content || !accessToken) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  const { content, imageUrl, videoUrl, mediaUrl, mediaType, mediaUrls, mediaList, isCarousel, userId, pageId, attemptId } = body as {
+    content?: string;
+    imageUrl?: string;
+    videoUrl?: string;
+    mediaUrl?: string;
+    mediaType?: string;
+    mediaUrls?: string[];
+    mediaList?: Array<{ url?: string; type?: string; altText?: string }>;
+    isCarousel?: boolean;
+    userId?: string;
+    pageId?: string;
+    attemptId?: string;
+  };
+
+  if (!userId) {
+    return err('INSTAGRAM_NOT_CONNECTED', 'Instagram is not connected. Connect Facebook (with a linked Instagram Business account) before publishing.', 401, typeof attemptId === 'string' ? attemptId : undefined);
+  }
+
+  const attempt = typeof attemptId === 'string' && attemptId ? attemptId : `att_${Date.now().toString(36)}`;
+  if (typeof attemptId === 'string' && attemptId && isDuplicateAttempt(attemptId)) {
+    console.warn(`[instagram/publish] duplicate attempt ignored: ${attemptId} (user ${userId})`);
+    return err('DUPLICATE_PUBLISH_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attemptId);
+  }
+
+  const ig = getInstagramAccount(userId, typeof pageId === 'string' ? pageId : undefined);
+  if (!ig) {
+    return err('INSTAGRAM_NOT_CONNECTED', 'No Instagram Business account is linked to the connected Facebook Page. Link one in Meta Business Suite, then reconnect.', 401, attempt);
+  }
+
+  const orderedUrls: string[] = Array.isArray(mediaUrls) && mediaUrls.length
+    ? mediaUrls.filter((u): u is string => typeof u === 'string' && u.length > 0)
+    : Array.isArray(mediaList) && mediaList.length
+      ? mediaList.map(m => m.url).filter((u): u is string => typeof u === 'string' && u.length > 0)
+      : [];
+  let rawMedia = orderedUrls[0] || mediaUrl || videoUrl || imageUrl;
+  const resolvedType = mediaType || (videoUrl ? 'video' : imageUrl ? 'image' : undefined);
+  if (!rawMedia) {
+    return err('INSTAGRAM_MEDIA_REQUIRED', 'Instagram requires an image or video — text-only posts are not supported by the API.', 400, attempt);
+  }
+  // This app currently supports image-only carousels.
+  const wantsCarousel = isCarousel === true || orderedUrls.length > 1;
+  const hasVideoInList = (Array.isArray(mediaList) ? mediaList.some(m => m.type === 'video') : false)
+    || orderedUrls.some(u => u.startsWith('data:video/'))
+    || resolvedType === 'video'
+    || typeof videoUrl === 'string';
+  if (wantsCarousel && hasVideoInList) {
+    return err('INSTAGRAM_CAROUSEL_VIDEO', 'Instagram carousels accept images only — remove the video or switch this post back to a single post.', 400, attempt);
+  }
+  if (wantsCarousel) {
+    let slides = orderedUrls.length > 1 ? orderedUrls : [rawMedia];
+    if (slides.length > 10) return err('INSTAGRAM_CAROUSEL_MAX', 'Use at most 10 carousel images.', 400, attempt);
+    if (slides.length < 2) {
+      return err('INSTAGRAM_CAROUSEL_MIN', 'A carousel needs at least 2 images — add another slide or switch back to a single post.', 400, attempt);
     }
-
-    const rawMedia = mediaUrl || videoUrl || imageUrl;
-    const resolvedType = mediaType || (videoUrl ? 'video' : imageUrl ? 'image' : null);
-    const isVideo = resolvedType === 'video';
-
-    if (isVideo && rawMedia?.startsWith('data:')) {
-      return NextResponse.json({ error: 'Instagram video publish requires a public URL (data: URLs are rejected by IG). Upload video to external storage first.' }, { status: 400 });
+    try {
+      slides = await Promise.all(slides.map(url => prepareInstagramMedia(url)));
+      const childIds: string[] = [];
+      for (let i = 0; i < slides.length; i++) {
+        const childRes = await fetch(`${GRAPH}/${ig.igUserId}/media`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...altPayload('instagram', 'image', mediaAlt(mediaList, orderedUrls[i], i)), image_url: slides[i], is_carousel_item: true, access_token: ig.token }),
+        });
+        if (!childRes.ok) {
+          const { code, message } = graphError(childRes.status, await childRes.text(), `carousel slide ${i + 1}/${slides.length}`);
+          return err(code, `${message} The post was NOT published.`, childRes.status === 429 ? 429 : 502, attempt);
+        }
+        const childData = await childRes.json();
+        if (!childData.id) {
+          return err('INSTAGRAM_MEDIA_UPLOAD_FAILED', `Instagram did not return a container id for slide ${i + 1}. The post was NOT published.`, 502, attempt);
+        }
+        await waitForContainer(childData.id, ig.token);
+        childIds.push(childData.id);
+      }
+      const parentRes = await fetch(`${GRAPH}/${ig.igUserId}/media`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ media_type: 'CAROUSEL', children: childIds, caption: content || '', access_token: ig.token }),
+      });
+      if (!parentRes.ok) {
+        const { code, message } = graphError(parentRes.status, await parentRes.text(), 'carousel container creation');
+        return err(code, `${message} The post was NOT published.`, parentRes.status === 429 ? 429 : 502, attempt);
+      }
+      const parentData = await parentRes.json();
+      if (!parentData.id) {
+        return err('INSTAGRAM_MEDIA_UPLOAD_FAILED', 'Instagram did not return a carousel container id. The post was NOT published.', 502, attempt);
+      }
+      await waitForContainer(parentData.id, ig.token);
+      const publishRes = await fetch(`${GRAPH}/${ig.igUserId}/media_publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creation_id: parentData.id, access_token: ig.token }),
+      });
+      if (!publishRes.ok) {
+        const { code, message } = graphError(publishRes.status, await publishRes.text(), 'carousel publish');
+        return err(code, message, publishRes.status === 429 ? 429 : 502, attempt);
+      }
+      const publishData = await publishRes.json();
+      return NextResponse.json({ success: true, postId: publishData.id, attemptId: attempt, message: `Carousel published to Instagram (${slides.length} slides)!` });
+    } catch (e) {
+      console.error(`[instagram/publish] carousel network failure (attempt ${attempt}):`, e instanceof Error ? e.message : e);
+      return err('INSTAGRAM_PUBLISH_FAILED', e instanceof Error ? e.message : 'Instagram carousel failed; no retry was attempted.', 502, attempt);
     }
-
-    // Step 1: Create media container (image vs video)
+  }
+  try {
+    rawMedia = await prepareInstagramMedia(rawMedia, resolvedType === 'video');
     const containerBody: Record<string, unknown> = {
-      caption: content,
-      access_token: accessToken,
+      caption: content || '',
+      access_token: ig.token,
     };
-    if (isVideo) {
+    if (resolvedType === 'video') {
       containerBody.video_url = rawMedia;
-      containerBody.media_type = 'VIDEO';
+      containerBody.media_type = 'REELS'; // Graph API video posts publish as Reels
     } else {
-      containerBody.image_url = rawMedia?.startsWith('data:') ? undefined : rawMedia || imageUrl?.startsWith('data:') ? undefined : imageUrl,
-      containerBody.media_type = undefined;
+      containerBody.image_url = rawMedia;
+      Object.assign(containerBody, altPayload('instagram', 'image', mediaAlt(mediaList, orderedUrls[0] || mediaUrl || imageUrl || '')));
     }
 
-    const containerResponse = await fetch('https://graph.instagram.com/me/media', {
+    const containerRes = await fetch(`${GRAPH}/${ig.igUserId}/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(containerBody),
     });
-
-    if (!containerResponse.ok) {
-      const err = await containerResponse.text();
-      console.error('Instagram container error:', err);
-      throw new Error('Failed to create media container');
+    if (!containerRes.ok) {
+      const { code, message } = graphError(containerRes.status, await containerRes.text(), 'media container creation');
+      return err(code, `${message} The post was NOT published.`, containerRes.status === 429 ? 429 : 502, attempt);
+    }
+    const containerData = await containerRes.json();
+    const containerId = containerData.id;
+    if (!containerId) {
+      return err('INSTAGRAM_MEDIA_UPLOAD_FAILED', 'Instagram did not return a media container id. The post was NOT published.', 502, attempt);
     }
 
-    const containerData = await containerResponse.json();
-    const containerId = containerData.id;
-
-    // Step 2: Publish
-    const publishResponse = await fetch('https://graph.instagram.com/me/media_publish', {
+    await waitForContainer(containerId, ig.token);
+    const publishRes = await fetch(`${GRAPH}/${ig.igUserId}/media_publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        creation_id: containerId,
-        access_token: accessToken,
-      }),
+      body: JSON.stringify({ creation_id: containerId, access_token: ig.token }),
     });
-
-    if (!publishResponse.ok) {
-      throw new Error('Failed to publish');
+    if (!publishRes.ok) {
+      const { code, message } = graphError(publishRes.status, await publishRes.text(), 'publish');
+      return err(code, message, publishRes.status === 429 ? 429 : 502, attempt);
     }
-
-    const publishData = await publishResponse.json();
-
-    return NextResponse.json({
-      success: true,
-      postId: publishData.id,
-      message: 'Post published to Instagram!',
-    });
-  } catch (error) {
-    console.error('Instagram publish error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to publish';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    const publishData = await publishRes.json();
+    return NextResponse.json({ success: true, postId: publishData.id, attemptId: attempt, message: 'Post published to Instagram!' });
+  } catch (e) {
+    console.error(`[instagram/publish] network failure (attempt ${attempt}):`, e instanceof Error ? e.message : e);
+    return err('INSTAGRAM_PUBLISH_FAILED', e instanceof Error ? e.message : 'Instagram publishing failed; no retry was attempted.', 502, attempt);
   }
 }

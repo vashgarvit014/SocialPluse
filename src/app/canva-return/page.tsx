@@ -16,6 +16,14 @@ function ReturnHandshake() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const saved = sessionStorage.getItem('canva-editor-return');
+    if (saved && !window.opener) {
+      const query = new URLSearchParams({ editor_return: saved });
+      if (readyId) query.set('canva_ready', readyId);
+      if (error) query.set('error', error);
+      sessionStorage.removeItem('canva-editor-return');
+      location.replace('/?' + query.toString()); return;
+    }
     try {
       if ((readyId || error) && window.opener && !window.opener.closed) {
         window.opener.postMessage(

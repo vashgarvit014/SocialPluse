@@ -44,6 +44,20 @@ export function getLinkedInToken(userId: string): string | null {
   return entry?.accessToken || null;
 }
 
+// Fallback lookup when the browser has no cached userId at all (e.g. OAuth
+// completed in a different tab than the one currently open, so nothing was
+// ever written to this tab's localStorage). Single-user local tool, not
+// multi-tenant, so "the one connected account" is a reasonable resolution —
+// mirrors the same fallback added to the Facebook vault. Picks the most
+// recently updated entry if somehow more than one exists.
+export function getAnyLinkedInToken(): { userId: string; accessToken: string } | null {
+  const entries = Object.entries(loadVault().linkedin);
+  if (entries.length === 0) return null;
+  const [userId, entry] = entries.sort((a, b) => (b[1].updatedAt || '').localeCompare(a[1].updatedAt || ''))[0];
+  if (!entry?.accessToken) return null;
+  return { userId, accessToken: entry.accessToken };
+}
+
 export function deleteLinkedInToken(userId?: string) {  const vault = loadVault();
   if (userId) {
     delete vault.linkedin[userId];

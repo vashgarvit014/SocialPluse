@@ -1,34 +1,6 @@
 import { NextResponse } from 'next/server';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
-
-const DATA_FILE = join(process.cwd(), 'scheduled-posts.json');
-
-interface MediaItem { id: string; url: string; type: 'image' | 'video'; name?: string }
-interface ScheduledPost {
-  id: string;
-  content: string;
-  imageUrl: string;
-  videoUrl?: string;
-  mediaUrl?: string;
-  mediaType?: 'image' | 'video' | null;
-  mediaUrls?: string[];
-  mediaList?: MediaItem[];
-  platforms: string[];
-  accounts: Array<{ platform: string; accessToken?: string; userId?: string; pageId?: string }>;
-  scheduledAt: string;
-  status: 'pending' | 'published' | 'failed' | 'cancelled';
-  createdAt: string;
-}
-
-function loadPosts(): ScheduledPost[] {
-  if (!existsSync(DATA_FILE)) return [];
-  try { return JSON.parse(readFileSync(DATA_FILE, 'utf8')); } catch { return []; }
-}
-
-function savePosts(posts: ScheduledPost[]) {
-  writeFileSync(DATA_FILE, JSON.stringify(posts, null, 2));
-}
+import { loadPosts, updatePost } from '@/lib/post-store';
+import type { PostRecord as ScheduledPost, PostMedia as MediaItem } from '@/lib/posts';
 
 async function publishPost(post: ScheduledPost, platform: string, account: { accessToken?: string; userId?: string; pageId?: string }) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -43,13 +15,14 @@ async function publishPost(post: ScheduledPost, platform: string, account: { acc
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      content: post.content,
+      content: post.platformContent?.[platform] ? [post.platformContent[platform].caption, post.platformContent[platform].hashtags.map(t => '#' + t.replace(/^#+/, '')).join(' ')].filter(Boolean).join('\n\n') : post.content,
       imageUrl: !isVideo ? post.imageUrl || mediaUrl : undefined,
       videoUrl: isVideo ? (post as unknown as { videoUrl?: string }).videoUrl || mediaUrl : undefined,
       mediaUrl,
       mediaType,
       mediaUrls: mediaUrls || (mediaUrl ? [mediaUrl] : undefined),
       mediaList,
+      isCarousel: (post as unknown as { isCarousel?: boolean }).isCarousel === true || undefined,
       accessToken: account.accessToken,
       userId: account.userId,
       pageId: account.pageId,
@@ -64,10 +37,17 @@ export async function POST() {
   const now = new Date();
   let publishedCount = 0;
 
-  for (const post of posts) {
+  for (const candidate of posts) {
+    let post = candidate;
     if (post.status !== 'pending') continue;
-    const scheduledTime = new Date(post.scheduledAt);
-    if (scheduledTime > now) continue;
+    const scheduledTime = new Date(post.scheduledAt || '');
+    if (!Number.isFinite(scheduledTime.getTime()) || scheduledTime > now) continue;
+    // Claim before the first network await. A concurrent check/cancel cannot
+    // overwrite this in-flight post. Interrupted claims require manual review.
+    try { post = updatePost(post.id, current => {
+      if (current.status !== 'pending' || !current.scheduledAt || Date.parse(current.scheduledAt) > now.getTime()) throw new Error('Already claimed, rescheduled or cancelled');
+      return { ...current, status: 'publishing', updatedAt: new Date().toISOString() };
+    }); } catch { continue; }
 
     let allSuccess = true;
     for (const platform of post.platforms) {
@@ -81,11 +61,10 @@ export async function POST() {
       }
     }
 
-    post.status = allSuccess ? 'published' : 'failed';
-    publishedCount++;
+    updatePost(post.id, current => ({ ...current, status: allSuccess ? 'published' : 'failed', updatedAt: new Date().toISOString() }));
+    if (allSuccess) publishedCount++;
   }
 
-  savePosts(posts);
 
   return NextResponse.json({ publishedCount, checkedAt: now.toISOString() });
 }

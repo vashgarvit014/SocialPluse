@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import StudioWorkspace from './studio-workspace';
+import PostPreview from './post-preview';
+import { newestDrafts, postMedia, type PostRecord } from '@/lib/posts';
+import { returnStore } from '@/lib/editor-return';
 
 interface SocialAccount {
   platform: string;
@@ -17,6 +20,9 @@ interface SocialAccount {
   // pageId is the selected publishing target.
   pages?: Array<{ id: string; name: string }>;
   pageId?: string;
+  // Instagram only: the linked Business account's id (needed by
+  // instagram/publish to resolve the right Page token server-side).
+  igUserId?: string;
 }
 
 const platformColors: Record<string, string> = {
@@ -24,6 +30,7 @@ const platformColors: Record<string, string> = {
   instagram: '#E1306C',
   facebook: '#1877F2',
   twitter: '#000000',
+  whatsapp: '#25D366',
 };
 
 const platformInitials: Record<string, string> = {
@@ -31,6 +38,7 @@ const platformInitials: Record<string, string> = {
   instagram: 'IG',
   facebook: 'FB',
   twitter: 'TW',
+  whatsapp: 'WA',
 };
 
 // Real platform glyphs (inline SVG, white fill/stroke — sits on the platform's
@@ -64,9 +72,40 @@ function PlatformIcon({ platform, size = 16 }: { platform: string; size?: number
           <circle cx="17" cy="7" r="1.15" fill="#fff" />
         </svg>
       );
+    case 'whatsapp':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M12.04 2C7.08 2 3.04 5.95 3.04 10.89c0 1.57.41 3.04 1.16 4.33L3 22l6.96-1.18c1.25.68 2.66 1.06 4.08 1.06 4.96 0 9-3.95 9-8.89S17 2 12.04 2z" fill="#fff" />
+          <path d="M10.2 8.5c-.14 0-.32.05-.48.26-.16.21-.62.61-.62 1.49s.63 1.73.72 1.85c.09.12 1.24 1.89 3 2.65.73.32 1.3.51 1.74.65.73.23 1.39.2 1.91.12.58-.09.62-.53.69-1.04.06-.51.03-.95-.02-1.04-.05-.09-.18-.14-.38-.24-.19-.09-1.14-.56-1.32-.63-.18-.06-.31-.09-.44.09-.13.19-.5.63-.61.76-.11.13-.22.14-.41.05-.19-.09-.81-.3-1.54-.95-.57-.51-.95-1.14-1.06-1.33-.11-.19-.01-.29.08-.39.08-.08.19-.22.28-.33.09-.11.12-.19.18-.31.06-.12.03-.23-.01-.32-.05-.09-.44-1.07-.61-1.46-.16-.39-.32-.34-.44-.35h-.38z" fill="#25D366" />
+        </svg>
+      );
     default:
       return <>{platformInitials[platform] || platform.slice(0, 2).toUpperCase()}</>;
   }
+}
+
+// Shared nav/filter pill — flat + bordered at rest (matches the app's existing
+// filter-chip language), with a hover lift and an indigo-tinted active state.
+function PillButton({ active, onClick, children, icon }: { active?: boolean; onClick: () => void; children: React.ReactNode; icon?: string }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      aria-pressed={active}
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '8px 16px', borderRadius: '999px', fontSize: '12px', fontWeight: 600,
+        border: active ? '2px solid #6366f1' : hover ? '1px solid #c7d2fe' : '1px solid #e2e8f0',
+        backgroundColor: active ? '#eef2ff' : hover ? '#f8fafc' : '#fff',
+        color: active ? '#6366f1' : hover ? '#4338ca' : '#475569',
+        cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.18s',
+        boxShadow: active ? '0 2px 8px rgba(99,102,241,0.15)' : hover ? '0 2px 6px rgba(15,23,42,0.08)' : 'none',
+        transform: hover && !active ? 'translateY(-1px)' : 'none',
+      }}
+    >{icon && <span aria-hidden>{icon}</span>}{children}</button>
+  );
 }
 
 // Prefixes each tag with a single "#", stripping any the AI already included
@@ -113,8 +152,19 @@ function getPostMedia(post: { imageUrl?: string; videoUrl?: string; mediaUrl?: s
   return { url, type: isVideo ? 'video' as const : url ? 'image' as const : null, isVideo, list: url ? [{id:'0',url,type:isVideo?'video':'image'} as MediaItem] : [], count: url?1:0, videoCount: isVideo?1:0, imageCount: isVideo?0:(url?1:0) };
 }
 
-export interface MediaItem { id: string; url: string; type: 'image' | 'video'; name?: string }
+export interface MediaItem { id: string; url: string; type: 'image' | 'video'; name?: string; altText?: string }
 export default function SocialMediaManager() {
+  const [wizardState, setWizardState] = useState<Record<string, unknown>>({});
+  const [draftId, setDraftId] = useState<string | undefined>();
+  const [plannerView, setPlannerView] = useState<'preview' | 'calendar' | 'timeline'>('preview');
+  const [cancelTarget, setCancelTarget] = useState<{ id: string; redirectHome?: boolean } | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<PostRecord | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleTime, setRescheduleTime] = useState('');
+  const [isRescheduling, setIsRescheduling] = useState(false);
+  const [legacyDrafts, setLegacyDrafts] = useState<PostRecord[]>([]);
+  const [altBusy, setAltBusy] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [content, setContent] = useState('');
   const [generatedImage, setGeneratedImage] = useState('');
@@ -122,6 +172,14 @@ export default function SocialMediaManager() {
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]); // Publish gallery (Media Preview) — up to 9
   const [topicMediaItems, setTopicMediaItems] = useState<MediaItem[]>([]); // Reference media for AI vision (Topic & Idea) — up to 4
+  // Carousel (multi-image swipeable post) — an explicit ordered subset of
+  // mediaItems, image-only, 2–9 slides. LinkedIn (≤9 images) and Facebook
+  // (multi-photo) already publish multi-image natively; Instagram takes the
+  // CAROUSEL container path (2–10, public URLs only).
+  const [isCarousel, setIsCarousel] = useState(false);
+  const [carouselSlideIds, setCarouselSlideIds] = useState<string[]>([]);
+  const [carouselSlideCount, setCarouselSlideCount] = useState(4); // Generate-N-slides helper size
+  const [isGeneratingCarousel, setIsGeneratingCarousel] = useState(false);
   const [topicDragOver, setTopicDragOver] = useState(false);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
@@ -166,7 +224,7 @@ export default function SocialMediaManager() {
   const [editorTab, setEditorTab] = useState<'edit' | 'preview'>('preview');
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
-  const [allPosts, setAllPosts] = useState<Array<{ id: string; content: string; platforms: string[]; scheduledAt: string; status: string; imageUrl?: string; videoUrl?: string; mediaType?: 'image' | 'video'; mediaUrl?: string; mediaUrls?: string[]; mediaList?: MediaItem[]; createdAt?: string }>>([]);
+  const [allPosts, setAllPosts] = useState<Array<PostRecord & { scheduledAt: string }>>([]);
   const [isScheduling, setIsScheduling] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'studio' | 'scheduler' | 'analytics' | 'media' | 'drafts'>('studio');
   const [schedulerFilter, setSchedulerFilter] = useState<'all' | 'pending' | 'published' | 'failed' | 'cancelled'>('all');
@@ -188,6 +246,18 @@ export default function SocialMediaManager() {
   const [draggedMediaId, setDraggedMediaId] = useState<string | null>(null);
   const [dragOverMediaId, setDragOverMediaId] = useState<string | null>(null);
 
+  // Whapi — existing-group publishing (separate from Meta WhatsApp)
+  const [whapiConnected, setWhapiConnected] = useState(false);
+  const [whapiChannelStatus, setWhapiChannelStatus] = useState('');
+  const [whapiAccountName, setWhapiAccountName] = useState('');
+  const [whapiPhoneMasked, setWhapiPhoneMasked] = useState('');
+  const [whapiLoading, setWhapiLoading] = useState(false);
+  const [whapiGroups, setWhapiGroups] = useState<Array<{ id: string; name: string; participantsCount: number; type: string }>>([]);
+  const [whapiSelectedGroupId, setWhapiSelectedGroupId] = useState('');
+  const [whapiGroupsLoading, setWhapiGroupsLoading] = useState(false);
+  const [whapiGroupsError, setWhapiGroupsError] = useState('');
+  const [whapiPublishing, setWhapiPublishing] = useState(false);
+
   // ---- Reload persistence ----
   // Browsers forbid custom popups *during* a reload (beforeunload only gets
   // the native leave/stay dialog), so the two-choice popup lives right AFTER
@@ -204,7 +274,26 @@ export default function SocialMediaManager() {
     originals: Record<string, string>; burnedLogoIds: Record<string, boolean>;
     logoImage: string; logoPosition: string; logoScale: number; logoOpacity: number;
     mediaSkipped?: boolean; savedAt: number;
+    wizardState?: Record<string, unknown>; activeTab?: typeof activeTab; draftId?: string;
+    isCarousel?: boolean; carouselSlideIds?: string[]; carouselSlideCount?: number;
+    scheduleDate?: string; scheduleTime?: string; editorTab?: 'edit' | 'preview';
+    canvaReadyId?: string; path?: string;
   }
+  const captureEditor = (): SavedDraft => ({
+    prompt, tone, imageStyle, aspectRatio, content, platformContent, imagePrompt,
+    activePreviewPlatform, selectedPlatforms, mediaItems, topicMediaItems,
+    generatedImage, generatedVideo, mediaType, originals: originalMediaRef.current,
+    burnedLogoIds, logoImage, logoPosition, logoScale, logoOpacity, savedAt: Date.now(),
+    wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCount,
+    scheduleDate, scheduleTime, editorTab, canvaReadyId,
+    path: window.location.pathname + window.location.search + window.location.hash,
+  });
+  const notify = (message: string, error = false) => {
+    setPublishResult(message); setPublishResultType(error ? 'error' : 'success'); setShowToast(true);
+    setTimeout(() => setShowToast(false), 6000);
+  };
+  const [oauthRestoring, setOauthRestoring] = useState(true);
+  useEffect(() => { if (!new URLSearchParams(location.search).has('editor_return')) Promise.resolve().then(() => setOauthRestoring(false)); }, []);
   const [restorePromptOpen, setRestorePromptOpen] = useState(false);
   const [savedDraft, setSavedDraft] = useState<SavedDraft | null>(null);
 
@@ -213,6 +302,7 @@ export default function SocialMediaManager() {
 
   // Runs first on mount (declared before the autosaver below): offer restore.
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('editor_return')) return;
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
@@ -231,15 +321,9 @@ export default function SocialMediaManager() {
   // while the restore popup is awaiting a choice, so we never clobber the
   // saved draft before the user picks Keep or Fresh.
   useEffect(() => {
-    if (restorePromptOpen) return;
+    if (restorePromptOpen || oauthRestoring) return;
     const t = setTimeout(() => {
-      const draft: SavedDraft = {
-        prompt, tone, imageStyle, aspectRatio, content, platformContent,
-        imagePrompt, activePreviewPlatform, selectedPlatforms,
-        mediaItems, topicMediaItems, generatedImage, generatedVideo, mediaType,
-        originals: originalMediaRef.current, burnedLogoIds,
-        logoImage, logoPosition, logoScale, logoOpacity, savedAt: Date.now(),
-      };
+      const draft: SavedDraft = captureEditor();
       const full = JSON.stringify(draft);
       // dataURL galleries can exceed the ~5MB localStorage quota - then keep
       // the text state and drop the heavy pixels rather than saving nothing.
@@ -262,10 +346,9 @@ export default function SocialMediaManager() {
       }
     }, 800);
     return () => clearTimeout(t);
-  }, [restorePromptOpen, prompt, tone, imageStyle, aspectRatio, content, platformContent, imagePrompt, activePreviewPlatform, selectedPlatforms, mediaItems, topicMediaItems, generatedImage, generatedVideo, mediaType, burnedLogoIds, logoImage, logoPosition, logoScale, logoOpacity]);
+  }, [oauthRestoring, wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCount, scheduleDate, scheduleTime, editorTab, canvaReadyId, restorePromptOpen, prompt, tone, imageStyle, aspectRatio, content, platformContent, imagePrompt, activePreviewPlatform, selectedPlatforms, mediaItems, topicMediaItems, generatedImage, generatedVideo, mediaType, burnedLogoIds, logoImage, logoPosition, logoScale, logoOpacity]);
 
-  const keepRestoredDraft = () => {
-    const d = savedDraft;
+  const restoreEditor = (d: SavedDraft | null) => {
     if (d) {
       setPrompt(d.prompt || ''); setTone(d.tone || 'Professional');
       setImageStyle(d.imageStyle || 'Photographic'); setAspectRatio(d.aspectRatio || '');
@@ -282,6 +365,11 @@ export default function SocialMediaManager() {
       if (typeof d.logoScale === 'number') setLogoScale(d.logoScale);
       if (typeof d.logoOpacity === 'number') setLogoOpacity(d.logoOpacity);
       if (d.logoPosition) setLogoPosition(d.logoPosition as typeof logoPosition);
+      setWizardState(d.wizardState || {}); setDraftId(d.draftId);
+      setActiveTab(d.activeTab || 'studio'); setIsCarousel(!!d.isCarousel);
+      setCarouselSlideIds(d.carouselSlideIds || []); setCarouselSlideCount(d.carouselSlideCount || 4);
+      setScheduleDate(d.scheduleDate || ''); setScheduleTime(d.scheduleTime || '');
+      setEditorTab(d.editorTab || 'preview'); setCanvaReadyId(d.canvaReadyId || '');
       if (d.mediaSkipped) {
         setPublishResult('Previous work restored (images were too large to keep and were skipped).');
         setPublishResultType('success'); setShowToast(true); setTimeout(() => setShowToast(false), 4000);
@@ -290,6 +378,8 @@ export default function SocialMediaManager() {
     setSavedDraft(null);
     setRestorePromptOpen(false);
   };
+
+  const keepRestoredDraft = () => restoreEditor(savedDraft);
 
   const discardSavedDraft = () => {
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
@@ -330,6 +420,13 @@ export default function SocialMediaManager() {
   }, [isGeneratingContent, isGeneratingImage]);
 
   useEffect(() => {
+    // LinkedIn/Facebook/Instagram accounts pulled out of whatever was cached
+    // (if anything) - used only to preserve display fields like name/pages
+    // across a refresh while the real status checks below confirm them.
+    let linkedinAccount: SocialAccount | undefined;
+    let facebookAccount: SocialAccount | undefined;
+    let instagramAccount: SocialAccount | undefined;
+
     const saved = localStorage.getItem('socialAccounts');
     if (saved) {
       try {
@@ -340,12 +437,84 @@ export default function SocialMediaManager() {
           void _dropped;
           return rest as SocialAccount;
         });
-        setAccounts(scrubbed);
-        localStorage.setItem('socialAccounts', JSON.stringify(scrubbed));
-      } catch { /* ignore */ }
+
+        // LinkedIn's, Facebook's and Instagram's cached cards can go stale -
+        // a post-OAuth redirect that broke before the page could update it,
+        // a reload, a different tab, or a token since expired/revoked/
+        // disconnected on the platform's side - so never display them on
+        // trust alone. Hold all three back and only show them once the
+        // server vault actually confirms the connection still works
+        // (mirrors Canva's server-verified status check below). Twitter
+        // doesn't have a status route yet, so it's shown as before.
+        linkedinAccount = scrubbed.find(a => a.platform === 'linkedin');
+        facebookAccount = scrubbed.find(a => a.platform === 'facebook');
+        instagramAccount = scrubbed.find(a => a.platform === 'instagram');
+        const rest = scrubbed.filter(a => a.platform !== 'linkedin' && a.platform !== 'facebook' && a.platform !== 'instagram');
+        setAccounts(rest);
+        localStorage.setItem('socialAccounts', JSON.stringify(rest));
+      } catch { /* ignore corrupt cache - status checks below still run unconditionally */ }
+    }
+
+    {
+      // Always check, even with nothing cached in this tab (or no cache at
+      // all - a fresh browser, a cleared/incognito session) - the server
+        // falls back to whatever single account the vault holds, so this
+        // self-heals a tab whose localStorage never saw the OAuth redirect
+        // (same reasoning as the Facebook check below).
+        fetch(linkedinAccount?.userId ? `/api/linkedin/status?userId=${encodeURIComponent(linkedinAccount.userId)}` : '/api/linkedin/status')
+          .then(res => res.json())
+          .then((data: { connected: boolean; userId?: string; name?: string; email?: string }) => {
+            if (!data.connected || !data.userId) return; // stale/expired/nothing stored - stays out of the list
+            const base = linkedinAccount?.userId === data.userId ? linkedinAccount : undefined;
+            setAccounts(prev => {
+              const updated = [...prev.filter(a => a.platform !== 'linkedin'), { platform: 'linkedin', connected: true, userId: data.userId!, name: data.name || base?.name || 'LinkedIn', email: data.email || base?.email || '' }];
+              localStorage.setItem('socialAccounts', JSON.stringify(updated));
+              return updated;
+            });
+          })
+          .catch(() => { /* transient failure reaching our own status route - leave it disconnected for this load rather than trust the cache */ });
+
+        // Always check, even with nothing cached: unlike LinkedIn, the vault
+        // lookup here doesn't require a userId the browser already knows -
+        // the server falls back to whatever single account it holds. That's
+        // what lets this self-heal when the OAuth redirect landed on a
+        // different tab/origin than the one currently open, instead of
+        // requiring a matching cached entry to even attempt the check.
+        fetch(facebookAccount?.userId ? `/api/facebook/status?userId=${encodeURIComponent(facebookAccount.userId)}` : '/api/facebook/status')
+          .then(res => res.json())
+          .then((data: { connected: boolean; userId?: string; name?: string; pages?: Array<{ id: string; name: string }> }) => {
+            if (!data.connected || !data.userId) return; // stale/expired/nothing stored - stays out of the list
+            const base = facebookAccount?.userId === data.userId ? facebookAccount : undefined;
+            const pages = data.pages && data.pages.length ? data.pages : base?.pages;
+            const pageId = pages?.some(p => p.id === base?.pageId) ? base?.pageId : pages?.[0]?.id;
+            setAccounts(prev => {
+              const updated = [...prev.filter(a => a.platform !== 'facebook'), { platform: 'facebook', connected: true, userId: data.userId!, name: data.name || base?.name || 'Facebook', email: base?.email || '', pages, pageId }];
+              localStorage.setItem('socialAccounts', JSON.stringify(updated));
+              return updated;
+            });
+          })
+          .catch(() => { /* transient failure reaching our own status route - leave it disconnected for this load rather than trust the cache */ });
+
+        // Instagram has no login of its own - it's derived from whichever
+        // Facebook Page has a linked Instagram Business account, so this
+        // check needs no separate OAuth redirect to have landed; it just
+        // needs Facebook to be connected with the right scopes. Same
+        // fallback-to-any-account pattern as the Facebook check above.
+        fetch(instagramAccount?.userId ? `/api/instagram/status?userId=${encodeURIComponent(instagramAccount.userId)}` : '/api/instagram/status')
+          .then(res => res.json())
+          .then((data: { connected: boolean; userId?: string; username?: string; igUserId?: string; pageId?: string }) => {
+            if (!data.connected || !data.userId) return; // Facebook not connected, or no Page has Instagram linked
+            setAccounts(prev => {
+              const updated = [...prev.filter(a => a.platform !== 'instagram'), { platform: 'instagram', connected: true, userId: data.userId!, name: data.username ? `@${data.username}` : 'Instagram', email: '', igUserId: data.igUserId, pageId: data.pageId }];
+              localStorage.setItem('socialAccounts', JSON.stringify(updated));
+              return updated;
+            });
+          })
+          .catch(() => { /* transient failure reaching our own status route - leave it disconnected for this load rather than trust the cache */ });
     }
 
     const params = new URLSearchParams(window.location.search);
+    if (params.has('editor_return')) return;
     const platform = params.get('platform');
     const connected = params.get('connected');
     const name = params.get('name');
@@ -406,6 +575,126 @@ export default function SocialMediaManager() {
     }
   }, []);
 
+  // Whapi status — separate from Meta WhatsApp, never exposes token
+  const refreshWhapiStatus = async () => {
+    setWhapiLoading(true);
+    try {
+      const res = await fetch('/api/whapi/status');
+      const data = await res.json();
+      setWhapiConnected(!!data.connected);
+      setWhapiChannelStatus(data.channelStatus || data.reason || '');
+      setWhapiAccountName(data.accountName || '');
+      setWhapiPhoneMasked(data.phoneNumberMasked || data.phoneNumber || '');
+      return !!data.connected;
+    } catch {
+      setWhapiConnected(false);
+      setWhapiChannelStatus('NETWORK_ERROR');
+      return false;
+    } finally {
+      setWhapiLoading(false);
+    }
+  };
+
+  const loadWhapiGroups = async () => {
+    if (whapiGroupsLoading) return;
+    setWhapiGroupsLoading(true);
+    setWhapiGroupsError('');
+    try {
+      const res = await fetch('/api/whapi/groups?count=100');
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || data.error || 'Failed to fetch groups');
+      }
+      const groups = Array.isArray(data.groups) ? data.groups : [];
+      setWhapiGroups(groups);
+      // Auto-select first sendable group if none selected (skip community parents / single-member)
+      if (groups.length && !whapiSelectedGroupId) {
+        const sendable = groups.find((g: { id: string; name: string; participantsCount: number; type: string }) => g.type === 'announcement_group' || (g.type === 'group' && (g.participantsCount ?? 0) >= 2));
+        setWhapiSelectedGroupId((sendable || groups[0]).id);
+      }
+      return groups;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to fetch groups';
+      setWhapiGroupsError(msg);
+      return [];
+    } finally {
+      setWhapiGroupsLoading(false);
+    }
+  };
+
+  const publishToWhapi = async () => {
+    if (whapiPublishing || isPublishing || publishCooldown > 0) return;
+    if (!whapiConnected) {
+      setPublishResult('WhatsApp is not connected via Whapi.');
+      setPublishResultType('error'); setShowToast(true); setTimeout(() => setShowToast(false), 4000); return;
+    }
+    if (!whapiSelectedGroupId) {
+      setPublishResult('Select a WhatsApp group first.');
+      setPublishResultType('error'); setShowToast(true); setTimeout(() => setShowToast(false), 4000); return;
+    }
+    const _selGroup = whapiGroups.find(g => g.id === whapiSelectedGroupId);
+    if (_selGroup && (_selGroup.type === 'community' || (_selGroup.participantsCount ?? 0) < 2)) {
+      setPublishResult('This community cannot receive messages directly. Select its announcement group instead.');
+      setPublishResultType('error'); setShowToast(true); setTimeout(() => setShowToast(false), 4000); return;
+    }
+    if (!content.trim() && publishMediaList.length === 0 && !generatedImage && !generatedVideo) {
+      setPublishResult('Add content or media before publishing to WhatsApp.');
+      setPublishResultType('error'); setShowToast(true); setTimeout(() => setShowToast(false), 4000); return;
+    }
+    // One click = one request, no hidden retries, reuse cooldown guard
+    const publishingRefLocal = publishingRef;
+    if (publishingRefLocal.current) return;
+    publishingRefLocal.current = true;
+    setWhapiPublishing(true);
+    setIsPublishing(true);
+    try {
+      const attemptId = `whapi_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      // Whapi supports single image/video + caption, not carousel. Send first media only.
+      const mediaForWhapi = publishMediaList.slice(0, 1);
+      const allUrls = mediaForWhapi.length ? mediaForWhapi.map(m => m.url) : [];
+      // If no explicit media but we have a generatedImage, include it
+      const effectiveMedia = mediaForWhapi.length ? mediaForWhapi : (generatedImage ? [{ id: 'gen', url: generatedImage, type: 'image' as const }] : []);
+      const text = content.trim() || platformContent[activePreviewPlatform]?.caption || '';
+      const res = await fetch('/api/whapi/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId: whapiSelectedGroupId,
+          text: text ? `${text}${platformContent[activePreviewPlatform]?.hashtags?.length ? '\n\n' + formatHashtags(platformContent[activePreviewPlatform].hashtags) : ''}` : text,
+          mediaList: effectiveMedia,
+          attemptId,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setPublishResult(`WhatsApp message sent to ${whapiGroups.find(g => g.id === whapiSelectedGroupId)?.name || 'group'} ✓`);
+        setPublishResultType('success');
+        setPublishSuccessFlash(true);
+        setPublishCooldown(10);
+        setTimeout(() => setPublishSuccessFlash(false), 2200);
+      } else {
+        const code = data.code || '';
+        let msg = data.message || 'Failed to publish to WhatsApp group.';
+        if (code === 'WHAPI_UNAUTHORIZED') msg = 'Whapi token invalid. Check WHAPI_API_TOKEN.';
+        else if (code === 'WHAPI_GROUP_NOT_FOUND') msg = 'Selected group not found. Refresh groups and try again.';
+        else if (code === 'WHAPI_TRIAL_LIMIT') msg = data.message || 'Whapi trial limit exceeded. Upgrade at panel.whapi.cloud or use Minor project group (120363410795467871@g.us) which is currently allowed.';
+        else if (code === 'WHAPI_COMMUNITY_PARENT') msg = data.message || 'This community cannot receive messages directly. Select its announcement group instead.';
+        else if (code === 'WHAPI_BAD_REQUEST') msg = data.message || 'Whapi rejected the request. Check group and message.';
+        else if (code === 'WHAPI_UNSUPPORTED_MEDIA') msg = 'This media type is not supported via Whapi.';
+        setPublishResult(msg);
+        setPublishResultType('error');
+      }
+    } catch {
+      setPublishResult('Network error sending to WhatsApp group.');
+      setPublishResultType('error');
+    }
+    setShowToast(true);
+    publishingRefLocal.current = false;
+    setWhapiPublishing(false);
+    setIsPublishing(false);
+    setTimeout(() => setShowToast(false), 5000);
+  };
+
   // Connection status always comes from the server (never faked/assumed from
   // a client-side flag) - the token itself only ever lives in httpOnly cookies.
   const refreshCanvaStatus = async () => {
@@ -414,15 +703,26 @@ export default function SocialMediaManager() {
       const data = await res.json();
       setCanvaConnected(!!data.connected);
       setCanvaName(data.displayName || '');
+      return !!data.connected;
     } catch {
       setCanvaConnected(false);
+      return false;
     }
   };
 
+  // Auto-load Whapi groups lazily when connected, but only once per session to avoid blocking page
+  useEffect(() => {
+    if (whapiConnected && whapiGroups.length === 0 && !whapiGroupsLoading && !whapiGroupsError) {
+      void loadWhapiGroups();
+    }
+  }, [whapiConnected]);
+
   useEffect(() => {
     refreshCanvaStatus();
+    refreshWhapiStatus();
 
     const params = new URLSearchParams(window.location.search);
+    if (params.has('editor_return')) return;
     const canvaConnectedParam = params.get('canva_connected');
     const canvaNameParam = params.get('canva_name');
     const canvaReadyParam = params.get('canva_ready');
@@ -485,7 +785,8 @@ export default function SocialMediaManager() {
     try {
       const res = await fetch('/api/scheduler');
       const data = await res.json();
-      setAllPosts(data.posts || []);
+      if (!res.ok) throw new Error(data.error || 'Cannot load posts');
+      setAllPosts((data.posts || []).map((p: PostRecord) => ({ ...p, scheduledAt: p.scheduledAt || '' })));
     } catch { /* ignore */ }
   };
 
@@ -541,7 +842,10 @@ export default function SocialMediaManager() {
     return () => document.removeEventListener('keydown', handleKey);
   }, [scheduleModalOpen]);
 
+  const schedulingRef = useRef(false);
+  const draftSavingRef = useRef(false);
   const schedulePost = async () => {
+    if (schedulingRef.current) return;
     if (!content.trim() || !scheduleDate || !scheduleTime) return;
 
     const scheduledTime = new Date(`${scheduleDate}T${scheduleTime}`);
@@ -564,7 +868,15 @@ export default function SocialMediaManager() {
       setTimeout(() => setShowToast(false), 4000);
       return;
     }
+    if (isCarousel && !carouselValidation.valid) {
+      setPublishResult(`Carousel not ready: ${carouselValidation.reason}`);
+      setPublishResultType('error');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 4000);
+      return;
+    }
 
+    schedulingRef.current = true;
     setIsScheduling(true);
     try {
       const scheduledAt = scheduledTime.toISOString();
@@ -581,6 +893,7 @@ export default function SocialMediaManager() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: draftId, editorState: captureEditor(), platformContent,
           content,
           imageUrl: generatedImage,
           videoUrl: generatedVideo,
@@ -588,6 +901,7 @@ export default function SocialMediaManager() {
           mediaType: currentMediaType,
           mediaUrls: allMediaUrls,
           mediaList: publishMediaList,
+          isCarousel: isCarousel && carouselValidation.valid ? true : undefined,
           platforms: connectedSelected,
           accounts: accountsData,
           scheduledAt,
@@ -595,7 +909,8 @@ export default function SocialMediaManager() {
       });
 
       if (res.ok) {
-        setPublishResult(`Post scheduled for ${new Date(scheduledAt).toLocaleString()}`);
+        setDraftId(undefined);
+        setPublishResult(`Schedule saved for ${new Date(scheduledAt).toLocaleString()}`);
         setPublishResultType('success');
         setScheduleDate('');
         setScheduleTime('');
@@ -616,24 +931,210 @@ export default function SocialMediaManager() {
       setPublishResultType('error');
     }
     setShowToast(true);
+    schedulingRef.current = false;
     setIsScheduling(false);
     setTimeout(() => setShowToast(false), 4000);
   };
 
-  const cancelScheduled = async (id: string) => {
-    try {
-      await fetch('/api/scheduler', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      loadScheduledPosts();
-    } catch { /* ignore */ }
+  // Opens the styled confirmation modal; the actual DELETE only fires from
+  // confirmCancelScheduled once the user confirms "Cancel Post".
+  const cancelScheduled = (id: string, opts?: { redirectHome?: boolean }) => {
+    const post = allPosts.find(p => p.id === id);
+    if (post?.status === 'publishing') { notify('This post is already being published and can no longer be cancelled.', true); return; }
+    setCancelTarget({ id, redirectHome: !!opts?.redirectHome });
   };
 
-  const connectPlatform = (platform: string) => {
-    window.location.href = `/api/${platform}/auth`;
+  const confirmCancelScheduled = async () => {
+    if (!cancelTarget || isCancelling) return;
+    const { id, redirectHome } = cancelTarget;
+    setIsCancelling(true);
+    try {
+      const res = await fetch('/api/scheduler', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+      const data = await res.json(); if (!res.ok) throw new Error(data.error);
+      await loadScheduledPosts();
+      notify('Post cancelled and moved to Drafts.');
+      if (redirectHome) setActiveTab('studio');
+    } catch (e) { notify(e instanceof Error ? e.message : 'Cancellation failed', true); }
+    setIsCancelling(false);
+    setCancelTarget(null);
   };
+
+  const openReschedule = (post: PostRecord) => {
+    if (post.status === 'publishing') { notify('This post is already being published and can no longer be cancelled.', true); return; }
+    setRescheduleTarget(post);
+    setRescheduleDate(post.scheduledAt ? localDateKey(new Date(post.scheduledAt)) : '');
+    setRescheduleTime(post.scheduledAt ? new Date(post.scheduledAt).toTimeString().slice(0, 5) : '');
+  };
+
+  // Rescheduling PATCHes scheduledAt on the SAME post id/job — never creates
+  // a duplicate. The Scheduler/Calendar pick this up on the next loadScheduledPosts.
+  const confirmReschedule = async () => {
+    if (!rescheduleTarget || !rescheduleDate || !rescheduleTime || isRescheduling) return;
+    const newTime = new Date(`${rescheduleDate}T${rescheduleTime}`);
+    const minTime = new Date(Date.now() + 5 * 60 * 1000);
+    if (newTime <= minTime) { notify('Schedule time must be at least 5 minutes from now', true); return; }
+    setIsRescheduling(true);
+    try {
+      const res = await fetch('/api/scheduler', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rescheduleTarget.id, scheduledAt: newTime.toISOString() }) });
+      const data = await res.json(); if (!res.ok) throw new Error(data.error);
+      await loadScheduledPosts();
+      notify(`Post rescheduled to ${newTime.toLocaleString()}`);
+      setRescheduleTarget(null);
+    } catch (e) { notify(e instanceof Error ? e.message : 'Reschedule failed', true); }
+    setIsRescheduling(false);
+  };
+
+  const saveFullDraft = async () => {
+    if (draftSavingRef.current) return;
+    const cancelling = allPosts.some(post => post.id === draftId && ['pending', 'scheduled'].includes(post.status));
+    if (cancelling && !window.confirm('Cancel this scheduled post?')) return;
+    draftSavingRef.current = true;
+    try {
+      const res = await fetch('/api/scheduler', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        id: draftId, status: 'draft', content, platforms: selectedPlatforms,
+        imageUrl: generatedImage, videoUrl: generatedVideo, mediaList: publishMediaList,
+        mediaUrls: publishMediaList.map(m => m.url), isCarousel, platformContent,
+        source: mediaItems.some(m => m.name === 'generated') ? 'AI Generated' : 'Manual Draft',
+        editorState: captureEditor(),
+      }) });
+      const data = await res.json(); if (!res.ok) throw new Error(data.error);
+      setDraftId(data.post.id); await loadScheduledPosts(); notify(cancelling ? 'Post cancelled and moved to Drafts.' : 'Draft saved.');
+    } catch (e) { notify(e instanceof Error ? e.message : 'Draft could not be saved', true); }
+    finally { draftSavingRef.current = false; }
+  };
+
+  const editPost = (post: PostRecord, schedule = false) => {
+    const media = postMedia(post);
+    restoreEditor({ ...(post.editorState || {}), content: post.content || '', platformContent: post.platformContent || {},
+      selectedPlatforms: post.platforms, mediaItems: (post.editorState?.mediaItems as MediaItem[]) || media,
+      generatedImage: post.imageUrl || '', generatedVideo: post.videoUrl || '',
+      isCarousel: !!post.isCarousel, carouselSlideIds: (post.editorState?.carouselSlideIds as string[]) || media.map(m => m.id),
+      draftId: post.id.startsWith('legacy:') ? undefined : post.id,
+      activeTab: 'studio', wizardState: { ...((post.editorState?.wizardState as Record<string, unknown>) || {}), currentStep: schedule ? 6 : 3 },
+      scheduleDate: post.scheduledAt ? localDateKey(new Date(post.scheduledAt)) : '',
+      scheduleTime: post.scheduledAt ? new Date(post.scheduledAt).toTimeString().slice(0, 5) : '',
+    } as unknown as SavedDraft);
+    if (schedule) setScheduleModalOpen(true);
+  };
+
+  const deleteDraft = async (post: PostRecord) => {
+    if (!window.confirm('Delete this draft permanently?')) return;
+    try {
+      if (post.id.startsWith('legacy:')) {
+        const list = JSON.parse(localStorage.getItem('socialDrafts') || '[]');
+        list.splice(Number(post.id.split(':')[1]), 1);
+        localStorage.setItem('socialDrafts', JSON.stringify(list)); loadLegacyDrafts();
+      } else {
+        const res = await fetch('/api/scheduler', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: post.id, action: 'delete-draft' }) });
+        if (!res.ok) throw new Error('Draft deletion failed'); await loadScheduledPosts();
+      }
+      notify('Draft deleted.');
+    } catch (e) { notify(e instanceof Error ? e.message : 'Draft deletion failed', true); }
+  };
+
+  const loadLegacyDrafts = () => {
+    try {
+      const list = JSON.parse(localStorage.getItem('socialDrafts') || '[]');
+      if (!Array.isArray(list)) throw new Error('Invalid legacy drafts');
+      setLegacyDrafts(list.map((d, i) => ({ ...d, id: 'legacy:' + i, content: d.content || d.prompt || '', imageUrl: d.imageUrl || '',
+        platforms: d.platforms || d.selectedPlatforms || [], accounts: [], status: 'draft', scheduledAt: null,
+        editorState: d, createdAt: d.createdAt || d.savedAt || '', updatedAt: d.updatedAt || d.savedAt || '', source: 'Manual Draft' })));
+    } catch { notify('Old draft storage could not be read. It has been left unchanged.', true); }
+  };
+  useEffect(() => { loadLegacyDrafts(); }, []);
+
+  const updateAltText = (id: string, altText: string) => {
+    setMediaItems(items => items.map(m => m.id === id ? { ...m, altText } : m));
+    setTopicMediaItems(items => items.map(m => m.id === id ? { ...m, altText } : m));
+  };
+  const generateAltText = async (items: MediaItem[]) => {
+    if (altBusy) return; setAltBusy(true);
+    try {
+      for (const item of items) {
+        const res = await fetch('/api/media/alt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: item.url }) });
+        const data = await res.json(); if (!res.ok) throw new Error(data.error || 'ALT generation failed');
+        // Only apply to the image that was actually described; preserve user edits made while awaiting vision.
+        const apply = (list: MediaItem[]) => list.map(m => m.id === item.id && m.url === item.url && m.altText === item.altText ? { ...m, altText: data.altText } : m);
+        setMediaItems(apply); setTopicMediaItems(apply);
+      }
+      notify('ALT text generated. Review the descriptions before publishing.');
+    } catch (e) { notify(e instanceof Error ? e.message : 'ALT generation failed', true); }
+    finally { setAltBusy(false); }
+  };
+
+  const oauthPending = useRef<{ id: string; popup: Window | null } | null>(null);
+  const refreshConnections = async () => {
+    const statuses = await Promise.all(['linkedin', 'facebook', 'instagram'].map(async platform => {
+      const res = await fetch('/api/' + platform + '/status'); if (!res.ok) throw new Error('Connection status unavailable');
+      const data = await res.json();
+      setAccounts(prev => {
+        const existing = prev.find(a => a.platform === platform);
+        const updated = prev.filter(a => a.platform !== platform);
+        if (data.connected && data.userId) updated.push({
+          platform, connected: true, userId: data.userId,
+          name: data.username ? '@' + data.username : data.name || existing?.name || platform,
+          email: data.email || existing?.email || '', pages: data.pages || existing?.pages,
+          pageId: data.pageId || (data.pages?.some((p: {id: string}) => p.id === existing?.pageId) ? existing?.pageId : data.pages?.[0]?.id),
+          igUserId: data.igUserId,
+        });
+        localStorage.setItem('socialAccounts', JSON.stringify(updated)); return updated;
+      });
+      return [platform, !!data.connected] as const;
+    }));
+    return Object.fromEntries([...statuses, ['canva', await refreshCanvaStatus()]]);
+  };
+  const connectPlatform = async (platform: string) => {
+    if (oauthPending.current && !oauthPending.current.popup?.closed) {
+      oauthPending.current.popup?.focus(); notify('Finish or close the current connection window first.'); return;
+    }
+    const id = crypto.randomUUID();
+    const popup = window.open('about:blank', 'socialpulse-connect', 'popup,width=640,height=780');
+    oauthPending.current = { id, popup };
+    try {
+      await returnStore('put', id, captureEditor());
+      const url = '/api/connect/' + encodeURIComponent(platform) + '?return_id=' + id;
+      if (popup && !popup.closed) popup.location.href = url; else window.location.assign(url);
+    } catch {
+      popup?.close(); oauthPending.current = null;
+      notify('Could not save your editor state. Connection was not started; your work is still here.', true);
+    }
+  };
+  useEffect(() => {
+    const onReturn = async (event: MessageEvent) => {
+      const pending = oauthPending.current;
+      if (event.origin !== location.origin || !pending || event.source !== pending.popup || event.data?.type !== 'socialpulse-oauth-return' || event.data.id !== pending.id) return;
+      const { error, provider } = event.data;
+      pending.popup?.postMessage({ type: 'socialpulse-oauth-ack', id: pending.id }, location.origin);
+      oauthPending.current = null;
+      try { const statuses = await refreshConnections(); const failed = error || !statuses[provider]; notify(failed ? 'Platform connection failed: ' + (error || 'connection could not be verified') : provider + ' connected. OAuth returned successfully. Your editor is unchanged.', !!failed); }
+      catch { notify('OAuth returned, but connection status could not be verified. Your work is preserved.', true); }
+      await returnStore('delete', pending.id).catch(() => {});
+    };
+    window.addEventListener('message', onReturn);
+    const timer = setInterval(() => {
+      if (oauthPending.current?.popup?.closed) {
+        oauthPending.current = null; notify('Connection window closed before completion. Your editor is unchanged.', true);
+      }
+    }, 1000);
+    return () => { window.removeEventListener('message', onReturn); clearInterval(timer); };
+  }, []);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const id = params.get('editor_return'); if (!id) return;
+    let active = true;
+    returnStore('get', id).then(value => {
+      if (!active) return;
+      const snapshot = value as SavedDraft | undefined;
+      if (!snapshot) { notify('Saved editor state is unavailable in this browser. Your saved drafts have not been changed.', true); return; }
+      restoreEditor(snapshot); setOauthRestoring(false);
+      const path = snapshot.path?.startsWith('/') && !snapshot.path.startsWith('//') ? snapshot.path : '/';
+      window.history.replaceState({}, '', path);
+      if (params.get('canva_ready')) setCanvaReadyId(params.get('canva_ready')!);
+      notify(params.get('error') ? 'Platform connection failed: ' + params.get('error') : 'OAuth returned successfully. Editor restored.', !!params.get('error'));
+      returnStore('delete', id).catch(() => {});
+    }).catch(() => notify('Could not restore editor state. Stored data has not been deleted.', true));
+    return () => { active = false; };
+  }, []);
 
   const disconnectPlatform = async (platform: string) => {
     const doomed = accounts.find(a => a.platform === platform);
@@ -716,42 +1217,67 @@ export default function SocialMediaManager() {
     setIsGeneratingContent(false);
   };
 
-  const generateImageFromPrompt = async (promptText: string) => {
-    if (!aspectRatio) { setGenerationError('Please choose an aspect ratio first.'); return; }
+  // Image generation runs as a background job on the server (see
+  // /api/generate-image) instead of one long-held HTTP request - the public
+  // Cloudflare tunnel this app is served through has its own ~100s edge
+  // limit per request, and gpt-image-2 can legitimately take longer than
+  // that. Polling keeps every individual request short so the tunnel limit
+  // no longer matters, no matter how long generation actually takes.
+  const pollImageJob = async (jobId: string): Promise<{ status: string; image?: string; message?: string }> => {
+    const POLL_INTERVAL_MS = 2500;
+    const MAX_WAIT_MS = 5 * 60 * 1000; // safeguard - generation itself has no server-side timeout
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < MAX_WAIT_MS) {
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+      const res = await fetch(`/api/generate-image?jobId=${encodeURIComponent(jobId)}`);
+      if (!res.ok) throw new Error('Lost track of the image job — please try again.');
+      const data = await res.json();
+      if (data.status === 'pending') continue;
+      return data;
+    }
+    throw new Error('Image generation is taking unusually long — please try again.');
+  };
+
+  const generateImageFromPrompt = async (promptText: string): Promise<MediaItem | null> => {
+    if (!aspectRatio) { setGenerationError('Please choose an aspect ratio first.'); return null; }
     setIsGeneratingImage(true);
     setGenerationError('');
     try {
       const size = aspectRatioMap[aspectRatio] || aspectRatioMap['1:1'];
-      const res = await fetch('/api/generate-image', {
+      const startRes = await fetch('/api/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: promptText, style: imageStyle, size: { width: size.width, height: size.height }, aspectRatio }),
       });
-      const data = await res.json();
-      if (!res.ok && data?.error?.code === 'IMAGE_SAFETY_BLOCKED') {
+      const startData = await startRes.json();
+      if (!startRes.ok || !startData.jobId) {
+        throw new Error(startData.message || startData.error || 'Could not start image generation — try again');
+      }
+
+      const data = await pollImageJob(startData.jobId);
+      if (data.status === 'blocked') {
         // Not an outage - the filter refused these exact words. Retrying them
         // is pointless, so explain that in a popup instead of a raw error.
         setSafetyBlockedOpen(true);
         setIsGeneratingImage(false);
-        return;
+        return null;
       }
-      if (!res.ok) {
-        throw new Error(data.message || data.error || 'Image generation failed — gpt-image-2 hold, try again');
+      if (data.status === 'error' || !data.image) {
+        throw new Error(data.message || 'Image generation failed — gpt-image-2 hold, try again');
       }
-      if (data.image) {
-        const item: MediaItem = { id: Date.now().toString(36)+Math.random().toString(36).slice(2,4), url: data.image, type: 'image', name: 'generated' };
-        setMediaItems(prev => [...prev, item]);
-        setGeneratedImage(data.image);
-        setGeneratedVideo('');
-        setMediaType('image');
-      } else {
-        throw new Error(data.message || data.error || 'Image generation failed');
-      }
+      const item: MediaItem = { id: Date.now().toString(36)+Math.random().toString(36).slice(2,4), url: data.image, type: 'image', name: 'generated' };
+      setMediaItems(prev => [...prev, item]);
+      setGeneratedImage(data.image);
+      setGeneratedVideo('');
+      setMediaType('image');
+      setIsGeneratingImage(false);
+      return item;
     } catch (err) {
       console.error('Image generation failed', err);
       setGenerationError(err instanceof Error ? err.message : 'Image generation failed — gpt-image-2 hold, try again');
     }
     setIsGeneratingImage(false);
+    return null;
   };
 
   const generateImage = async () => {
@@ -788,10 +1314,69 @@ export default function SocialMediaManager() {
 
   // Reference (topic) images ride along to preview + publish + schedule,
   // deduped by URL. Skipped when the post already carries video (LinkedIn
-  // takes 1 video OR up to 9 images, never mixed).
+  // takes 1 video OR up to 9 images, never mixed) and when carousel mode is
+  // on (the carousel slide order is the explicit selection — no extras).
   const topicImagesForPost = topicMediaItems.filter(m => m.type === 'image' && !mediaItems.some(x => x.url === m.url));
   const postHasVideo = mediaItems.some(m => m.type === 'video') || !!generatedVideo;
-  const publishMediaList = (postHasVideo ? mediaItems : [...mediaItems, ...topicImagesForPost]).slice(0, 9);
+  // Ordered carousel slides, resolved against the live gallery (a removed
+  // image drops out automatically) and restricted to images — carousels are
+  // image-only on every platform (Instagram enforces this server-side too).
+  const carouselSlides: MediaItem[] = carouselSlideIds
+    .map(id => mediaItems.find(m => m.id === id))
+    .filter((m): m is MediaItem => !!m && m.type === 'image');
+  const carouselValidation = ((): { valid: boolean; reason: string } => {
+    if (!isCarousel) return { valid: false, reason: '' };
+    if (carouselSlides.length < 2) return { valid: false, reason: 'Pick at least 2 image slides for the carousel.' };
+    return { valid: true, reason: '' };
+  })();
+  const publishMediaList = (isCarousel ? carouselSlides : (postHasVideo ? mediaItems : [...mediaItems, ...topicImagesForPost])).slice(0, 9);
+
+  // Carousel slide selection helpers (order = swipe order on every platform).
+  const toggleCarouselSlide = (id: string) => {
+    const item = mediaItems.find(m => m.id === id);
+    if (!item || item.type !== 'image') return;
+    setCarouselSlideIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id].slice(0, 9));
+  };
+  const moveCarouselSlide = (id: string, dir: -1 | 1) => {
+    setCarouselSlideIds(prev => {
+      const i = prev.indexOf(id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  };
+  const removeCarouselSlide = (id: string) => setCarouselSlideIds(prev => prev.filter(x => x !== id));
+
+  // "Generate N slides": runs the normal single-image job N times with a
+  // per-slide prompt variation (distinct composition, same story/style), so
+  // each slide goes through the same background-job + polling path as a
+  // manual Generate AI Image. Slides append to the gallery AND auto-select
+  // into the carousel in swipe order. Stops on first failure, keeping
+  // whatever succeeded (e.g. a safety-filter block mid-run).
+  const generateCarouselSlides = async (count: number) => {
+    const base = imagePrompt || content.trim().split('\n')[0].substring(0, 200) || prompt.trim();
+    if (!base) { setGenerationError('Enter a topic or generate content first — the slides need a prompt.'); return; }
+    if (!aspectRatio) { setGenerationError('Please choose an aspect ratio first.'); return; }
+    if (isGeneratingCarousel || isGeneratingImage) return;
+    const room = 9 - mediaItems.length;
+    if (room < 2) { setGenerationError('Carousel needs room for at least 2 new slides — remove some media first (max 9).'); return; }
+    const toMake = Math.min(Math.max(2, count), 9, room);
+    setIsGeneratingCarousel(true);
+    setIsCarousel(true);
+    setGenerationError('');
+    const made: string[] = [];
+    for (let i = 0; i < toMake; i++) {
+      const slidePrompt = `${base} — carousel slide ${i + 1} of ${toMake}, distinct composition continuing the same visual story, ${imageStyle} style`;
+      const item = await generateImageFromPrompt(slidePrompt);
+      if (item) made.push(item.id);
+      else break;
+    }
+    if (made.length) setCarouselSlideIds(prev => [...prev, ...made].slice(0, 9));
+    if (made.length < toMake && made.length >= 2) setGenerationError(`Made ${made.length} of ${toMake} slides — the rest failed, add more manually or retry.`);
+    setIsGeneratingCarousel(false);
+  };
 
   // The image "Edit in Canva" acts on: whatever's currently generated, else
   // the first image already in the media list.
@@ -810,25 +1395,28 @@ export default function SocialMediaManager() {
   // away): opens synchronously in the click handler so popup blockers allow
   // it, then points it at the editor. No `noopener` - the return page uses
   // window.opener.postMessage to hand the ready design back, then closes.
-  const openCanvaEditUrl = (editUrl: string) => {
-    if (!canvaTabRef.current || canvaTabRef.current.closed) {
-      canvaTabRef.current = window.open('about:blank', '_blank');
-    }
-    if (canvaTabRef.current && !canvaTabRef.current.closed) {
-      canvaTabRef.current.location.href = editUrl;
-      canvaTabRef.current.focus?.();
-      return true;
-    }
-    // Popup blocked - fall back to same-tab navigation (/canva-return still
-    // picks the design up via its query-param fallback path).
-    canvaTabRef.current = null;
-    window.location.href = editUrl;
+  const openCanvaEditUrl = async (editUrl: string) => {
+    if (!canvaTabRef.current || canvaTabRef.current.closed) canvaTabRef.current = window.open('about:blank', '_blank');
+    const id = crypto.randomUUID();
+    try {
+      await returnStore('put', id, captureEditor());
+      if (canvaTabRef.current && !canvaTabRef.current.closed) {
+        // About:blank is same-origin. Its sessionStorage survives the editor
+        // round trip even if the external site severs window.opener.
+        try { canvaTabRef.current.sessionStorage.setItem('canva-editor-return', id); } catch { /* Existing editor tab may be cross-origin. Parent remains open. */ }
+        canvaTabRef.current.location.href = editUrl;
+        canvaTabRef.current.focus?.(); return true;
+      }
+      canvaTabRef.current = null;
+      sessionStorage.setItem('canva-editor-return', id);
+      window.location.href = editUrl;
+    } catch { notify('Could not preserve editor state. Canva navigation was stopped.', true); }
     return false;
   };
 
   const openInCanva = async (sourceUrl?: string) => {
     if (!canvaConnected) {
-      window.location.href = '/api/canva/auth';
+      void connectPlatform('canva');
       return;
     }
     // Explicit per-image target when given (thumbnail Edit buttons);
@@ -869,7 +1457,7 @@ export default function SocialMediaManager() {
   const [isCreatingInCanva, setIsCreatingInCanva] = useState(false);
   const createInCanva = async () => {
     if (!canvaConnected) {
-      window.location.href = '/api/canva/auth';
+      void connectPlatform('canva');
       return;
     }
     setIsCreatingInCanva(true);
@@ -1025,6 +1613,7 @@ export default function SocialMediaManager() {
   const removeMediaItem = (id: string) => {
     delete originalMediaRef.current[id];
     if (logoTargetId === id) setLogoTargetId(null);
+    setCarouselSlideIds(prev => prev.filter(x => x !== id));
     setBurnedLogoIds(prev => {
       if (!(id in prev)) return prev;
       const next = { ...prev };
@@ -1052,6 +1641,8 @@ export default function SocialMediaManager() {
     originalMediaRef.current = {};
     setLogoTargetId(null);
     setBurnedLogoIds({});
+    setCarouselSlideIds([]);
+    setIsCarousel(false);
     setMediaItems([]); setGeneratedImage(''); setGeneratedVideo(''); setMediaType(null);
   };
 
@@ -1184,6 +1775,37 @@ export default function SocialMediaManager() {
       return next;
     });
   };
+  // Gallery "Set as cover": moves the item to the front and re-syncs the
+  // first-item preview state, mirroring removeMediaItem's sync logic.
+  const setMediaCover = (id: string) => {
+    setMediaItems(prev => {
+      const idx = prev.findIndex(m => m.id === id);
+      if (idx <= 0) return prev;
+      const next = [...prev];
+      const [m] = next.splice(idx, 1);
+      next.unshift(m);
+      const first = next[0];
+      if (first.type === 'video') { setGeneratedVideo(first.url); setGeneratedImage(''); setMediaType('video'); }
+      else { setGeneratedImage(first.url); setGeneratedVideo(''); setMediaType('image'); }
+      return next;
+    });
+  };
+  // Carousel drag-to-reorder: splices the dragged slide to the drop position.
+  const reorderCarouselSlide = (activeId: string, overId: string) => {
+    if (activeId === overId) return;
+    setCarouselSlideIds(prev => {
+      const from = prev.indexOf(activeId);
+      const to = prev.indexOf(overId);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev];
+      const [m] = next.splice(from, 1);
+      next.splice(to, 0, m);
+      return next;
+    });
+  };
+  // Brand Logo card "Remove": clears the logo image (burned-in copies keep
+  // their burns — same behavior as the logo dialog's Remove button).
+  const clearLogo = () => { setLogoImage(''); };
 
   // Logo handling — ffmpeg-style, respects selected aspectRatio
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1446,11 +2068,22 @@ export default function SocialMediaManager() {
     // ONE USER ACTION = ONE PUBLISH REQUEST. Ref guard stops rapid
     // repeated clicks even before React re-renders the disabled button.
     if (publishingRef.current || isPublishing || publishCooldown > 0) return;
+    if (publishMediaList.some(m => m.type === 'image' && !m.altText?.trim())) {
+      notify('ALT text missing on one or more images. You can add it in Accessibility.', true);
+      if (!window.confirm('Some images are missing ALT text. Publish anyway?')) return;
+    }
     const connectedSelected = selectedPlatforms.filter(p =>
-      accounts.some(a => a.platform === p && a.connected)
+      p === 'whatsapp' ? whapiConnected : accounts.some(a => a.platform === p && a.connected)
     );
     if (connectedSelected.length === 0) {
       setPublishResult('No connected platforms selected');
+      setPublishResultType('error');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 4000);
+      return;
+    }
+    if (isCarousel && !carouselValidation.valid) {
+      setPublishResult(`Carousel not ready: ${carouselValidation.reason}`);
       setPublishResultType('error');
       setShowToast(true);
       setTimeout(() => setShowToast(false), 4000);
@@ -1463,6 +2096,38 @@ export default function SocialMediaManager() {
     let hasError = false;
 
     for (const platform of connectedSelected) {
+      if (platform === 'whatsapp') {
+        if (!whapiSelectedGroupId) {
+          results.push('whatsapp: No WhatsApp group selected — pick a group in the WhatsApp card');
+          hasError = true;
+          continue;
+        }
+        const platformData = platformContent[platform];
+        const publishContent = platformData
+          ? platformData.caption + '\n\n' + formatHashtags(platformData.hashtags || [])
+          : content;
+        const attemptId = `ui_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}_whatsapp`;
+        console.log(`[publish] attempt ${attemptId} → whatsapp (whapi) ${whapiSelectedGroupId.slice(0, 8)}...`);
+        try {
+          const waMedia = publishMediaList.slice(0, 1);
+          const res = await fetch('/api/whapi/publish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groupId: whapiSelectedGroupId, text: publishContent, mediaList: waMedia, attemptId }),
+          });
+          if (res.ok) {
+            results.push('whatsapp: Success');
+          } else {
+            const err = await res.json().catch(() => ({}));
+            results.push(`whatsapp: ${err.message || 'Whapi publish failed'}`);
+            hasError = true;
+          }
+        } catch {
+          results.push('whatsapp: Network error — no retry was attempted');
+          hasError = true;
+        }
+        continue;
+      }
       const account = accounts.find(a => a.platform === platform && a.connected);
       if (!account?.userId) {
         results.push(`${platform}: Not connected — reconnect through OAuth`);
@@ -1493,6 +2158,7 @@ export default function SocialMediaManager() {
             mediaType: firstType,
             mediaUrls: allUrls,
             mediaList: publishMediaList,
+            isCarousel: isCarousel && carouselValidation.valid ? true : undefined,
             userId: account.userId,
             pageId: account.pageId || undefined,
             attemptId,
@@ -1557,6 +2223,8 @@ export default function SocialMediaManager() {
     pending: { bg: '#fffbeb', color: '#b45309', label: 'Pending' },
     published: { bg: '#ecfdf5', color: '#059669', label: 'Published' },
     failed: { bg: '#fef2f2', color: '#dc2626', label: 'Failed' },
+    draft: { bg: '#f1f5f9', color: '#64748b', label: 'Draft' },
+    publishing: { bg: '#fffbeb', color: '#b45309', label: 'Publishing' },
     cancelled: { bg: '#f1f5f9', color: '#64748b', label: 'Cancelled' },
   };
 
@@ -1569,7 +2237,7 @@ export default function SocialMediaManager() {
     drafts: { title: 'Drafts', subtitle: 'Continue where you left off' },
   };
 
-  const filteredSchedulerPosts = (schedulerFilter === 'all' ? allPosts : allPosts.filter(p => p.status === schedulerFilter))
+  const filteredSchedulerPosts = (schedulerFilter === 'all' ? allPosts.filter(p => !['draft', 'cancelled'].includes(p.status)) : allPosts.filter(p => p.status === schedulerFilter))
     .slice()
     .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt));
 
@@ -1734,6 +2402,8 @@ export default function SocialMediaManager() {
         {/* Content Studio — SaaS redesign (UI-only, logic preserved) */}
         {activeTab === 'studio' && (
           <StudioWorkspace
+            wizardState={wizardState} setWizardState={setWizardState} saveFullDraft={saveFullDraft}
+            updateAltText={updateAltText} generateAltText={generateAltText} altBusy={altBusy}
             prompt={prompt} setPrompt={setPrompt}
             topicMediaItems={topicMediaItems} removeTopicMedia={removeTopicMedia} clearTopicMedia={clearTopicMedia}
             topicFileInputRef={topicFileInputRef} handleTopicUpload={handleTopicUpload} handleTopicDrop={handleTopicDrop}
@@ -1756,6 +2426,12 @@ export default function SocialMediaManager() {
             mediaItems={mediaItems}
             removeMediaItem={removeMediaItem} clearAllMedia={clearAllMedia} moveMedia={moveMedia}
             handleUploadImage={handleUploadImage} handleDrop={handleDrop}
+            isCarousel={isCarousel} setIsCarousel={setIsCarousel}
+            carouselSlides={carouselSlides} carouselValidation={carouselValidation}
+            toggleCarouselSlide={toggleCarouselSlide} moveCarouselSlide={moveCarouselSlide} removeCarouselSlide={removeCarouselSlide}
+            reorderCarouselSlide={reorderCarouselSlide} setMediaCover={setMediaCover}
+            generateCarouselSlides={generateCarouselSlides} isGeneratingCarousel={isGeneratingCarousel}
+            carouselSlideCount={carouselSlideCount} setCarouselSlideCount={setCarouselSlideCount}
             handleMediaDragStart={handleMediaDragStart} handleMediaDragOver={handleMediaDragOver} handleMediaDrop={handleMediaDrop} handleMediaDragEnd={handleMediaDragEnd}
             draggedMediaId={draggedMediaId} dragOverMediaId={dragOverMediaId}
             dragOverPreview={dragOverPreview} setDragOverPreview={setDragOverPreview}
@@ -1764,7 +2440,7 @@ export default function SocialMediaManager() {
             logoImage={logoImage} logoPosition={logoPosition} logoScale={logoScale} logoOpacity={logoOpacity}
             setLogoModalOpen={setLogoModalOpen} logoInputRef={logoInputRef}
             logoTargetId={logoTargetId} setLogoTargetId={setLogoTargetId}
-            burnedLogoIds={burnedLogoIds}
+            burnedLogoIds={burnedLogoIds} clearLogo={clearLogo}
             applyLogoToAllMedia={applyLogoToAllMedia} isApplyingLogo={isApplyingLogo}
             accounts={accounts} togglePlatform={togglePlatform} connectPlatform={connectPlatform} disconnectPlatform={disconnectPlatform}
             setAccountPageId={setAccountPageId}
@@ -1782,6 +2458,10 @@ export default function SocialMediaManager() {
             publishResult={publishResult} setPublishResult={setPublishResult}
             setPublishResultType={setPublishResultType} setShowToast={setShowToast}
             platformColors={platformColors} PlatformIcon={PlatformIcon}
+            whapiConnected={whapiConnected} whapiChannelStatus={whapiChannelStatus} whapiAccountName={whapiAccountName} whapiPhoneMasked={whapiPhoneMasked}
+            whapiGroups={whapiGroups} whapiSelectedGroupId={whapiSelectedGroupId} setWhapiSelectedGroupId={setWhapiSelectedGroupId}
+            whapiGroupsLoading={whapiGroupsLoading} whapiGroupsError={whapiGroupsError} loadWhapiGroups={loadWhapiGroups}
+            publishToWhapi={publishToWhapi} whapiPublishing={whapiPublishing} refreshWhapiStatus={refreshWhapiStatus} whapiLoading={whapiLoading}
           />
         )}
 
@@ -1809,36 +2489,18 @@ export default function SocialMediaManager() {
           </div>
         )}
 
-        {/* Drafts (UI-only, localStorage, no backend change) */}
-        {activeTab === 'drafts' && (
-          <div style={{ padding: 24, flex: 1, display: 'flex', flexDirection: 'column', gap: 16, backgroundColor: '#F7F8FC' }}>
-            <div style={{ backgroundColor: '#fff', borderRadius: 14, border: '1px solid #E8EAF1', padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,#0F172A,#334155)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#fff' }}>📝</div>
-              <div><div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>Drafts</div><div style={{ fontSize: 11, color: '#64748B' }}>Saved locally via Save Draft in Studio</div></div>
-              <button onClick={() => setActiveTab('studio')} style={{ marginLeft: 'auto', padding: '9px 14px', borderRadius: 9, fontSize: 12, fontWeight: 700, border: '1px solid #E8EAF1', background: '#fff', color: '#0F172A', cursor: 'pointer' }}>Back to Studio</button>
-            </div>
-            <div style={{ backgroundColor: '#fff', borderRadius: 14, border: '1px solid #E8EAF1', padding: 18 }}>
-              {(() => {
-                let drafts: Array<{ content: string; prompt: string; savedAt: string }> = [];
-                try { drafts = JSON.parse(localStorage.getItem('socialDrafts') || '[]'); } catch { drafts = []; }
-                if (!drafts.length) return <div style={{ textAlign: 'center', color: '#94A3B8', fontSize: 12, padding: 32 }}>No drafts yet — use Save Draft in the Studio action bar.</div>;
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {drafts.slice().reverse().map((d, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid #F1F3F9', borderRadius: 10, backgroundColor: '#FCFCFE' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(d.content || d.prompt || 'Untitled draft').slice(0, 90)}</div>
-                          <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>{new Date(d.savedAt).toLocaleString()}</div>
-                        </div>
-                        <button onClick={() => { setContent(d.content || ''); setPrompt(d.prompt || ''); setActiveTab('studio'); }} style={{ padding: '7px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', cursor: 'pointer' }}>Restore</button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
+        {activeTab === 'drafts' && <div style={{ padding: 24, flex: 1 }}>
+          <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>Drafts</h2>
+          <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 14px' }}>Sorted by scheduled time (latest first) · legacy browser drafts remain available</p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <PillButton icon="🗓️" onClick={() => { setActiveTab('scheduler'); setSchedulerFilter('pending'); }}>Scheduled</PillButton>
+            <PillButton icon="✅" onClick={() => { setActiveTab('scheduler'); setSchedulerFilter('published'); }}>Published</PillButton>
           </div>
-        )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 20, marginTop: 20 }}>
+            {newestDrafts([...allPosts, ...legacyDrafts]).map(post => <PostPreview key={post.id} post={post} edit={schedule => editPost(post, schedule)} remove={() => deleteDraft(post)} />)}
+            {!newestDrafts([...allPosts, ...legacyDrafts]).length && <p>No drafts yet. Save a draft in Studio or cancel a schedule.</p>}
+          </div>
+        </div>}
 
         {/* Dashboard — PROFESSIONAL */}
         {activeTab === 'dashboard' && (
@@ -2043,16 +2705,28 @@ export default function SocialMediaManager() {
           </div>
         )}
 
+        {activeTab === 'scheduler' && <nav aria-label="Planner views" style={{ padding: '18px 32px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
+          <PillButton icon="📝" active={false} onClick={() => setActiveTab('drafts')}>Drafts</PillButton>
+          <PillButton icon="🗓️" active={schedulerFilter === 'pending'} onClick={() => setSchedulerFilter('pending')}>Scheduled</PillButton>
+          <PillButton icon="✅" active={schedulerFilter === 'published'} onClick={() => setSchedulerFilter('published')}>Published</PillButton>
+          <span style={{ width: 1, height: 20, backgroundColor: '#e2e8f0', margin: '0 2px' }} />
+          <PillButton icon="👁️" active={plannerView === 'preview'} onClick={() => setPlannerView('preview')}>Preview</PillButton>
+          <PillButton icon="📅" active={plannerView === 'calendar'} onClick={() => { setPlannerView('calendar'); setSchedulerFilter('pending'); }}>Calendar</PillButton>
+          <PillButton icon="📊" active={plannerView === 'timeline'} onClick={() => setPlannerView('timeline')}>Timeline</PillButton>
+        </nav>}
+        {activeTab === 'scheduler' && plannerView === 'preview' && <div style={{ padding: 24, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 20 }}>
+          {filteredSchedulerPosts.map(post => <PostPreview key={post.id} post={post} edit={schedule => editPost(post, schedule)} reschedule={post.status === 'pending' ? () => openReschedule(post) : undefined} cancel={post.status === 'pending' ? () => cancelScheduled(post.id) : undefined} />)}
+          {!filteredSchedulerPosts.length && <p>No posts in this view.</p>}
+        </div>}
         {/* Scheduler */}
-        {activeTab === 'scheduler' && (
+        {activeTab === 'scheduler' && plannerView !== 'preview' && (
           <div style={{ padding: '24px 32px', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' as const, alignItems: 'center' }}>
               {([
-                { key: 'all', label: 'All', count: allPosts.length },
+                { key: 'all', label: 'All', count: allPosts.filter(p => !['draft', 'cancelled'].includes(p.status)).length },
                 { key: 'pending', label: 'Pending', count: pendingPosts.length },
                 { key: 'published', label: 'Published', count: publishedPosts.length },
                 { key: 'failed', label: 'Failed', count: failedPosts.length },
-                { key: 'cancelled', label: 'Cancelled', count: cancelledPosts.length },
               ] as const).map(f => {
                 const active = schedulerFilter === f.key;
                 return (
@@ -2085,7 +2759,7 @@ export default function SocialMediaManager() {
               </button>
             </div>
 
-            {schedulerFilter === 'pending' ? (
+            {plannerView === 'calendar' ? (
               <div style={{ backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                 {/* Calendar header */}
                 <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: '10px' }}>
@@ -2181,10 +2855,16 @@ export default function SocialMediaManager() {
                                 <span style={{ fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '999px', backgroundColor: statusMeta.pending.bg, color: statusMeta.pending.color, textTransform: 'uppercase' as const, letterSpacing: '0.03em' }}>
                                   Pending
                                 </span>
-                                <button
-                                  onClick={() => cancelScheduled(post.id)}
-                                  style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '10px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
-                                >Cancel</button>
+                                <span style={{ display: 'flex', gap: '8px' }}>
+                                  <button
+                                    onClick={() => openReschedule(post)}
+                                    style={{ background: 'none', border: 'none', color: '#6366f1', fontSize: '10px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+                                  >Reschedule</button>
+                                  <button
+                                    onClick={() => cancelScheduled(post.id, { redirectHome: true })}
+                                    style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '10px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+                                  >Cancel</button>
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -2251,10 +2931,19 @@ export default function SocialMediaManager() {
                             {meta.label}
                           </span>
                           {post.status === 'pending' && (
-                            <button
-                              onClick={() => cancelScheduled(post.id)}
-                              style={{ padding: '5px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, border: 'none', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
-                            >Cancel</button>
+                            <span style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                              <button
+                                onClick={() => openReschedule(post)}
+                                style={{ padding: '5px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, border: 'none', backgroundColor: '#eef2ff', color: '#4338ca', cursor: 'pointer', fontFamily: 'inherit' }}
+                              >Reschedule</button>
+                              <button
+                                onClick={() => cancelScheduled(post.id, { redirectHome: true })}
+                                style={{ padding: '5px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, border: 'none', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit' }}
+                              >Cancel</button>
+                            </span>
+                          )}
+                          {post.status === 'publishing' && (
+                            <span style={{ fontSize: '10px', fontWeight: 600, color: '#b45309', flexShrink: 0 }}>Publishing — locked</span>
                           )}
                         </div>
                       );
@@ -2818,6 +3507,75 @@ export default function SocialMediaManager() {
         </div>
       )}
 
+      {/* Cancel Scheduled Post — confirmation modal */}
+      {cancelTarget && (
+        <div onClick={() => !isCancelling && setCancelTarget(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(2px)', zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'overlayIn 0.15s ease-out' }}>
+          <div onClick={e => e.stopPropagation()} style={{ backgroundColor: '#fff', borderRadius: '16px', width: '100%', maxWidth: '400px', boxShadow: '0 24px 64px rgba(15,23,42,0.3)', animation: 'modalPopIn 0.2s cubic-bezier(0.16,1,0.3,1)', padding: '24px' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', marginBottom: '14px' }}>⚠️</div>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>Cancel Scheduled Post?</h3>
+            <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5, margin: '0 0 20px' }}>Are you sure you want to cancel this scheduled post? It will not be published, and will move to Drafts with its content and media preserved.</p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setCancelTarget(null)}
+                disabled={isCancelling}
+                style={{ flex: 1, padding: '11px', borderRadius: '10px', border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#334155', fontSize: '13px', fontWeight: 600, cursor: isCancelling ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >Keep Scheduled</button>
+              <button
+                onClick={confirmCancelScheduled}
+                disabled={isCancelling}
+                style={{ flex: 1, padding: '11px', borderRadius: '10px', border: 'none', backgroundColor: isCancelling ? '#fca5a5' : '#dc2626', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: isCancelling ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >{isCancelling ? 'Cancelling…' : 'Cancel Post'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule Post modal */}
+      {rescheduleTarget && (
+        <div onClick={() => !isRescheduling && setRescheduleTarget(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(2px)', zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'overlayIn 0.15s ease-out' }}>
+          <div onClick={e => e.stopPropagation()} style={{ backgroundColor: '#fff', borderRadius: '16px', width: '100%', maxWidth: '400px', boxShadow: '0 24px 64px rgba(15,23,42,0.3)', animation: 'modalPopIn 0.2s cubic-bezier(0.16,1,0.3,1)', padding: '24px' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', marginBottom: '14px' }}>🗓️</div>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Reschedule Post</h3>
+            <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5, margin: '0 0 18px' }}>
+              Currently scheduled for {rescheduleTarget.scheduledAt ? new Date(rescheduleTarget.scheduledAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}. Pick a new date and time.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '6px' }}>Date</label>
+                <input
+                  type="date"
+                  value={rescheduleDate}
+                  min={localDateKey(new Date())}
+                  onChange={e => setRescheduleDate(e.target.value)}
+                  style={{ width: '100%', padding: '9px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', fontFamily: 'inherit', color: '#0f172a' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '6px' }}>Time</label>
+                <input
+                  type="time"
+                  value={rescheduleTime}
+                  onChange={e => setRescheduleTime(e.target.value)}
+                  style={{ width: '100%', padding: '9px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', fontFamily: 'inherit', color: '#0f172a' }}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setRescheduleTarget(null)}
+                disabled={isRescheduling}
+                style={{ flex: 1, padding: '11px', borderRadius: '10px', border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#334155', fontSize: '13px', fontWeight: 600, cursor: isRescheduling ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >Cancel</button>
+              <button
+                onClick={confirmReschedule}
+                disabled={isRescheduling || !rescheduleDate || !rescheduleTime}
+                style={{ flex: 1, padding: '11px', borderRadius: '10px', border: 'none', background: isRescheduling || !rescheduleDate || !rescheduleTime ? '#e2e8f0' : 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: isRescheduling || !rescheduleDate || !rescheduleTime ? '#94a3b8' : '#fff', fontSize: '13px', fontWeight: 700, cursor: isRescheduling || !rescheduleDate || !rescheduleTime ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >{isRescheduling ? 'Rescheduling…' : 'Confirm Reschedule'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {showToast && (
         <div style={{
@@ -2834,6 +3592,7 @@ export default function SocialMediaManager() {
         }}>
           <span style={{ fontSize: '16px', display: 'inline-block', animation: publishResultType === 'success' ? 'connectCheckPop 0.4s ease-out' : 'none' }}>{publishResultType === 'success' ? '✓' : '✕'}</span>
           <span>{publishResult}</span>
+          {publishResult === 'Post cancelled and moved to Drafts.' && <button onClick={() => { setActiveTab('drafts'); setShowToast(false); }}>View Draft</button>}
           <button
             onClick={() => setShowToast(false)}
             style={{

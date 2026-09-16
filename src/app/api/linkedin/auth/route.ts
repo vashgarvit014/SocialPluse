@@ -1,3 +1,4 @@
+import { startReturn } from '@/lib/oauth-return';
 import { NextRequest, NextResponse } from 'next/server';
 
 const LINKEDIN_CLIENT_ID = process.env.LINKEDIN_CLIENT_ID || '';
@@ -14,5 +15,5 @@ export async function GET(request: NextRequest) {
     `scope=${encodeURIComponent(scope)}&` +
     `state=${state}`;
 
-  return NextResponse.redirect(authUrl);
+  return startReturn(request, NextResponse.redirect(authUrl), state);
 }

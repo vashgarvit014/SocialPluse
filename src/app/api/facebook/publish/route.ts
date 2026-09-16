@@ -1,3 +1,4 @@
+import { altPayload, mediaAlt } from '@/lib/alt-capabilities';
 import { NextRequest, NextResponse } from 'next/server';
 import { getFacebookPageToken } from '../vault';
 
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
     mediaUrl?: string;
     mediaType?: string;
     mediaUrls?: string[];
-    mediaList?: Array<{ url?: string; type?: string }>;
+    mediaList?: Array<{ url?: string; type?: string; altText?: string }>;
     userId?: string;
     pageId?: string;
     attemptId?: string;
@@ -157,7 +158,8 @@ export async function POST(request: NextRequest) {
     // ---- Multi-photo post (unpublished uploads + attached_media) ----
     if (dataImages.length + urlImages.length > 1) {
       const fbids: Array<{ media_fbid: string }> = [];
-      for (const img of [...dataImages, ...urlImages].slice(0, 9)) {
+      for (const { url: img, index } of allUrls.map((url, index) => ({ url, index })).filter(({ url }) => dataImages.includes(url) || urlImages.includes(url)).slice(0, 9)) {
+        const alt = altPayload('facebook', 'image', mediaAlt(mediaList, img, index));
         let up: Response;
         if (img.startsWith('data:')) {
           const parsed = parseDataUrl(img);
@@ -165,13 +167,14 @@ export async function POST(request: NextRequest) {
           const form = new FormData();
           form.append('access_token', pageToken);
           form.append('published', 'false');
+          for (const [key, value] of Object.entries(alt)) form.append(key, value);
           form.append('source', new Blob([new Uint8Array(parsed.buffer)], { type: parsed.mime }), `photo.${parsed.ext}`);
           up = await fetch(`${GRAPH}/${targetPageId}/photos`, { method: 'POST', body: form });
         } else {
           up = await fetch(`${GRAPH}/${targetPageId}/photos`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: img, published: false, access_token: pageToken }),
+            body: JSON.stringify({ ...alt, url: img, published: false, access_token: pageToken }),
           });
         }
         if (!up.ok) {
@@ -200,6 +203,7 @@ export async function POST(request: NextRequest) {
     // ---- Single photo post ----
     const photo = dataImages[0] || urlImages[0] || (typeof imageUrl === 'string' ? imageUrl : undefined);
     if (photo) {
+      const alt = altPayload('facebook', 'image', mediaAlt(mediaList, photo));
       let photoRes: Response;
       if (photo.startsWith('data:')) {
         const parsed = parseDataUrl(photo);
@@ -207,13 +211,14 @@ export async function POST(request: NextRequest) {
         const form = new FormData();
         form.append('access_token', pageToken);
         form.append('caption', content);
+        for (const [key, value] of Object.entries(alt)) form.append(key, value);
         form.append('source', new Blob([new Uint8Array(parsed.buffer)], { type: parsed.mime }), `photo.${parsed.ext}`);
         photoRes = await fetch(`${GRAPH}/${targetPageId}/photos`, { method: 'POST', body: form });
       } else {
         photoRes = await fetch(`${GRAPH}/${targetPageId}/photos`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: photo, caption: content, access_token: pageToken }),
+          body: JSON.stringify({ ...alt, url: photo, caption: content, access_token: pageToken }),
         });
       }
       if (!photoRes.ok) {
