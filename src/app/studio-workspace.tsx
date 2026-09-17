@@ -177,8 +177,9 @@ export interface StudioWorkspaceProps {
   PlatformIcon: ({ platform, size }: { platform: string; size?: number }) => React.JSX.Element;
   // Whapi — existing-group publishing (separate from Meta)
   whapiConnected: boolean; whapiChannelStatus: string; whapiAccountName: string; whapiPhoneMasked: string;
-  whapiGroups: Array<{ id: string; name: string; participantsCount: number; type: string }>; whapiSelectedGroupId: string; setWhapiSelectedGroupId: (v: string) => void;
+  whapiGroups: Array<{ id: string; name: string; participantsCount: number; type: string; source?: 'community' | 'group' }>; whapiSelectedGroupId: string; setWhapiSelectedGroupId: (v: string) => void;
   whapiGroupsLoading: boolean; whapiGroupsError: string; loadWhapiGroups: () => void; startWhatsAppConnect: () => void;
+  disconnectWhatsApp: () => void; whatsappDisconnecting: boolean;
   publishToWhapi: () => void; whapiPublishing: boolean; refreshWhapiStatus: () => void; whapiLoading: boolean;
 }
 

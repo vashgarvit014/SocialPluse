@@ -463,6 +463,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       {!connected && !standby && isWhapi && (
                         <button onClick={() => p.startWhatsAppConnect()} style={{ padding: '10px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>Connect</button>
                       )}
+                      {connected && !standby && !isWhapi && (
+                        <button onClick={() => p.disconnectPlatform(cfg.id)} style={{ padding: '10px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', whiteSpace: 'nowrap' }}>Disconnect</button>
+                      )}
+                      {connected && !standby && isWhapi && (
+                        <button onClick={() => p.disconnectWhatsApp()} disabled={p.whatsappDisconnecting || p.whapiLoading} style={{ padding: '10px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: (p.whatsappDisconnecting || p.whapiLoading) ? 'wait' : 'pointer', whiteSpace: 'nowrap', opacity: (p.whatsappDisconnecting || p.whapiLoading) ? 0.6 : 1 }}>{p.whatsappDisconnecting ? 'Disconnecting…' : 'Disconnect'}</button>
+                      )}
                     </div>
                   );
                 })}
@@ -1208,38 +1214,54 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     {!p.whapiConnected && (
                       <button onClick={() => p.startWhatsAppConnect()} disabled={p.whapiLoading} style={{ padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, cursor: 'pointer' }}>Connect WhatsApp</button>
                     )}
+                    {p.whapiConnected && (
+                      <button onClick={() => p.disconnectWhatsApp()} disabled={p.whatsappDisconnecting || p.whapiLoading} title="Disconnect WhatsApp" style={{ padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, border: '1px solid #FECACA', backgroundColor: '#FEF2F2', color: '#DC2626', cursor: (p.whatsappDisconnecting || p.whapiLoading) ? 'wait' : 'pointer', opacity: (p.whatsappDisconnecting || p.whapiLoading) ? 0.6 : 1 }}>{p.whatsappDisconnecting ? 'Disconnecting…' : 'Disconnect'}</button>
+                    )}
                   </div>
 
                   {p.whapiConnected ? (
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginBottom: 6 }}>Destination: <span style={{ fontWeight: 600, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '1px 7px', borderRadius: 999 }}>WhatsApp Community</span></div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginBottom: 6 }}>Destination: <span style={{ fontWeight: 600, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '1px 7px', borderRadius: 999 }}>WhatsApp</span></div>
 
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                        <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, minWidth: 78 }}>Community:</label>
+                        <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, minWidth: 78 }}>Chat:</label>
                         <select
                           value={p.whapiSelectedGroupId}
                           onChange={e => p.setWhapiSelectedGroupId(e.target.value)}
                           onFocus={() => { if (!p.whapiGroups.length && !p.whapiGroupsLoading) p.loadWhapiGroups(); }}
                           style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}
                         >
-                          {p.whapiGroups.length === 0 && <option value="">{p.whapiGroupsLoading ? 'Loading communities…' : p.whapiGroupsError ? `Error: ${p.whapiGroupsError}` : 'Select community'}</option>}
-                          {p.whapiGroups.map(g => {
-                            const isUnsSendable = g.type === 'community' || (g.participantsCount !== undefined && g.participantsCount < 2);
+                          {p.whapiGroups.length === 0 && <option value="">{p.whapiGroupsLoading ? 'Loading chats…' : p.whapiGroupsError ? `Error: ${p.whapiGroupsError}` : 'Select chat'}</option>}
+                          {(() => {
+                            const renderOption = (g: { id: string; name: string; participantsCount?: number; type: string }) => {
+                              const isUnsSendable = g.type === 'community' || (g.participantsCount !== undefined && g.participantsCount < 2);
+                              return (
+                                <option key={g.id} value={g.id} disabled={isUnsSendable}>{g.name} {g.participantsCount ? `• ${g.participantsCount}` : ''}{g.type !== 'group' ? ` • ${g.type}` : ''}{isUnsSendable ? ' • not sendable' : ''}</option>
+                              );
+                            };
+                            const communities = p.whapiGroups.filter(g => (g as { source?: string }).source === 'community' || g.type === 'announcement_group');
+                            const groups = p.whapiGroups.filter(g => !((g as { source?: string }).source === 'community' || g.type === 'announcement_group'));
+                            // Fallback for entries without a source tag (back-compat): split by type.
+                            const hasSource = p.whapiGroups.some(g => (g as { source?: string }).source);
+                            if (!hasSource) return p.whapiGroups.map(renderOption);
                             return (
-                              <option key={g.id} value={g.id} disabled={isUnsSendable}>{g.name} {g.participantsCount ? `• ${g.participantsCount}` : ''}{g.type !== 'group' ? ` • ${g.type}` : ''}{isUnsSendable ? ' • not sendable' : ''}</option>
+                              <>
+                                {communities.length > 0 && <optgroup label={`Communities (${communities.length})`}>{communities.map(renderOption)}</optgroup>}
+                                {groups.length > 0 && <optgroup label={`All groups (${groups.length})`}>{groups.map(renderOption)}</optgroup>}
+                              </>
                             );
-                          })}
+                          })()}
                         </select>
-                        <button onClick={() => p.loadWhapiGroups()} disabled={p.whapiGroupsLoading} title="Refresh WhatsApp communities" style={{ padding: '8px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: p.whapiGroupsLoading ? '#94A3B8' : C.ink, cursor: p.whapiGroupsLoading ? 'wait' : 'pointer' }}>{p.whapiGroupsLoading ? '…' : '↻'}</button>
+                        <button onClick={() => p.loadWhapiGroups()} disabled={p.whapiGroupsLoading} title="Refresh WhatsApp chats" style={{ padding: '8px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: p.whapiGroupsLoading ? '#94A3B8' : C.ink, cursor: p.whapiGroupsLoading ? 'wait' : 'pointer' }}>{p.whapiGroupsLoading ? '…' : '↻'}</button>
                       </div>
 
                       {p.whapiGroups.length === 0 && !p.whapiGroupsLoading && !p.whapiGroupsError && (
-                        <button onClick={() => p.loadWhapiGroups()} style={{ width: '100%', padding: 9, borderRadius: 9, fontSize: 12, fontWeight: 600, border: `1px dashed ${C.border}`, backgroundColor: '#fff', color: C.muted, cursor: 'pointer', marginBottom: 8 }}>Load WhatsApp communities</button>
+                        <button onClick={() => p.loadWhapiGroups()} style={{ width: '100%', padding: 9, borderRadius: 9, fontSize: 12, fontWeight: 600, border: `1px dashed ${C.border}`, backgroundColor: '#fff', color: C.muted, cursor: 'pointer', marginBottom: 8 }}>Load WhatsApp chats</button>
                       )}
                       {p.whapiGroupsError && <div style={{ fontSize: 11, color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', padding: '6px 8px', borderRadius: 8, marginBottom: 8 }}>⚠️ {p.whapiGroupsError}</div>}
 
                       <div style={{ fontSize: 11, color: '#065F46', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '7px 10px', borderRadius: 8, marginBottom: 10 }}>
-                        Status: WhatsApp Connected {p.whapiSelectedGroupId ? `• ${p.whapiGroups.find(g => g.id === p.whapiSelectedGroupId)?.name || 'Selected community'}` : '• No community selected'}
+                        Status: WhatsApp Connected {p.whapiSelectedGroupId ? `• ${p.whapiGroups.find(g => g.id === p.whapiSelectedGroupId)?.name || 'Selected chat'}` : '• No chat selected'}
                       </div>
 
                       {(() => {
@@ -1251,7 +1273,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                               <button
                                 onClick={() => p.publishToWhapi()}
                                 disabled={p.whapiPublishing || p.isPublishing || p.publishCooldown > 0 || !p.whapiSelectedGroupId || unsendable || (!p.content.trim() && p.mediaItems.length === 0 && !p.generatedImage)}
-                                title={unsendable ? 'This community cannot receive messages directly' : !p.whapiSelectedGroupId ? 'Select a community first' : !p.content.trim() && p.mediaItems.length === 0 && !p.generatedImage ? 'Add content or media first' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : 'Publish to WhatsApp'}
+                                title={unsendable ? 'This chat cannot receive messages directly' : !p.whapiSelectedGroupId ? 'Select a chat first' : !p.content.trim() && p.mediaItems.length === 0 && !p.generatedImage ? 'Add content or media first' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : 'Publish to WhatsApp'}
                                 style={{ flex: 1, minHeight: 38, padding: '9px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, border: 'none', background: (p.whapiPublishing || p.isPublishing || p.publishCooldown > 0 || !p.whapiSelectedGroupId || unsendable || (!p.content.trim() && p.mediaItems.length === 0 && !p.generatedImage)) ? '#DDD6FE' : 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', cursor: (p.whapiPublishing || p.isPublishing || p.publishCooldown > 0 || !p.whapiSelectedGroupId || unsendable) ? 'not-allowed' : 'pointer', boxShadow: (p.whapiPublishing || p.isPublishing) ? 'none' : '0 3px 12px rgba(37,211,102,0.3)' }}
                               >
                                 {p.whapiPublishing ? 'Sending…' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : '📨 Publish to WhatsApp'}
