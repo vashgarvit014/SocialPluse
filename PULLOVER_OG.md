@@ -1,10 +1,16 @@
 # PULLOVER - SocialPulse live tunnel + model state
 
-Updated: 2026-09-16, Reschedule/Cancel scheduling flow + Drafts time-sort + UI polish pass, checkpoint committed. See [UX_IMPLEMENTATION_REPORT.md](UX_IMPLEMENTATION_REPORT.md) for prior UX changes.
+Updated: 2026-09-17, published a standalone project-workflow reference doc (no code changes). See [UX_IMPLEMENTATION_REPORT.md](UX_IMPLEMENTATION_REPORT.md) for prior UX changes.
 
 ## CURRENT HANDOVER — authoritative; supersedes historical sections below
 
-### Latest implementation handover (2026-09-16 — Reschedule/Cancel + Drafts sort + UI polish)
+### Latest implementation handover (2026-09-17 — project workflow reference doc)
+
+Documentation-only, no code touched. Produced a single-page visual reference of the whole app's workflow, derived by reading `README.md`, `HANDOFF.md`, this file, and the actual source (`src/app/page.tsx`, `src/app/studio-wizard.tsx`, the `src/app/api/*` routes) rather than from memory. Covers: the four-layer architecture (client UI → Next.js API routes → external model/platform APIs → flat-JSON storage), the six-step Content Studio wizard (Topic → Creative Settings → Review → Media & Branding, including the Canva edit loop → Preview → Publish), the three generation pipelines (Nemotron text, Minimax/Llama vision, gpt-image-2 via Pollinations), every platform connector (LinkedIn, Facebook, Instagram-via-Facebook, WhatsApp's Meta/Whapi dual path, Canva OAuth+PKCE), the post lifecycle state machine (Draft → Pending → Publishing → Published, with the Cancel/Reschedule guard), and the on-disk storage files.
+
+Published as a private Claude Artifact and also saved locally at `~/Desktop/socialpulse-workflow.html` (self-contained; only external dependency is a Google Fonts stylesheet link). Not linked from any in-app page — a standalone reference for whoever picks up this project next.
+
+### Previous implementation handover (2026-09-16 — Reschedule/Cancel + Drafts sort + UI polish)
 
 Implemented the Reschedule/Cancel/Drafts spec end-to-end (backend + UI), then two rounds of UI polish requested live against screenshots of the running app.
 
