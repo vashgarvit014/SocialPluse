@@ -125,6 +125,6 @@ scheduled-posts.json               # Local storage
 
 - **Nemotron** uses `thinking: false` to disable chain-of-thought (avoids 30s+ latency).
 - **Image generation** uses **only** `gpt-image-2` (no fallback, no nano-banana-pro) — hold and retry on failure.
-- **Only LinkedIn** is active; Instagram/Facebook/Twitter are stubbed for future.
+- **LinkedIn, Facebook, Instagram, and WhatsApp** are the active social targets; Twitter/X has been removed from the app surface.
 - **Images** are compressed to 1024px JPEG (80%) for API calls; original preserved for preview/publish.
 - **Post scheduler** enforces 5-minute minimum buffer from current time.

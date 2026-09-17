@@ -187,6 +187,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   const [publishMode, setPublishMode] = field<'now' | 'later'>('publishMode', 'now');
   const [studioTab, setStudioTab] = field<'caption' | 'hashtags' | 'prompt'>('studioTab', 'caption');
   const [previewPlatform, setPreviewPlatform] = field('previewPlatform', 'linkedin');
+  const [showCancelPreview, setShowCancelPreview] = useState(false);
+  const [isCancellingPreview, setIsCancellingPreview] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
   // Step 5's feed mockup deliberately crops media with objectFit:'cover' to
   // simulate the real platform crop - this holds the item clicked open in a
@@ -291,15 +293,32 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
     </div>
   );
 
+  const altTextControls = (
+    <section style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+        <h3 style={{ fontSize: 13, margin: 0, color: C.ink }}>Image ALT text</h3>
+        <span style={{ fontSize: 11, color: C.muted }}>Descriptions stay with your images.</span>
+      </div>
+      {accessibilityMedia.filter(m => m.type === 'image').map((m, i) => <details key={m.id} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, marginBottom: 8 }}>
+        <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: C.ink }}>Image {i + 1} · {m.altText?.trim() ? 'ALT added' : 'ALT missing'}</summary>
+        <img src={m.url} alt={m.altText || ''} style={{ width: 120, height: 90, objectFit: 'contain' }} />
+        <textarea aria-label={`ALT text for image ${i + 1}`} value={m.altText || ''} maxLength={1000} onChange={e => p.updateAltText(m.id, e.target.value)} rows={3} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: 12, margin: '8px 0', borderRadius: 8, border: `1px solid ${C.border}`, font: 'inherit', fontSize: 13, lineHeight: 1.5 }} />
+        <button style={{ ...ghostBtn, marginRight: 8 }} disabled={p.altBusy} onClick={() => p.generateAltText([m])}>Generate ALT Text</button>
+        <button style={ghostBtn} onClick={() => p.updateAltText(m.id, '')}>Clear</button>
+      </details>)}
+      <button style={{ ...ghostBtn, minHeight: 34, fontSize: 11, opacity: p.altBusy ? .6 : 1 }} disabled={p.altBusy || !accessibilityMedia.some(m => m.type === 'image' && !m.altText?.trim())} onClick={() => p.generateAltText(accessibilityMedia.filter(m => m.type === 'image' && !m.altText?.trim()))}>{p.altBusy ? 'Describing images…' : 'Generate Missing ALT Text'}</button>
+    </section>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 20, flex: 1, alignItems: 'stretch', minHeight: 'calc(100vh - 64px)', maxWidth: 1120, width: '100%', margin: '0 auto' }}>
       <style>{`
         .sp-wiz-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         .sp-wiz-prev { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 14px; align-items: start; }
         .sp-wiz-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-        .sp-wiz-title2 { display: grid; grid-template-columns: 1fr 300px; gap: 14px; align-items: start; }
+        .sp-wiz-title2 { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
         .sp-wiz-media2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; align-items: stretch; }
-        @media (max-width: 900px) { .sp-wiz-grid2, .sp-wiz-prev, .sp-wiz-title2, .sp-wiz-media2 { grid-template-columns: 1fr; } }
+        @media (max-width: 900px) { .sp-wiz-grid2, .sp-wiz-prev, .sp-wiz-media2 { grid-template-columns: 1fr; } }
         @media (max-width: 700px) { .sp-wiz-grid3 { grid-template-columns: 1fr; } }
       `}</style>
 
@@ -442,7 +461,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         <button onClick={() => p.connectPlatform(cfg.id)} style={{ padding: '10px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>Connect</button>
                       )}
                       {!connected && !standby && isWhapi && (
-                        <button onClick={() => p.refreshWhapiStatus()} style={{ padding: '10px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>{p.whapiLoading ? '…' : 'Retry'}</button>
+                        <button onClick={() => p.startWhatsAppConnect()} style={{ padding: '10px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>Connect</button>
                       )}
                     </div>
                   );
@@ -566,12 +585,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 <div style={{ fontSize: 19, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Media & Branding</div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Add visuals, edit with Canva, and apply your brand identity.</div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'stretch' }}>
-                <button onClick={saveDraft} style={{ ...ghostBtn, minHeight: 34, fontSize: 12, alignSelf: 'flex-end' }}>💾 Save Draft</button>
-                <div style={{ fontSize: 11, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '9px 12px', borderRadius: 12, lineHeight: 1.6 }}>
-                  💡 <b>Great visuals get more engagement.</b> Use AI, Canva and brand elements to make your content stand out.
-                </div>
-              </div>
+              <button onClick={saveDraft} style={{ ...ghostBtn, minHeight: 34, fontSize: 12 }}>💾 Save Draft</button>
             </div>
             {p.generationError && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: '#B91C1C', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', padding: '10px 12px', borderRadius: 10, marginBottom: 12 }}>
@@ -597,9 +611,9 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   onDragEnter={e => { e.preventDefault(); p.setDragOverPreview(true); }}
                   onDragLeave={e => { e.preventDefault(); p.setDragOverPreview(false); }}
                   onDrop={p.handleDrop}
-                  style={{ borderRadius: 14, border: p.dragOverPreview ? `1.5px dashed ${C.primary}` : `1.5px dashed #CBD5E1`, backgroundColor: p.dragOverPreview ? C.primarySoft : '#FCFCFE', padding: 26, textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 150 }}
+                  style={{ borderRadius: 8, border: p.dragOverPreview ? `1.5px dashed ${C.primary}` : `1.5px dashed #CBD5E1`, backgroundColor: p.dragOverPreview ? C.primarySoft : '#FCFCFE', padding: 16, textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 110 }}
                 >
-                  <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>☁️</div>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, background: '#EDE9FE', color: C.primaryDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>☁️</div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>Drag & drop images or videos here</div>
                   <div style={{ fontSize: 11, color: C.muted }}>or <span style={{ color: C.primaryDark, fontWeight: 700 }}>browse files</span> • Max 10MB images / 50MB videos • 9 files max</div>
                 </div>
@@ -617,7 +631,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
             {/* Edit sends an image to Canva; Import brings the edited result
                 back as a NEW gallery item (never overwrites). All calls go
                 through the existing /api/canva/* routes unchanged. */}
-            <div style={{ marginTop: 14, borderRadius: 16, border: `1px solid #DCE4F5`, padding: 18, background: 'linear-gradient(120deg, #EFF6FF 0%, #F1EBFF 60%, #EDE9FE 100%)', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 8px 28px rgba(15,23,42,0.06)' }}>
+            <div style={{ marginTop: 12, borderRadius: 8, border: `1px solid ${C.border}`, padding: 16, background: '#F8FAFC' }}>
               <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', flexWrap: 'wrap' }}>
                 <div style={{ flex: '1 1 340px', minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -629,7 +643,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, color: C.muted, backgroundColor: '#fff', border: `1px solid ${C.border}` }}>Not connected</span>
                     )}
                   </div>
-                  <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.6, marginBottom: 12 }}>Create, customize and import professional designs without leaving SocialPulse.</div>
+                  <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.5, marginBottom: 10 }}>Create or edit a design, then import it into your gallery.</div>
                   {!p.canvaConnected ? (
                     <button onClick={() => p.openInCanva()} style={{ ...primaryBtn(false), width: 'auto', padding: '10px 20px' }}>Connect Canva →</button>
                   ) : (
@@ -669,18 +683,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   {p.canvaConnected && (
                     <button onClick={p.disconnectCanva} style={{ marginTop: 10, fontSize: 10, fontWeight: 700, color: '#B91C1C', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Disconnect Canva</button>
                   )}
-                </div>
-                {/* Tasteful CSS-only preview collage — no external assets */}
-                <div style={{ flex: '0 1 210px', minWidth: 180, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 170 }}>
-                  <div style={{ position: 'absolute', width: 150, height: 120, borderRadius: 12, background: '#fff', border: `1px solid ${C.border}`, boxShadow: '0 8px 20px rgba(15,23,42,0.10)', transform: 'rotate(-7deg) translateX(-24px)', overflow: 'hidden' }}>
-                    <div style={{ height: 62, background: 'linear-gradient(135deg,#7C3AED,#EC4899)' }} />
-                    <div style={{ padding: 8 }}><div style={{ height: 7, borderRadius: 4, background: '#E2E8F0', width: '80%' }} /><div style={{ height: 7, borderRadius: 4, background: '#F1F5F9', width: '55%', marginTop: 5 }} /></div>
-                  </div>
-                  <div style={{ position: 'absolute', width: 150, height: 120, borderRadius: 12, background: '#fff', border: `1px solid ${C.border}`, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', transform: 'rotate(5deg) translateX(24px)', overflow: 'hidden' }}>
-                    <div style={{ height: 62, background: 'linear-gradient(135deg,#0A66C2,#00C4CC)' }} />
-                    <div style={{ padding: 8 }}><div style={{ height: 7, borderRadius: 4, background: '#E2E8F0', width: '70%' }} /><div style={{ height: 7, borderRadius: 4, background: '#F1F5F9', width: '45%', marginTop: 5 }} /></div>
-                  </div>
-                  <span style={{ position: 'relative', fontSize: 10, fontWeight: 800, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '4px 10px', borderRadius: 999, boxShadow: '0 2px 8px rgba(5,150,105,0.2)', marginTop: 96 }}>✓ Imports to gallery</span>
                 </div>
               </div>
             </div>
@@ -967,6 +969,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               )}
             </div>
 
+            {altTextControls}
             <WizardNav
               onBack={goBack}
               backLabel="← Back"
@@ -979,18 +982,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         )}
 
         {/* ================= STEP 5 — PREVIEW ================= */}
-        {[4, 5, 6].includes(currentStep) && <section style={{ padding: 18, marginBottom: 20, border: '1px solid #E2E8F0', borderRadius: 12 }}>
-          <h3 style={{ fontSize: 16, margin: '0 0 8px', color: C.ink }}>Accessibility · Image ALT text</h3>
-          <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 14 }}>Describe the visible image. ALT stays with each slide, including Canva imports and branded media. Facebook and Instagram image uploads receive ALT through their APIs. LinkedIn’s current UGC image path, WhatsApp, and video retain ALT in SocialPulse only.</p>
-          {accessibilityMedia.filter(m => m.type === 'image').map((m, i) => <details key={m.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, marginBottom: 10 }}>
-            <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: C.ink }}>Slide {i + 1} · {m.altText?.trim() ? '✓ Added' : '⚠ Missing'} · Edit ALT Text</summary>
-            <img src={m.url} alt={m.altText || ''} style={{ width: 120, height: 90, objectFit: 'contain' }} />
-            <textarea aria-label={`ALT text for slide ${i + 1}`} value={m.altText || ''} maxLength={1000} onChange={e => p.updateAltText(m.id, e.target.value)} rows={3} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: 12, margin: '8px 0', borderRadius: 8, border: `1px solid ${C.border}`, font: 'inherit', fontSize: 13, lineHeight: 1.5 }} />
-            <button style={{ ...ghostBtn, marginRight: 8 }} disabled={p.altBusy} onClick={() => p.generateAltText([m])}>Generate ALT Text</button>
-            <button style={ghostBtn} onClick={() => p.updateAltText(m.id, '')}>Clear</button>
-          </details>)}
-          <button style={{ ...ghostBtn, marginTop: 4, opacity: p.altBusy ? .6 : 1 }} disabled={p.altBusy || !accessibilityMedia.some(m => m.type === 'image' && !m.altText?.trim())} onClick={() => p.generateAltText(accessibilityMedia.filter(m => m.type === 'image' && !m.altText?.trim()))}>{p.altBusy ? 'Describing images…' : 'Generate Missing ALT Text'}</button>
-        </section>}
+        {[5, 6].includes(currentStep) && altTextControls}
         {currentStep === 5 && (
           <div>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
@@ -1125,7 +1117,10 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 ))}
               </div>
             </div>
-            <WizardNav onBack={goBack} next={<button onClick={goNext} style={primaryBtn(false)}>Continue to Publish →</button>} />
+            <WizardNav onBack={goBack} next={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowCancelPreview(true)} style={{ ...ghostBtn, color: '#B91C1C' }}>Cancel</button>
+              <button onClick={goNext} style={primaryBtn(false)}>Continue to Publish →</button>
+            </span>} />
           </div>
         )}
 
@@ -1200,34 +1195,34 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   })}
                 </div>
 
-                {/* ---- WhatsApp via Whapi — existing-group publishing (separate from Meta) ---- */}
+                {/* ---- WhatsApp — SocialPulse-managed connection ---- */}
                 <div style={{ marginTop: 16, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, backgroundColor: p.whapiConnected ? '#F0FDF4' : '#FFFBEB' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: p.whapiConnected ? 10 : 0 }}>
                     <span style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: p.whapiConnected ? '#25D366' : '#E2E8F0', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>💬</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>WhatsApp</div>
                       <div style={{ fontSize: 10, fontWeight: 600, color: p.whapiConnected ? '#059669' : '#92400E' }}>
-                        {p.whapiLoading ? 'Checking…' : p.whapiConnected ? `● Connected${p.whapiAccountName ? ` • ${p.whapiAccountName}` : ''}${p.whapiPhoneMasked ? ` • ${p.whapiPhoneMasked}` : ''} • ${p.whapiChannelStatus || 'OK'}` : `○ Not connected${p.whapiChannelStatus ? ` • ${p.whapiChannelStatus}` : ''}`}
+                        {p.whapiLoading ? 'Checking…' : p.whapiConnected ? `● Connected${p.whapiAccountName ? ` • ${p.whapiAccountName}` : ''}${p.whapiPhoneMasked ? ` • ${p.whapiPhoneMasked}` : ''}` : '○ Not connected'}
                       </div>
                     </div>
                     {!p.whapiConnected && (
-                      <button onClick={() => p.refreshWhapiStatus()} disabled={p.whapiLoading} style={{ padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, cursor: 'pointer' }}>{p.whapiLoading ? '…' : '↻ Retry'}</button>
+                      <button onClick={() => p.startWhatsAppConnect()} disabled={p.whapiLoading} style={{ padding: '6px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, cursor: 'pointer' }}>Connect WhatsApp</button>
                     )}
                   </div>
 
                   {p.whapiConnected ? (
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginBottom: 6 }}>Destination: <span style={{ fontWeight: 600, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '1px 7px', borderRadius: 999 }}>Existing Group</span></div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginBottom: 6 }}>Destination: <span style={{ fontWeight: 600, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '1px 7px', borderRadius: 999 }}>WhatsApp Community</span></div>
 
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                        <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, minWidth: 48 }}>Group:</label>
+                        <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, minWidth: 78 }}>Community:</label>
                         <select
                           value={p.whapiSelectedGroupId}
                           onChange={e => p.setWhapiSelectedGroupId(e.target.value)}
                           onFocus={() => { if (!p.whapiGroups.length && !p.whapiGroupsLoading) p.loadWhapiGroups(); }}
                           style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}
                         >
-                          {p.whapiGroups.length === 0 && <option value="">{p.whapiGroupsLoading ? 'Loading groups…' : p.whapiGroupsError ? `Error: ${p.whapiGroupsError}` : 'Select group'}</option>}
+                          {p.whapiGroups.length === 0 && <option value="">{p.whapiGroupsLoading ? 'Loading communities…' : p.whapiGroupsError ? `Error: ${p.whapiGroupsError}` : 'Select community'}</option>}
                           {p.whapiGroups.map(g => {
                             const isUnsSendable = g.type === 'community' || (g.participantsCount !== undefined && g.participantsCount < 2);
                             return (
@@ -1235,16 +1230,16 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                             );
                           })}
                         </select>
-                        <button onClick={() => p.loadWhapiGroups()} disabled={p.whapiGroupsLoading} title="Refresh groups from Whapi" style={{ padding: '8px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: p.whapiGroupsLoading ? '#94A3B8' : C.ink, cursor: p.whapiGroupsLoading ? 'wait' : 'pointer' }}>{p.whapiGroupsLoading ? '…' : '↻'}</button>
+                        <button onClick={() => p.loadWhapiGroups()} disabled={p.whapiGroupsLoading} title="Refresh WhatsApp communities" style={{ padding: '8px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: p.whapiGroupsLoading ? '#94A3B8' : C.ink, cursor: p.whapiGroupsLoading ? 'wait' : 'pointer' }}>{p.whapiGroupsLoading ? '…' : '↻'}</button>
                       </div>
 
                       {p.whapiGroups.length === 0 && !p.whapiGroupsLoading && !p.whapiGroupsError && (
-                        <button onClick={() => p.loadWhapiGroups()} style={{ width: '100%', padding: 9, borderRadius: 9, fontSize: 12, fontWeight: 600, border: `1px dashed ${C.border}`, backgroundColor: '#fff', color: C.muted, cursor: 'pointer', marginBottom: 8 }}>Fetch existing groups</button>
+                        <button onClick={() => p.loadWhapiGroups()} style={{ width: '100%', padding: 9, borderRadius: 9, fontSize: 12, fontWeight: 600, border: `1px dashed ${C.border}`, backgroundColor: '#fff', color: C.muted, cursor: 'pointer', marginBottom: 8 }}>Load WhatsApp communities</button>
                       )}
                       {p.whapiGroupsError && <div style={{ fontSize: 11, color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', padding: '6px 8px', borderRadius: 8, marginBottom: 8 }}>⚠️ {p.whapiGroupsError}</div>}
 
                       <div style={{ fontSize: 11, color: '#065F46', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '7px 10px', borderRadius: 8, marginBottom: 10 }}>
-                        Status: Connected via WhatsApp {p.whapiSelectedGroupId ? `• ${p.whapiGroups.find(g => g.id === p.whapiSelectedGroupId)?.name || p.whapiSelectedGroupId.slice(0, 12)}` : '• No group selected'} • existing groups only
+                        Status: WhatsApp Connected {p.whapiSelectedGroupId ? `• ${p.whapiGroups.find(g => g.id === p.whapiSelectedGroupId)?.name || 'Selected community'}` : '• No community selected'}
                       </div>
 
                       {(() => {
@@ -1256,20 +1251,20 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                               <button
                                 onClick={() => p.publishToWhapi()}
                                 disabled={p.whapiPublishing || p.isPublishing || p.publishCooldown > 0 || !p.whapiSelectedGroupId || unsendable || (!p.content.trim() && p.mediaItems.length === 0 && !p.generatedImage)}
-                                title={unsendable ? 'This community cannot receive messages directly — select its announcement group' : !p.whapiSelectedGroupId ? 'Select a group first' : !p.content.trim() && p.mediaItems.length === 0 && !p.generatedImage ? 'Add content or media first' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : 'Publish to WhatsApp group'}
+                                title={unsendable ? 'This community cannot receive messages directly' : !p.whapiSelectedGroupId ? 'Select a community first' : !p.content.trim() && p.mediaItems.length === 0 && !p.generatedImage ? 'Add content or media first' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : 'Publish to WhatsApp'}
                                 style={{ flex: 1, minHeight: 38, padding: '9px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, border: 'none', background: (p.whapiPublishing || p.isPublishing || p.publishCooldown > 0 || !p.whapiSelectedGroupId || unsendable || (!p.content.trim() && p.mediaItems.length === 0 && !p.generatedImage)) ? '#DDD6FE' : 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', cursor: (p.whapiPublishing || p.isPublishing || p.publishCooldown > 0 || !p.whapiSelectedGroupId || unsendable) ? 'not-allowed' : 'pointer', boxShadow: (p.whapiPublishing || p.isPublishing) ? 'none' : '0 3px 12px rgba(37,211,102,0.3)' }}
                               >
                                 {p.whapiPublishing ? 'Sending…' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : '📨 Publish to WhatsApp'}
                               </button>
                             </div>
-                            <div style={{ fontSize: 10, color: C.faint, marginTop: 6, lineHeight: 1.5 }}>Only existing groups in the connected WhatsApp account. One click = one message. No hidden retries.</div>
+                            <div style={{ fontSize: 10, color: C.faint, marginTop: 6, lineHeight: 1.5 }}>One click = one message. No hidden retries.</div>
                           </>
                         );
                       })()}
                     </div>
                   ) : (
                     <div style={{ marginTop: 8, fontSize: 11, color: '#92400E', lineHeight: 1.6 }}>
-                      Whapi channel not connected. Check <code>WHAPI_API_TOKEN</code> in <code>.env.local</code> and ensure the channel is authorized in the Whapi dashboard. <button onClick={() => p.refreshWhapiStatus()} style={{ background: 'none', border: 'none', color: C.primaryDark, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>Retry</button>
+                      Connect your WhatsApp account to publish directly from SocialPulse.
                     </div>
                   )}
                 </div>
@@ -1340,6 +1335,24 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
           </div>
         )}
       </div>
+
+      {showCancelPreview && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(15,23,42,0.46)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="cancel-preview-title" style={{ width: 'min(420px, 100%)', backgroundColor: '#fff', borderRadius: 8, padding: 22, boxShadow: '0 20px 60px rgba(15,23,42,0.22)' }}>
+            <h3 id="cancel-preview-title" style={{ margin: '0 0 8px', fontSize: 16, color: C.ink }}>Cancel this post?</h3>
+            <p style={{ margin: '0 0 20px', fontSize: 13, lineHeight: 1.6, color: C.muted }}>Your content and media will be saved to Drafts. Nothing will be published.</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button onClick={() => setShowCancelPreview(false)} disabled={isCancellingPreview} style={ghostBtn}>Keep editing</button>
+              <button onClick={async () => {
+                if (isCancellingPreview) return;
+                setIsCancellingPreview(true);
+                try { if (await p.cancelPreview()) setShowCancelPreview(false); }
+                finally { setIsCancellingPreview(false); }
+              }} disabled={isCancellingPreview} style={{ ...primaryBtn(isCancellingPreview), background: isCancellingPreview ? '#FCA5A5' : '#DC2626', boxShadow: 'none' }}>{isCancellingPreview ? 'Saving…' : 'Cancel Post'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {lightboxItem && (
         <div onClick={() => setLightboxItem(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32, cursor: 'zoom-out' }}>

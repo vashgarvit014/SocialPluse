@@ -626,7 +626,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'At least one platform must be selected' }, { status: 400 });
     }
 
-    const validPlatforms = ['linkedin', 'instagram', 'facebook', 'twitter'];
+    const validPlatforms = ['linkedin', 'instagram', 'facebook', 'whatsapp'];
     const selectedPlatforms = platforms.filter((p: string) => validPlatforms.includes(p));
 
     if (selectedPlatforms.length === 0) {

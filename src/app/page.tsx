@@ -29,7 +29,6 @@ const platformColors: Record<string, string> = {
   linkedin: '#0A66C2',
   instagram: '#E1306C',
   facebook: '#1877F2',
-  twitter: '#000000',
   whatsapp: '#25D366',
 };
 
@@ -37,7 +36,6 @@ const platformInitials: Record<string, string> = {
   linkedin: 'LI',
   instagram: 'IG',
   facebook: 'FB',
-  twitter: 'TW',
   whatsapp: 'WA',
 };
 
@@ -57,12 +55,6 @@ function PlatformIcon({ platform, size = 16 }: { platform: string; size?: number
         <span style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontWeight: 700, fontStyle: 'italic', fontSize: size * 1.2, color: '#fff', lineHeight: 1 }}>
           f
         </span>
-      );
-    case 'twitter':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-          <path d="M4 4l16 16M20 4L4 20" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
-        </svg>
       );
     case 'instagram':
       return (
@@ -246,7 +238,8 @@ export default function SocialMediaManager() {
   const [draggedMediaId, setDraggedMediaId] = useState<string | null>(null);
   const [dragOverMediaId, setDragOverMediaId] = useState<string | null>(null);
 
-  // Whapi — existing-group publishing (separate from Meta WhatsApp)
+  // WhatsApp publishing state. Naming kept stable to keep this patch scoped;
+  // provider details are hidden behind /api/whatsapp routes.
   const [whapiConnected, setWhapiConnected] = useState(false);
   const [whapiChannelStatus, setWhapiChannelStatus] = useState('');
   const [whapiAccountName, setWhapiAccountName] = useState('');
@@ -257,6 +250,10 @@ export default function SocialMediaManager() {
   const [whapiGroupsLoading, setWhapiGroupsLoading] = useState(false);
   const [whapiGroupsError, setWhapiGroupsError] = useState('');
   const [whapiPublishing, setWhapiPublishing] = useState(false);
+  const [whatsappConnectOpen, setWhatsappConnectOpen] = useState(false);
+  const [whatsappQrImage, setWhatsappQrImage] = useState('');
+  const [whatsappConnectMessage, setWhatsappConnectMessage] = useState('');
+  const [whatsappConnecting, setWhatsappConnecting] = useState(false);
 
   // ---- Reload persistence ----
   // Browsers forbid custom popups *during* a reload (beforeunload only gets
@@ -444,8 +441,7 @@ export default function SocialMediaManager() {
         // disconnected on the platform's side - so never display them on
         // trust alone. Hold all three back and only show them once the
         // server vault actually confirms the connection still works
-        // (mirrors Canva's server-verified status check below). Twitter
-        // doesn't have a status route yet, so it's shown as before.
+        // (mirrors Canva's server-verified status check below).
         linkedinAccount = scrubbed.find(a => a.platform === 'linkedin');
         facebookAccount = scrubbed.find(a => a.platform === 'facebook');
         instagramAccount = scrubbed.find(a => a.platform === 'instagram');
@@ -575,23 +571,50 @@ export default function SocialMediaManager() {
     }
   }, []);
 
-  // Whapi status — separate from Meta WhatsApp, never exposes token
+  // WhatsApp status comes through the SocialPulse backend; provider details
+  // stay server-side and out of normal client UI.
   const refreshWhapiStatus = async () => {
     setWhapiLoading(true);
     try {
-      const res = await fetch('/api/whapi/status');
+      const res = await fetch('/api/whatsapp/status');
       const data = await res.json();
       setWhapiConnected(!!data.connected);
-      setWhapiChannelStatus(data.channelStatus || data.reason || '');
+      setWhapiChannelStatus(data.status || '');
       setWhapiAccountName(data.accountName || '');
-      setWhapiPhoneMasked(data.phoneNumberMasked || data.phoneNumber || '');
+      setWhapiPhoneMasked(data.phoneMasked || '');
+      if (data.connected) setWhatsappConnectOpen(false);
       return !!data.connected;
     } catch {
       setWhapiConnected(false);
-      setWhapiChannelStatus('NETWORK_ERROR');
+      setWhapiChannelStatus('ERROR');
       return false;
     } finally {
       setWhapiLoading(false);
+    }
+  };
+
+  const startWhatsAppConnect = async () => {
+    if (whatsappConnecting) return;
+    setWhatsappConnectOpen(true);
+    setWhatsappConnecting(true);
+    setWhatsappQrImage('');
+    setWhatsappConnectMessage('');
+    try {
+      const res = await fetch('/api/whatsapp/connect', { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'CONNECTED') {
+        await refreshWhapiStatus();
+        setWhatsappConnectMessage('WhatsApp is already connected.');
+      } else if (data.qrImage) {
+        setWhatsappQrImage(data.qrImage);
+        setWhatsappConnectMessage('Open WhatsApp on your phone, go to Linked Devices, and scan this QR code.');
+      } else {
+        setWhatsappConnectMessage(data.message || 'WhatsApp connection could not be completed. Please try again.');
+      }
+    } catch {
+      setWhatsappConnectMessage('WhatsApp connection could not be completed. Please try again.');
+    } finally {
+      setWhatsappConnecting(false);
     }
   };
 
@@ -600,12 +623,17 @@ export default function SocialMediaManager() {
     setWhapiGroupsLoading(true);
     setWhapiGroupsError('');
     try {
-      const res = await fetch('/api/whapi/groups?count=100');
+      const res = await fetch('/api/whatsapp/communities');
       const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || data.error || 'Failed to fetch groups');
-      }
-      const groups = Array.isArray(data.groups) ? data.groups : [];
+      if (!res.ok || !data.success) throw new Error(data.message || 'WhatsApp communities could not be loaded.');
+      const groups = Array.isArray(data.communities)
+        ? data.communities.map((c: { announcementGroupId: string; name: string; announcementGroupName?: string; participantsCount?: number }) => ({
+          id: c.announcementGroupId,
+          name: c.name || c.announcementGroupName || 'WhatsApp Community',
+          participantsCount: c.participantsCount || 0,
+          type: 'announcement_group',
+        }))
+        : [];
       setWhapiGroups(groups);
       // Auto-select first sendable group if none selected (skip community parents / single-member)
       if (groups.length && !whapiSelectedGroupId) {
@@ -625,7 +653,7 @@ export default function SocialMediaManager() {
   const publishToWhapi = async () => {
     if (whapiPublishing || isPublishing || publishCooldown > 0) return;
     if (!whapiConnected) {
-      setPublishResult('WhatsApp is not connected via Whapi.');
+      setPublishResult('WhatsApp is not connected.');
       setPublishResultType('error'); setShowToast(true); setTimeout(() => setShowToast(false), 4000); return;
     }
     if (!whapiSelectedGroupId) {
@@ -648,18 +676,16 @@ export default function SocialMediaManager() {
     setWhapiPublishing(true);
     setIsPublishing(true);
     try {
-      const attemptId = `whapi_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-      // Whapi supports single image/video + caption, not carousel. Send first media only.
+      const attemptId = `whatsapp_${crypto.randomUUID()}`;
       const mediaForWhapi = publishMediaList.slice(0, 1);
-      const allUrls = mediaForWhapi.length ? mediaForWhapi.map(m => m.url) : [];
       // If no explicit media but we have a generatedImage, include it
       const effectiveMedia = mediaForWhapi.length ? mediaForWhapi : (generatedImage ? [{ id: 'gen', url: generatedImage, type: 'image' as const }] : []);
       const text = content.trim() || platformContent[activePreviewPlatform]?.caption || '';
-      const res = await fetch('/api/whapi/publish', {
+      const res = await fetch('/api/whatsapp/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          groupId: whapiSelectedGroupId,
+          announcementGroupId: whapiSelectedGroupId,
           text: text ? `${text}${platformContent[activePreviewPlatform]?.hashtags?.length ? '\n\n' + formatHashtags(platformContent[activePreviewPlatform].hashtags) : ''}` : text,
           mediaList: effectiveMedia,
           attemptId,
@@ -675,12 +701,12 @@ export default function SocialMediaManager() {
       } else {
         const code = data.code || '';
         let msg = data.message || 'Failed to publish to WhatsApp group.';
-        if (code === 'WHAPI_UNAUTHORIZED') msg = 'Whapi token invalid. Check WHAPI_API_TOKEN.';
-        else if (code === 'WHAPI_GROUP_NOT_FOUND') msg = 'Selected group not found. Refresh groups and try again.';
-        else if (code === 'WHAPI_TRIAL_LIMIT') msg = data.message || 'Whapi trial limit exceeded. Upgrade at panel.whapi.cloud or use Minor project group (120363410795467871@g.us) which is currently allowed.';
+        if (code === 'WHAPI_UNAUTHORIZED') msg = 'WhatsApp connection needs attention. Reconnect and try again.';
+        else if (code === 'WHAPI_GROUP_NOT_FOUND') msg = 'Selected WhatsApp Community was not found. Refresh and try again.';
+        else if (code === 'WHAPI_TRIAL_LIMIT') msg = 'This WhatsApp connection cannot publish to that community yet. Please contact your SocialPulse admin.';
         else if (code === 'WHAPI_COMMUNITY_PARENT') msg = data.message || 'This community cannot receive messages directly. Select its announcement group instead.';
-        else if (code === 'WHAPI_BAD_REQUEST') msg = data.message || 'Whapi rejected the request. Check group and message.';
-        else if (code === 'WHAPI_UNSUPPORTED_MEDIA') msg = 'This media type is not supported via Whapi.';
+        else if (code === 'WHAPI_BAD_REQUEST') msg = 'WhatsApp could not publish this post. Check the community and message.';
+        else if (code === 'WHAPI_UNSUPPORTED_MEDIA') msg = 'This media type is not supported for WhatsApp publishing yet.';
         setPublishResult(msg);
         setPublishResultType('error');
       }
@@ -710,7 +736,7 @@ export default function SocialMediaManager() {
     }
   };
 
-  // Auto-load Whapi groups lazily when connected, but only once per session to avoid blocking page
+  // Auto-load WhatsApp communities lazily when connected, but only once per session to avoid blocking page.
   useEffect(() => {
     if (whapiConnected && whapiGroups.length === 0 && !whapiGroupsLoading && !whapiGroupsError) {
       void loadWhapiGroups();
@@ -859,10 +885,17 @@ export default function SocialMediaManager() {
     }
 
     const connectedSelected = selectedPlatforms.filter(p =>
-      accounts.some(a => a.platform === p && a.connected)
+      p === 'whatsapp' ? whapiConnected : accounts.some(a => a.platform === p && a.connected)
     );
     if (connectedSelected.length === 0) {
       setPublishResult('No connected platforms selected');
+      setPublishResultType('error');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 4000);
+      return;
+    }
+    if (connectedSelected.includes('whatsapp') && !whapiSelectedGroupId) {
+      setPublishResult('Select a WhatsApp Community before scheduling.');
       setPublishResultType('error');
       setShowToast(true);
       setTimeout(() => setShowToast(false), 4000);
@@ -882,6 +915,7 @@ export default function SocialMediaManager() {
       const scheduledAt = scheduledTime.toISOString();
       // Server resolves the OAuth token from userId at publish time — no tokens stored here.
       const accountsData = connectedSelected.map(p => {
+        if (p === 'whatsapp') return { platform: p, userId: 'socialpulse-whatsapp', pageId: whapiSelectedGroupId || undefined };
         const acc = accounts.find(a => a.platform === p && a.connected)!;
         return { platform: p, userId: acc.userId, pageId: acc.pageId || undefined };
       });
@@ -985,9 +1019,9 @@ export default function SocialMediaManager() {
   };
 
   const saveFullDraft = async () => {
-    if (draftSavingRef.current) return;
+    if (draftSavingRef.current) return false;
     const cancelling = allPosts.some(post => post.id === draftId && ['pending', 'scheduled'].includes(post.status));
-    if (cancelling && !window.confirm('Cancel this scheduled post?')) return;
+    if (cancelling && !window.confirm('Cancel this scheduled post?')) return false;
     draftSavingRef.current = true;
     try {
       const res = await fetch('/api/scheduler', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
@@ -999,8 +1033,15 @@ export default function SocialMediaManager() {
       }) });
       const data = await res.json(); if (!res.ok) throw new Error(data.error);
       setDraftId(data.post.id); await loadScheduledPosts(); notify(cancelling ? 'Post cancelled and moved to Drafts.' : 'Draft saved.');
-    } catch (e) { notify(e instanceof Error ? e.message : 'Draft could not be saved', true); }
+      return true;
+    } catch (e) { notify(e instanceof Error ? e.message : 'Draft could not be saved', true); return false; }
     finally { draftSavingRef.current = false; }
+  };
+
+  const cancelPreview = async () => {
+    const saved = await saveFullDraft();
+    if (saved) setActiveTab('drafts');
+    return saved;
   };
 
   const editPost = (post: PostRecord, schedule = false) => {
@@ -1177,7 +1218,7 @@ export default function SocialMediaManager() {
     }
     const genPlatforms = [...selectedPlatforms];
     if (genPlatforms.length === 0) {
-      setGenerationError('Please select a platform (LinkedIn) before generating.');
+      setGenerationError('Please select a platform before generating.');
       return;
     }
     setGenerationError('');
@@ -2098,7 +2139,7 @@ export default function SocialMediaManager() {
     for (const platform of connectedSelected) {
       if (platform === 'whatsapp') {
         if (!whapiSelectedGroupId) {
-          results.push('whatsapp: No WhatsApp group selected — pick a group in the WhatsApp card');
+          results.push('whatsapp: No WhatsApp Community selected');
           hasError = true;
           continue;
         }
@@ -2107,19 +2148,19 @@ export default function SocialMediaManager() {
           ? platformData.caption + '\n\n' + formatHashtags(platformData.hashtags || [])
           : content;
         const attemptId = `ui_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}_whatsapp`;
-        console.log(`[publish] attempt ${attemptId} → whatsapp (whapi) ${whapiSelectedGroupId.slice(0, 8)}...`);
+        console.log(`[publish] attempt ${attemptId} → whatsapp ${whapiSelectedGroupId.slice(0, 8)}...`);
         try {
           const waMedia = publishMediaList.slice(0, 1);
-          const res = await fetch('/api/whapi/publish', {
+          const res = await fetch('/api/whatsapp/publish', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ groupId: whapiSelectedGroupId, text: publishContent, mediaList: waMedia, attemptId }),
+            body: JSON.stringify({ announcementGroupId: whapiSelectedGroupId, text: publishContent, mediaList: waMedia, attemptId }),
           });
           if (res.ok) {
             results.push('whatsapp: Success');
           } else {
             const err = await res.json().catch(() => ({}));
-            results.push(`whatsapp: ${err.message || 'Whapi publish failed'}`);
+            results.push(`whatsapp: ${err.message || 'WhatsApp publish failed'}`);
             hasError = true;
           }
         } catch {
@@ -2402,7 +2443,7 @@ export default function SocialMediaManager() {
         {/* Content Studio — SaaS redesign (UI-only, logic preserved) */}
         {activeTab === 'studio' && (
           <StudioWorkspace
-            wizardState={wizardState} setWizardState={setWizardState} saveFullDraft={saveFullDraft}
+            wizardState={wizardState} setWizardState={setWizardState} saveFullDraft={saveFullDraft} cancelPreview={cancelPreview}
             updateAltText={updateAltText} generateAltText={generateAltText} altBusy={altBusy}
             prompt={prompt} setPrompt={setPrompt}
             topicMediaItems={topicMediaItems} removeTopicMedia={removeTopicMedia} clearTopicMedia={clearTopicMedia}
@@ -2460,7 +2501,7 @@ export default function SocialMediaManager() {
             platformColors={platformColors} PlatformIcon={PlatformIcon}
             whapiConnected={whapiConnected} whapiChannelStatus={whapiChannelStatus} whapiAccountName={whapiAccountName} whapiPhoneMasked={whapiPhoneMasked}
             whapiGroups={whapiGroups} whapiSelectedGroupId={whapiSelectedGroupId} setWhapiSelectedGroupId={setWhapiSelectedGroupId}
-            whapiGroupsLoading={whapiGroupsLoading} whapiGroupsError={whapiGroupsError} loadWhapiGroups={loadWhapiGroups}
+            whapiGroupsLoading={whapiGroupsLoading} whapiGroupsError={whapiGroupsError} loadWhapiGroups={loadWhapiGroups} startWhatsAppConnect={startWhatsAppConnect}
             publishToWhapi={publishToWhapi} whapiPublishing={whapiPublishing} refreshWhapiStatus={refreshWhapiStatus} whapiLoading={whapiLoading}
           />
         )}
@@ -2615,10 +2656,10 @@ export default function SocialMediaManager() {
                 <div style={{ backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
                   <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>🌐</span> Platform Health</span>
-                    <span style={{ fontSize: '11px', color: accounts.length ? '#10b981' : '#94a3b8', fontWeight: 700 }}>{accounts.length}/4 connected</span>
+                    <span style={{ fontSize: '11px', color: accounts.length ? '#10b981' : '#94a3b8', fontWeight: 700 }}>{accounts.length}/3 connected</span>
                   </div>
                   <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {['linkedin', 'instagram', 'facebook', 'twitter'].map(platform => {
+                    {['linkedin', 'instagram', 'facebook'].map(platform => {
                       const isConnected = accounts.some(a => a.platform === platform && a.connected);
                       const justConnected = justConnectedPlatform === platform;
                       return (
@@ -3503,6 +3544,39 @@ export default function SocialMediaManager() {
               onChange={handleLogoUpload}
               style={{ display: 'none' }}
             />
+          </div>
+        </div>
+      )}
+
+      {whatsappConnectOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.46)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ width: 'min(430px, 100%)', background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', boxShadow: '0 22px 70px rgba(15,23,42,0.28)', padding: 22 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span style={{ width: 38, height: 38, borderRadius: 12, background: 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>💬</span>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, color: '#0F172A' }}>Connect WhatsApp</h3>
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: '#64748B' }}>Connect your WhatsApp account to SocialPulse and publish directly from your workspace.</p>
+              </div>
+            </div>
+            <div style={{ border: '1px solid #E2E8F0', borderRadius: 14, padding: 16, textAlign: 'center', background: '#F8FAFC' }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#0F172A', marginBottom: 10 }}>Step 1 · Connect your WhatsApp</div>
+              {whatsappConnecting ? (
+                <div style={{ minHeight: 230, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B', fontSize: 13 }}>Preparing secure connection…</div>
+              ) : whatsappQrImage ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={whatsappQrImage} alt="WhatsApp connection QR code" style={{ width: 220, height: 220, objectFit: 'contain', background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 10 }} />
+                  <p style={{ margin: '12px auto 0', maxWidth: 300, color: '#475569', fontSize: 12, lineHeight: 1.55 }}>{whatsappConnectMessage}</p>
+                </>
+              ) : (
+                <p style={{ margin: '52px auto', maxWidth: 320, color: '#475569', fontSize: 13, lineHeight: 1.6 }}>{whatsappConnectMessage || 'Connection information will appear here.'}</p>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button onClick={() => setWhatsappConnectOpen(false)} style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer' }}>Close</button>
+              <button onClick={startWhatsAppConnect} disabled={whatsappConnecting || whapiLoading} style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', fontWeight: 800, cursor: whatsappConnecting || whapiLoading ? 'wait' : 'pointer' }}>{whatsappQrImage ? 'Refresh QR' : 'Try again'}</button>
+              {whatsappQrImage && <button onClick={refreshWhapiStatus} disabled={whatsappConnecting || whapiLoading} style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', fontWeight: 800, cursor: whatsappConnecting || whapiLoading ? 'wait' : 'pointer' }}>Check Status</button>}
+            </div>
           </div>
         </div>
       )}

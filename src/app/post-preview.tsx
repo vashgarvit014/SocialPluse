@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { postMedia, type PostRecord } from '@/lib/posts';
 
 const platformColors: Record<string, string> = {
-  linkedin: '#0A66C2', instagram: '#E1306C', facebook: '#1877F2', twitter: '#000000', whatsapp: '#25D366',
+  linkedin: '#0A66C2', instagram: '#E1306C', facebook: '#1877F2', whatsapp: '#25D366',
 };
 const statusMeta: Record<string, { bg: string; color: string; label: string }> = {
   pending: { bg: '#FFFBEB', color: '#B45309', label: 'Scheduled' },

@@ -92,6 +92,7 @@ export interface StudioWorkspaceProps {
   wizardState: Record<string, unknown>;
   setWizardState: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
   saveFullDraft: () => void;
+  cancelPreview: () => Promise<boolean>;
   updateAltText: (id: string, text: string) => void;
   generateAltText: (items: MediaItem[]) => Promise<void>;
   altBusy: boolean;
@@ -177,7 +178,7 @@ export interface StudioWorkspaceProps {
   // Whapi — existing-group publishing (separate from Meta)
   whapiConnected: boolean; whapiChannelStatus: string; whapiAccountName: string; whapiPhoneMasked: string;
   whapiGroups: Array<{ id: string; name: string; participantsCount: number; type: string }>; whapiSelectedGroupId: string; setWhapiSelectedGroupId: (v: string) => void;
-  whapiGroupsLoading: boolean; whapiGroupsError: string; loadWhapiGroups: () => void;
+  whapiGroupsLoading: boolean; whapiGroupsError: string; loadWhapiGroups: () => void; startWhatsAppConnect: () => void;
   publishToWhapi: () => void; whapiPublishing: boolean; refreshWhapiStatus: () => void; whapiLoading: boolean;
 }
 
