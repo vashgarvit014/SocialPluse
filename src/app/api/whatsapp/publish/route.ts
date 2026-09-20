@@ -20,6 +20,9 @@ export async function POST(request: NextRequest) {
     code === 'WHAPI_TRIAL_LIMIT' ? 'This WhatsApp connection cannot publish to that community yet. Please contact your SocialPulse admin.' :
     code === 'WHAPI_UNAUTHORIZED' ? 'WhatsApp connection needs attention. Reconnect and try again.' :
     code === 'WHAPI_UNSUPPORTED_MEDIA' ? 'This media type is not supported for WhatsApp publishing yet.' :
+    code === 'WHAPI_PERMISSION_DENIED' ? (typeof data.message === 'string' && data.message ? data.message : 'You are not an admin of this announcement group — only admins can post there. Choose a regular group or make this number an admin.') :
+    code === 'WHAPI_COMMUNITY_PARENT' ? (typeof data.message === 'string' && data.message ? data.message : 'This chat cannot receive messages directly. Select its announcement group instead.') :
+    code === 'WHAPI_BAD_REQUEST' ? (typeof data.message === 'string' && data.message ? data.message : 'WhatsApp could not publish this post. Check the chat and message.') :
     'WhatsApp could not publish this post. Please try again.';
   return NextResponse.json({ success: false, code, message, attemptId: data.attemptId }, { status: response.status });
 }

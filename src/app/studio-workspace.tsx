@@ -122,7 +122,8 @@ export interface StudioWorkspaceProps {
   setPlatformContent: (v: Record<string, { caption: string; hashtags: string[] }>) => void;
   activePreviewPlatform: string; switchPreviewPlatform: (p: string) => void;
   editorTab: 'edit' | 'preview'; setEditorTab: (v: 'edit' | 'preview') => void;
-  imagePrompt: string;
+  imagePrompt: string; setImagePrompt: (v: string) => void;
+  clearGeneratedImage: () => void;
   charCount: number; wordCount: number;
   // media
   mediaItems: MediaItem[];
@@ -149,7 +150,7 @@ export interface StudioWorkspaceProps {
   setLogoModalOpen: (v: boolean) => void;
   logoInputRef: React.RefObject<HTMLInputElement | null>;
   logoTargetId: string | null; setLogoTargetId: (v: string | null) => void;
-  burnedLogoIds: Record<string, boolean>; clearLogo: () => void;
+  burnedLogoIds: Record<string, boolean>; clearLogo: () => void; restoreBurnedMedia: () => void;
   applyLogoToAllMedia: (logoOverride?: string, opts?: { keepOpen?: boolean }) => void; isApplyingLogo: boolean;
   // platforms / accounts
   accounts: Array<{ platform: string; connected: boolean; name: string; email: string; accessToken?: string; userId: string; pages?: Array<{ id: string; name: string }>; pageId?: string }>;

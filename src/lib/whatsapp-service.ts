@@ -186,6 +186,54 @@ export async function disconnectWhatsApp(): Promise<void> {
 export async function getWhatsAppCommunities(): Promise<WhatsAppCommunity[]> {
   const channel = await getActiveChannel();
   if (!channel) throw new Error('WhatsApp is not connected.');
+  // Prefer the real Whapi /communities endpoint (returns true communities with
+  // real participants_count). Fall back to /groups inference only if unavailable.
+  try {
+    const commRes = await whapiFetch('/communities', channel.token, { method: 'GET' }, channel.baseUrl);
+    if (commRes.ok) {
+      const commData = await commRes.json().catch(() => ({})) as { communities?: Array<{ id?: string; name?: string; participants_count?: number; participantsCount?: number; participants?: unknown[] }> };
+      const comms = Array.isArray(commData.communities) ? commData.communities : [];
+      if (comms.length) {
+        // Resolve each community parent -> its sendable announce group via
+        // GET /communities/{id}/subgroups (announceGroupInfo.id). Sending to the
+        // parent JID itself gets a 400 from Whapi, so this mapping is required.
+        const resolved = await Promise.all(comms
+          .filter(c => c.id && /@g\.us$/.test(String(c.id)))
+          .map(async c => {
+            const parentId = String(c.id);
+            const name = String(c.name || 'WhatsApp Community');
+            const count = typeof c.participants_count === 'number' ? c.participants_count
+              : typeof c.participantsCount === 'number' ? c.participantsCount
+              : Array.isArray(c.participants) ? c.participants.length : 0;
+            let announceId = parentId;
+            let announceName = name;
+            try {
+              const subRes = await whapiFetch(`/communities/${encodeURIComponent(parentId)}/subgroups`, channel.token, { method: 'GET' }, channel.baseUrl);
+              if (subRes.ok) {
+                const subData = await subRes.json().catch(() => ({})) as { announceGroupInfo?: { id?: string; title?: string } };
+                if (subData.announceGroupInfo?.id && /@g\.us$/.test(String(subData.announceGroupInfo.id))) {
+                  announceId = String(subData.announceGroupInfo.id);
+                  announceName = String(subData.announceGroupInfo.title || name);
+                }
+              }
+            } catch {
+              // Fall back to parent id; publish will surface Whapi's 400 with the right JID.
+            }
+            return {
+              id: parentId,
+              name,
+              announcementGroupId: announceId,
+              announcementGroupName: announceName,
+              participantsCount: count,
+              status: 'ready' as const,
+            };
+          }));
+        return resolved;
+      }
+    }
+  } catch (error) {
+    console.error('[whatsapp/service] /communities failed, falling back to /groups:', error instanceof Error ? error.message : error);
+  }
   const res = await whapiFetch('/groups?count=500&offset=0', channel.token, { method: 'GET' }, channel.baseUrl);
   if (!res.ok) {
     const raw = await res.text().catch(() => '');

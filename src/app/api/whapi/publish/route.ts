@@ -124,8 +124,8 @@ export async function POST(request: NextRequest) {
       if (!res.ok) {
         const errBody = await res.text().catch(() => '');
         const mapped = whapiError(res.status, errBody, 'sending text');
-        // Preserve mapped code for 400 community-parent, 402 trial limit etc, map auth correctly
-        const code = mapped.code !== 'WHAPI_REQUEST_FAILED' ? mapped.code : res.status === 401 ? 'WHAPI_UNAUTHORIZED' : res.status === 403 ? 'WHAPI_NOT_CONNECTED' : 'WHAPI_PUBLISH_FAILED';
+        // Preserve mapped code for 400 community-parent, 402 trial limit, 403 not-admin etc
+        const code = mapped.code !== 'WHAPI_REQUEST_FAILED' ? mapped.code : res.status === 401 ? 'WHAPI_UNAUTHORIZED' : res.status === 403 ? 'WHAPI_PERMISSION_DENIED' : 'WHAPI_PUBLISH_FAILED';
         const status = res.status === 400 || res.status === 401 || res.status === 402 || res.status === 403 || res.status === 429 ? res.status : 502;
         return err(code, mapped.message, status, attempt);
       }
@@ -188,10 +188,10 @@ export async function POST(request: NextRequest) {
       if (!res.ok) {
         const errBody = await res.text().catch(() => '');
         const mapped = whapiError(res.status, errBody, 'sending video');
-        if (mapped.code === 'WHAPI_COMMUNITY_PARENT') {
-          return err(mapped.code, mapped.message, 400, attempt);
+        if (mapped.code === 'WHAPI_COMMUNITY_PARENT' || mapped.code === 'WHAPI_PERMISSION_DENIED') {
+          return err(mapped.code, mapped.message, res.status === 403 ? 403 : 400, attempt);
         }
-        const code = mapped.code !== 'WHAPI_REQUEST_FAILED' ? mapped.code : res.status === 401 ? 'WHAPI_UNAUTHORIZED' : res.status === 415 ? 'WHAPI_UNSUPPORTED_MEDIA' : 'WHAPI_PUBLISH_FAILED';
+        const code = mapped.code !== 'WHAPI_REQUEST_FAILED' ? mapped.code : res.status === 401 ? 'WHAPI_UNAUTHORIZED' : res.status === 403 ? 'WHAPI_PERMISSION_DENIED' : res.status === 415 ? 'WHAPI_UNSUPPORTED_MEDIA' : 'WHAPI_PUBLISH_FAILED';
         const status = res.status === 400 || res.status === 401 || res.status === 402 || res.status === 403 || res.status === 415 || res.status === 429 ? res.status : 502;
         return err(code, mapped.message, status, attempt);
       }
@@ -210,10 +210,10 @@ export async function POST(request: NextRequest) {
     if (!res.ok) {
       const errBody = await res.text().catch(() => '');
       const mapped = whapiError(res.status, errBody, 'sending image');
-      if (mapped.code === 'WHAPI_COMMUNITY_PARENT') {
-        return err(mapped.code, mapped.message, 400, attempt);
+      if (mapped.code === 'WHAPI_COMMUNITY_PARENT' || mapped.code === 'WHAPI_PERMISSION_DENIED') {
+        return err(mapped.code, mapped.message, res.status === 403 ? 403 : 400, attempt);
       }
-      const code = mapped.code !== 'WHAPI_REQUEST_FAILED' ? mapped.code : res.status === 401 ? 'WHAPI_UNAUTHORIZED' : res.status === 415 ? 'WHAPI_UNSUPPORTED_MEDIA' : 'WHAPI_PUBLISH_FAILED';
+      const code = mapped.code !== 'WHAPI_REQUEST_FAILED' ? mapped.code : res.status === 401 ? 'WHAPI_UNAUTHORIZED' : res.status === 403 ? 'WHAPI_PERMISSION_DENIED' : res.status === 415 ? 'WHAPI_UNSUPPORTED_MEDIA' : 'WHAPI_PUBLISH_FAILED';
       const status = res.status === 400 || res.status === 401 || res.status === 402 || res.status === 403 || res.status === 415 || res.status === 429 ? res.status : 502;
       return err(code, mapped.message, status, attempt);
     }

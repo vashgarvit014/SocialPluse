@@ -42,6 +42,9 @@ export function whapiError(status: number, body: string, context: string): Whapi
     return { code: 'WHAPI_UNAUTHORIZED', message: `Whapi authentication failed during ${context} (401). Check WHAPI_API_TOKEN.${suffix}` };
   }
   if (status === 403) {
+    if (/group-announce-not-admin/i.test(combined)) {
+      return { code: 'WHAPI_PERMISSION_DENIED', message: `You are not an admin of this announcement group — only admins can post to community announcement groups. Make this number an admin in WhatsApp, or choose a regular group (e.g. from All groups).${suffix}` };
+    }
     return { code: 'WHAPI_PERMISSION_DENIED', message: `Whapi denied permission during ${context} (403).${suffix}` };
   }
   if (status === 402) {

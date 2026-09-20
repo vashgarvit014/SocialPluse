@@ -109,6 +109,12 @@ function formatHashtags(tags: string[]): string {
     .join(' ');
 }
 
+// Strip a trailing hashtag block (e.g. "\n\n#tag1 #tag2") so we never
+// publish hashtags twice when `content` already contains them.
+function stripTrailingHashtags(s: string): string {
+  return s.replace(/\n+\s*(#[A-Za-z0-9_]+\s*)+$/g, '').trimEnd();
+}
+
 // Calendar helpers — all operate in local time so "today"/day buckets match the viewer's clock.
 function startOfWeekLocal(d: Date): Date {
   const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -631,9 +637,14 @@ export default function SocialMediaManager() {
         fetch('/api/whapi/groups?count=500&offset=0'),
       ]);
       const commData = await commRes.json().catch(() => ({}));
-      if (!commRes.ok || !commData.success) throw new Error(commData.message || 'WhatsApp communities could not be loaded.');
       const allData = await allRes.json().catch(() => ({}));
-      const communityGroups: Array<{ id: string; name: string; participantsCount: number; type: string; source: 'community' | 'group' }> = Array.isArray(commData.communities)
+      // Communities is slow (8-22s for 13 subgroups fetches) — don't let it block groups.
+      // If it fails, show groups anyway and warn.
+      let commOk = commRes.ok && !!commData.success;
+      if (!commOk) {
+        console.warn('[loadWhapiGroups] communities failed, showing groups only:', commData?.message || commRes.status);
+      }
+      const communityGroups: Array<{ id: string; name: string; participantsCount: number; type: string; source: 'community' | 'group' }> = (commOk && Array.isArray(commData.communities))
         ? commData.communities.map((c: { announcementGroupId: string; name: string; announcementGroupName?: string; participantsCount?: number }) => ({
           id: c.announcementGroupId,
           name: c.name || c.announcementGroupName || 'WhatsApp Community',
@@ -670,17 +681,16 @@ export default function SocialMediaManager() {
             source: 'group' as const,
           }] as const;
         }));
-      // Reconcile: the communities endpoint falls back to echoing every
-      // regular group as `announcement_group` when Whapi omits `is_parent`
-      // flags (e.g. right after a reconnect/resync). When /groups typing says
-      // `group` for the same id + name, trust /groups — otherwise genuine
-      // announcement mappings would be buried and mislabeled.
+      // Reconcile: keep REAL communities (participantsCount > 0 from /communities)
+      // as Community entries and dedupe them out of the regular list. Only collapse
+      // the old fallback-echo case (count 0 + same name) back to a regular group.
       const mergedCommunities = communityGroups.map(c => {
         const r = regularById.get(c.id);
         if (!r) return c;
         regularById.delete(c.id);
         const cCount = c.participantsCount || 0;
         const rCount = r.participantsCount || 0;
+        if (cCount > 0) return { ...c, participantsCount: Math.max(cCount, rCount) };
         if (r.type === 'group' && (cCount === 0 || c.name === r.name)) return r;
         return { ...c, participantsCount: Math.max(cCount, rCount) };
       });
@@ -691,9 +701,10 @@ export default function SocialMediaManager() {
         ...[...regularById.values()].sort(byName),
       ];
       setWhapiGroups(groups);
-      // Auto-select first sendable group if none selected (skip community parents / single-member)
+      // Auto-select first sendable group if none selected (skip community parents only —
+      // Whapi /groups list returns participants_count=0 for all groups, so count can't gate this)
       if (groups.length && !whapiSelectedGroupId) {
-        const sendable = groups.find((g) => g.type === 'announcement_group' || (g.type === 'group' && (g.participantsCount ?? 0) >= 2));
+        const sendable = groups.find((g) => g.type !== 'community');
         setWhapiSelectedGroupId((sendable || groups[0]).id);
       }
       return groups;
@@ -757,7 +768,8 @@ export default function SocialMediaManager() {
       setPublishResultType('error'); setShowToast(true); setTimeout(() => setShowToast(false), 4000); return;
     }
     const _selGroup = whapiGroups.find(g => g.id === whapiSelectedGroupId);
-    if (_selGroup && (_selGroup.type === 'community' || (_selGroup.participantsCount ?? 0) < 2)) {
+    // Only true community parents are unsendable (Whapi list returns count 0 for all groups).
+    if (_selGroup && _selGroup.type === 'community') {
       setPublishResult('This chat cannot receive messages directly. Select its announcement group instead.');
       setPublishResultType('error'); setShowToast(true); setTimeout(() => setShowToast(false), 4000); return;
     }
@@ -776,13 +788,16 @@ export default function SocialMediaManager() {
       const mediaForWhapi = publishMediaList.slice(0, 1);
       // If no explicit media but we have a generatedImage, include it
       const effectiveMedia = mediaForWhapi.length ? mediaForWhapi : (generatedImage ? [{ id: 'gen', url: generatedImage, type: 'image' as const }] : []);
-      const text = content.trim() || platformContent[activePreviewPlatform]?.caption || '';
+      const rawText = content.trim() || platformContent[activePreviewPlatform]?.caption || '';
+      const baseText = stripTrailingHashtags(rawText);
+      const tags = platformContent[activePreviewPlatform]?.hashtags || [];
+      const text = baseText ? (tags.length ? `${baseText}\n\n${formatHashtags(tags)}` : baseText) : rawText;
       const res = await fetch('/api/whatsapp/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           announcementGroupId: whapiSelectedGroupId,
-          text: text ? `${text}${platformContent[activePreviewPlatform]?.hashtags?.length ? '\n\n' + formatHashtags(platformContent[activePreviewPlatform].hashtags) : ''}` : text,
+          text,
           mediaList: effectiveMedia,
           attemptId,
         }),
@@ -800,8 +815,9 @@ export default function SocialMediaManager() {
         if (code === 'WHAPI_UNAUTHORIZED') msg = 'WhatsApp connection needs attention. Reconnect and try again.';
         else if (code === 'WHAPI_GROUP_NOT_FOUND') msg = 'Selected WhatsApp chat was not found. Refresh and try again.';
         else if (code === 'WHAPI_TRIAL_LIMIT') msg = 'This WhatsApp connection cannot publish to that chat yet. Please contact your SocialPulse admin.';
+        else if (code === 'WHAPI_PERMISSION_DENIED') msg = data.message || 'You are not an admin of this announcement group — only admins can post there. Choose a regular group from All groups, or make this number an admin in WhatsApp.';
         else if (code === 'WHAPI_COMMUNITY_PARENT') msg = data.message || 'This chat cannot receive messages directly. Select its announcement group instead.';
-        else if (code === 'WHAPI_BAD_REQUEST') msg = 'WhatsApp could not publish this post. Check the chat and message.';
+        else if (code === 'WHAPI_BAD_REQUEST') msg = data.message || 'WhatsApp could not publish this post. Check the chat and message.';
         else if (code === 'WHAPI_UNSUPPORTED_MEDIA') msg = 'This media type is not supported for WhatsApp publishing yet.';
         setPublishResult(msg);
         setPublishResultType('error');
@@ -1147,7 +1163,7 @@ export default function SocialMediaManager() {
       generatedImage: post.imageUrl || '', generatedVideo: post.videoUrl || '',
       isCarousel: !!post.isCarousel, carouselSlideIds: (post.editorState?.carouselSlideIds as string[]) || media.map(m => m.id),
       draftId: post.id.startsWith('legacy:') ? undefined : post.id,
-      activeTab: 'studio', wizardState: { ...((post.editorState?.wizardState as Record<string, unknown>) || {}), currentStep: schedule ? 6 : 3 },
+            activeTab: 'studio', wizardState: { ...((post.editorState?.wizardState as Record<string, unknown>) || {}), currentStep: schedule ? 8 : 3 },
       scheduleDate: post.scheduledAt ? localDateKey(new Date(post.scheduledAt)) : '',
       scheduleTime: post.scheduledAt ? new Date(post.scheduledAt).toTimeString().slice(0, 5) : '',
     } as unknown as SavedDraft);
@@ -1366,13 +1382,23 @@ export default function SocialMediaManager() {
     const startedAt = Date.now();
     while (Date.now() - startedAt < MAX_WAIT_MS) {
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-      const res = await fetch(`/api/generate-image?jobId=${encodeURIComponent(jobId)}`);
-      if (!res.ok) throw new Error('Lost track of the image job — please try again.');
+      let res: Response;
+      try {
+        res = await fetch(`/api/generate-image?jobId=${encodeURIComponent(jobId)}`);
+      } catch {
+        continue; // transient network hiccup — retry next poll
+      }
+      if (res.status === 404) {
+        // Job lost (e.g. dev server restarted and in-memory jobs cleared).
+        // Don't throw as unhandled error — return as normal UI error.
+        return { status: 'error', message: 'Server restarted and lost the pending image job — please click Generate again.' };
+      }
+      if (!res.ok) continue; // transient — retry
       const data = await res.json();
       if (data.status === 'pending') continue;
       return data;
     }
-    throw new Error('Image generation is taking unusually long — please try again.');
+    return { status: 'error', message: 'Image generation is taking unusually long — please try again.' };
   };
 
   const generateImageFromPrompt = async (promptText: string): Promise<MediaItem | null> => {
@@ -1405,6 +1431,15 @@ export default function SocialMediaManager() {
       const item: MediaItem = { id: Date.now().toString(36)+Math.random().toString(36).slice(2,4), url: data.image, type: 'image', name: 'generated' };
       setMediaItems(prev => [...prev, item]);
       setGeneratedImage(data.image);
+      // Fresh, unburned bytes — drop any stale pre-logo original/flag for
+      // 'gen' so overlays show and future burns start from this exact image.
+      delete originalMediaRef.current['gen'];
+      setBurnedLogoIds(prev => {
+        if (!prev['gen']) return prev;
+        const next = { ...prev };
+        delete next['gen'];
+        return next;
+      });
       setGeneratedVideo('');
       setMediaType('image');
       setIsGeneratingImage(false);
@@ -1803,10 +1838,27 @@ export default function SocialMediaManager() {
     setIsCarousel(false);
     setMediaItems([]); setGeneratedImage(''); setGeneratedVideo(''); setMediaType(null);
   };
+  // Removes only the current AI-generated hero visual (gallery items sharing
+  // its URL go too); uploads and the generated video are left untouched.
+  const clearGeneratedImage = () => {
+    const url = generatedImage;
+    if (url) setMediaItems(prev => prev.filter(m => m.url !== url));
+    setGeneratedImage('');
+  };
 
-  // Burns reflect a fixed position/size/opacity — any change invalidates them,
-  // so the preview overlay takes over again instead of showing a doubled logo.
+  // Burns reflect a fixed position/size/opacity — a user-initiated geometry
+  // change invalidates them, so revert burned items to their clean originals
+  // and let the live overlay take over at the new geometry (never stack,
+  // never double). Draft restores and mounts must NOT trigger this.
+  const geometryTouchedRef = useRef(false);
   useEffect(() => {
+    if (!geometryTouchedRef.current) return;
+    geometryTouchedRef.current = false;
+    const originals = originalMediaRef.current;
+    if (Object.keys(originals).length > 0) {
+      setMediaItems(prev => prev.map(m => (originals[m.id] && originals[m.id] !== m.url ? { ...m, url: originals[m.id] } : m)));
+      if (originals['gen']) setGeneratedImage(prev => (prev && prev !== originals['gen'] ? originals['gen'] : prev));
+    }
     setBurnedLogoIds({});
   }, [logoPosition, logoScale, logoOpacity]);
 
@@ -1961,9 +2013,29 @@ export default function SocialMediaManager() {
       return next;
     });
   };
-  // Brand Logo card "Remove": clears the logo image (burned-in copies keep
-  // their burns — same behavior as the logo dialog's Remove button).
-  const clearLogo = () => { setLogoImage(''); };
+  // Brand Logo card "Remove" + logo dialog Remove: clears the logo image AND
+  // restores pre-logo originals, so no branded pixels remain anywhere.
+  const clearLogo = () => { setLogoImage(''); restoreBurnedMedia(); };
+
+  // Undo a previous "Apply to All Slides": swap burned items back to their
+  // stashed pre-logo originals and clear their burned flags. Removing the
+  // brand logo alone cannot erase already-burned pixels.
+  const restoreBurnedMedia = () => {
+    const originals = originalMediaRef.current;
+    const ids = Object.keys(originals);
+    if (!ids.length) return;
+    setMediaItems(prev => prev.map(m => (originals[m.id] && originals[m.id] !== m.url ? { ...m, url: originals[m.id] } : m)));
+    if (originals['gen']) setGeneratedImage(prev => (prev && prev !== originals['gen'] ? originals['gen'] : prev));
+    setBurnedLogoIds(prev => {
+      const next = { ...prev };
+      ids.forEach(id => { delete next[id]; });
+      return next;
+    });
+    originalMediaRef.current = {};
+    setLogoTargetId(null);
+    setPublishResult('Original visuals restored — burned-in logos removed.');
+    setPublishResultType('success'); setShowToast(true); setTimeout(() => setShowToast(false), 4000);
+  };
 
   // Logo handling — ffmpeg-style, respects selected aspectRatio
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2146,13 +2218,26 @@ export default function SocialMediaManager() {
         }
         setPublishResult(`Logo applied to ${done} image${done === 1 ? '' : 's'}${scopeNote} at ${logoPosition} (${Math.round(logoScale * 100)}%)`);
       } else if (generatedImage) {
-        const base: MediaItem = { id: 'gen', url: originalMediaRef.current['gen'] || generatedImage, type: 'image' };
+        // Stable gallery id so re-applies REPLACE the branded copy in place
+        // (never duplicate it), and the clean original is keyed by that id
+        // (never stack a new logo onto already-branded bytes, never lose it).
+        const GEN_ID = 'gen-logo';
+        const baseUrl = originalMediaRef.current[GEN_ID] || originalMediaRef.current['gen'] || generatedImage;
+        const base: MediaItem = { id: GEN_ID, url: baseUrl, type: 'image' };
         const out = await processOne(base);
-        if (!originalMediaRef.current['gen']) originalMediaRef.current['gen'] = generatedImage;
+        if (!originalMediaRef.current[GEN_ID]) originalMediaRef.current[GEN_ID] = baseUrl;
+        if (!originalMediaRef.current['gen']) originalMediaRef.current['gen'] = baseUrl;
         setGeneratedImage(out.url);
-        const newId = Date.now().toString(36);
-        setMediaItems([{ id: newId, url: out.url, type: 'image', name: 'with-logo' }]);
-        setBurnedLogoIds(prev => ({ ...prev, [newId]: true }));
+        const genItem: MediaItem = { id: GEN_ID, url: out.url, type: 'image', name: 'with-logo' };
+        setMediaItems(prev => {
+          const i = prev.findIndex(m => m.id === GEN_ID);
+          if (i >= 0) { const next = [...prev]; next[i] = genItem; return next; }
+          return [...prev, genItem];
+        });
+        // Flag BOTH the gallery copy and 'gen': overlays showing generatedImage
+        // directly check burnedLogoIds['gen'] — without it they'd stack a live
+        // logo on top of these burned pixels (double logo).
+        setBurnedLogoIds(prev => ({ ...prev, [GEN_ID]: true, gen: true }));
         setMediaType('image');
         setPublishResult(`Logo applied at ${logoPosition} (${Math.round(logoScale * 100)}%)`);
       } else if (generatedVideo) {
@@ -2261,9 +2346,9 @@ export default function SocialMediaManager() {
           continue;
         }
         const platformData = platformContent[platform];
-        const publishContent = platformData
-          ? platformData.caption + '\n\n' + formatHashtags(platformData.hashtags || [])
-          : content;
+        const finalPublishContent = platformData
+          ? `${stripTrailingHashtags(platformData.caption)}\n\n${formatHashtags(platformData.hashtags || [])}`.trim()
+          : stripTrailingHashtags(content);
         const attemptId = `ui_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}_whatsapp`;
         console.log(`[publish] attempt ${attemptId} → whatsapp ${whapiSelectedGroupId.slice(0, 8)}...`);
         try {
@@ -2271,7 +2356,7 @@ export default function SocialMediaManager() {
           const res = await fetch('/api/whatsapp/publish', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ announcementGroupId: whapiSelectedGroupId, text: publishContent, mediaList: waMedia, attemptId }),
+            body: JSON.stringify({ announcementGroupId: whapiSelectedGroupId, text: finalPublishContent, mediaList: waMedia, attemptId }),
           });
           if (res.ok) {
             results.push('whatsapp: Success');
@@ -2296,8 +2381,8 @@ export default function SocialMediaManager() {
       // so this is always the current edited caption — never a stale value.
       const platformData = platformContent[platform];
       const publishContent = platformData
-        ? platformData.caption + '\n\n' + formatHashtags(platformData.hashtags || [])
-        : content;
+        ? `${stripTrailingHashtags(platformData.caption)}\n\n${formatHashtags(platformData.hashtags || [])}`.trim()
+        : stripTrailingHashtags(content);
       // Unique id per user action + platform. Logged server-side, never a secret.
       const attemptId = `ui_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}_${platform}`;
       console.log(`[publish] attempt ${attemptId} → ${platform}`);
@@ -2579,7 +2664,7 @@ export default function SocialMediaManager() {
             generationError={generationError} setGenerationError={setGenerationError}
             platformContent={platformContent} setPlatformContent={setPlatformContent} activePreviewPlatform={activePreviewPlatform} switchPreviewPlatform={switchPreviewPlatform}
             editorTab={editorTab} setEditorTab={setEditorTab}
-            imagePrompt={imagePrompt}
+            imagePrompt={imagePrompt} setImagePrompt={setImagePrompt} clearGeneratedImage={clearGeneratedImage}
             charCount={charCount} wordCount={wordCount}
             mediaItems={mediaItems}
             removeMediaItem={removeMediaItem} clearAllMedia={clearAllMedia} moveMedia={moveMedia}
@@ -2598,7 +2683,7 @@ export default function SocialMediaManager() {
             logoImage={logoImage} logoPosition={logoPosition} logoScale={logoScale} logoOpacity={logoOpacity}
             setLogoModalOpen={setLogoModalOpen} logoInputRef={logoInputRef}
             logoTargetId={logoTargetId} setLogoTargetId={setLogoTargetId}
-            burnedLogoIds={burnedLogoIds} clearLogo={clearLogo}
+            burnedLogoIds={burnedLogoIds} clearLogo={clearLogo} restoreBurnedMedia={restoreBurnedMedia}
             applyLogoToAllMedia={applyLogoToAllMedia} isApplyingLogo={isApplyingLogo}
             accounts={accounts} togglePlatform={togglePlatform} connectPlatform={connectPlatform} disconnectPlatform={disconnectPlatform}
             setAccountPageId={setAccountPageId}
@@ -3599,14 +3684,14 @@ export default function SocialMediaManager() {
                       <div style={{ fontSize: '11px', color: '#64748b' }}>Respects selected ratio • Click preview to test</div>
                     </div>
                     <button onClick={() => logoInputRef.current?.click()} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', backgroundColor: '#fff', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>Change</button>
-                    <button onClick={() => setLogoImage('')} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fff', color: '#dc2626', fontSize: '11px', cursor: 'pointer' }}>Remove</button>
+                    <button onClick={() => clearLogo()} title="Remove the logo and restore clean originals" style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fff', color: '#dc2626', fontSize: '11px', cursor: 'pointer' }}>Remove</button>
                   </div>
                   {/* Position grid */}
                   <div>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: '#0f172a', marginBottom: '8px', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Position</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
                       {(['top-left','top-right','center','bottom-left','bottom-right'] as const).map(pos => (
-                        <button key={pos} onClick={() => setLogoPosition(pos)} style={{ padding: '10px 6px', borderRadius: '10px', border: logoPosition === pos ? '2px solid #0A66C2' : '1px solid #e2e8f0', backgroundColor: logoPosition === pos ? '#eef2ff' : '#fff', color: logoPosition === pos ? '#0A66C2' : '#475569', fontSize: '11px', fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' as const }}>
+                        <button key={pos} onClick={() => { geometryTouchedRef.current = true; setLogoPosition(pos); }} style={{ padding: '10px 6px', borderRadius: '10px', border: logoPosition === pos ? '2px solid #0A66C2' : '1px solid #e2e8f0', backgroundColor: logoPosition === pos ? '#eef2ff' : '#fff', color: logoPosition === pos ? '#0A66C2' : '#475569', fontSize: '11px', fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' as const }}>
                           {pos.replace('-', ' ')} {logoPosition === pos && '✓'}
                         </button>
                       ))}
@@ -3615,12 +3700,12 @@ export default function SocialMediaManager() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
                       <label style={{ fontSize: '11px', fontWeight: 600, color: '#0f172a' }}>Size: {Math.round(logoScale*100)}%</label>
-                      <input type="range" min={0.1} max={0.35} step={0.02} value={logoScale} onChange={e => setLogoScale(parseFloat(e.target.value))} style={{ width: '100%', marginTop: '6px' }} />
+                        <input type="range" min={0.1} max={0.35} step={0.02} value={logoScale} onChange={e => { geometryTouchedRef.current = true; setLogoScale(parseFloat(e.target.value)); }} style={{ width: '100%', marginTop: '6px' }} />
                       <div style={{ fontSize: '10px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}><span>Small</span><span>Large</span></div>
                     </div>
                     <div>
                       <label style={{ fontSize: '11px', fontWeight: 600, color: '#0f172a' }}>Opacity: {Math.round(logoOpacity*100)}%</label>
-                      <input type="range" min={0.5} max={1} step={0.05} value={logoOpacity} onChange={e => setLogoOpacity(parseFloat(e.target.value))} style={{ width: '100%', marginTop: '6px' }} />
+                        <input type="range" min={0.5} max={1} step={0.05} value={logoOpacity} onChange={e => { geometryTouchedRef.current = true; setLogoOpacity(parseFloat(e.target.value)); }} style={{ width: '100%', marginTop: '6px' }} />
                     </div>
                   </div>
                   {/* Live preview — respects chosen aspectRatio */}
