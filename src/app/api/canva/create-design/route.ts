@@ -4,6 +4,7 @@ import {
   getValidAccessToken,
   setTokenCookies,
   uploadAsset,
+  verifyImageAsset,
   createDesignWithAsset,
   savePendingDesign,
   CanvaError,
@@ -40,9 +41,19 @@ export async function POST(request: NextRequest) {
     if (imageBuffer.length > 25 * 1024 * 1024) {
       return NextResponse.json({ error: { code: 'CANVA_ASSET_UPLOAD_FAILED', message: 'Image is too large for Canva (25MB limit)' } }, { status: 400 });
     }
+    // Forensics (byte size + format sniff only, never pixel data): tells us
+    // whether the browser sent a real image when the canvas comes back empty.
+    const sniff = imageBuffer.subarray(0, 4);
+    const format = sniff[0] === 0x89 && sniff[1] === 0x50 ? 'png' : sniff[0] === 0xff && sniff[1] === 0xd8 ? 'jpeg' : sniff.toString('ascii', 0, 4) === 'RIFF' ? 'webp?' : 'unknown';
+    console.log(`[Canva] upload input: ${Math.round(imageBuffer.length / 1024)}KB format=${format}`);
 
     const assetId = await uploadAsset(accessToken, imageBuffer, String(title || 'SocialPulse image').slice(0, 50));
+    // Make sure the asset is really there as an image before building the
+    // design on it - a phantom asset id yields a blank canvas downstream.
+    const verified = await verifyImageAsset(accessToken, assetId);
+    if (!verified) throw new CanvaError('CANVA_ASSET_UPLOAD_FAILED', 'Canva did not return a usable image asset');
     const design = await createDesignWithAsset(accessToken, assetId, { width: w, height: h }, String(title || 'SocialPulse design'));
+    console.log(`[Canva] design ${design.id} created from asset ${assetId}`);
 
     const correlationState = randomBytes(16).toString('hex');
     savePendingDesign(correlationState, design.id);
@@ -55,7 +66,9 @@ export async function POST(request: NextRequest) {
     const editUrlObj = new URL(design.editUrl);
     editUrlObj.searchParams.set('correlation_state', correlationState);
     const editUrl = editUrlObj.toString();
-    const res = NextResponse.json({ editUrl, success: true });
+    // designId lets the client link the Canva session to a source media item
+    // and update (rather than duplicate) that item on re-import.
+    const res = NextResponse.json({ editUrl, designId: design.id, success: true });
     if (refreshed) setTokenCookies(res, refreshed);
     return res;
   } catch (error) {

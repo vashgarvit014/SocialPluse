@@ -112,6 +112,7 @@ export interface StudioWorkspaceProps {
   aspectRatioMap: Record<string, { width: number; height: number; label: string; icon: string }>;
   // generation
   generateContent: () => void; isGeneratingContent: boolean;
+  regeneratePlatform: (platform: string) => void;
   generateImage: () => void; isGeneratingImage: boolean;
   varyImageFromUrl: (url: string) => void; varyingImageUrl: string | null;
   selectedPlatforms: string[];
@@ -145,6 +146,9 @@ export interface StudioWorkspaceProps {
   reorderCarouselSlide: (activeId: string, overId: string) => void; setMediaCover: (id: string) => void;
   generateCarouselSlides: (count: number) => void; isGeneratingCarousel: boolean;
   carouselSlideCount: number; setCarouselSlideCount: (v: number) => void;
+  // Instagram Trial Reel (checkbox only for IG + single video Reel)
+  trialReel: boolean; setTrialReel: (v: boolean) => void; instagramReelReady: boolean;
+  isSavingDraft: boolean;
   // brand
   logoImage: string; logoPosition: string; logoScale: number; logoOpacity: number;
   setLogoModalOpen: (v: boolean) => void;
@@ -164,6 +168,7 @@ export interface StudioWorkspaceProps {
   openInCanva: (sourceUrl?: string) => void; isSendingToCanva: boolean;
   createInCanva: () => void; isCreatingInCanva: boolean;
   canvaReadyId: string; importFromCanva: () => void; isImportingFromCanva: boolean;
+  canvaSession: { mode: string; openedAt: number } | null;
   disconnectCanva: () => void;
   // publish
   publishToAll: () => void; isPublishing: boolean; publishSuccessFlash: boolean;

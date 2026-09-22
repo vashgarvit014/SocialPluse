@@ -15,8 +15,9 @@ const MAX_AREA = 25_000_000; // Canva custom-design limit (px²)
 // "Create in Canva": starts a BLANK design (no source image) sized to the
 // user's aspect ratio, so they can build with Canva's own tools. Shares the
 // exact return-navigation chain as "Edit in Canva": pending store ->
-// /content-studio -> /api/canva/return -> /canva-return (closes tab) ->
-// explicit "Import from Canva" export. Nothing is imported automatically.
+// /content-studio -> /api/canva/return -> /canva-return (hands the ready id
+// back, stays open) -> explicit "Import from Canva" export. Nothing is
+// imported automatically.
 export async function POST(request: NextRequest) {
   try {
     const { width, height, title } = await request.json();
@@ -42,7 +43,8 @@ export async function POST(request: NextRequest) {
     // query string) so Canva echoes it back in the return JWT.
     const editUrlObj = new URL(design.editUrl);
     editUrlObj.searchParams.set('correlation_state', correlationState);
-    const res = NextResponse.json({ editUrl: editUrlObj.toString(), success: true });
+    // designId lets the client track the Canva session for import linking.
+    const res = NextResponse.json({ editUrl: editUrlObj.toString(), designId: design.id, success: true });
     if (refreshed) setTokenCookies(res, refreshed);
     return res;
   } catch (error) {

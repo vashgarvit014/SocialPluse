@@ -193,10 +193,13 @@ export async function createDesignWithAsset(  accessToken: string,
   size: { width: number; height: number },
   title: string
 ): Promise<{ id: string; editUrl: string }> {
+  // Explicit type (docs-blessed shape): the asset must land ON the canvas,
+  // not just exist in the user's library.
   const res = await fetch(`${API_BASE}/designs`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      type: 'type_and_asset',
       design_type: { type: 'custom', width: size.width, height: size.height },
       asset_id: assetId,
       title,
@@ -207,7 +210,32 @@ export async function createDesignWithAsset(  accessToken: string,
     throw new CanvaError('CANVA_CREATE_DESIGN_FAILED', 'Failed to create the Canva design');
   }
   const { design } = await res.json();
+  if (!design?.id || !design?.urls?.edit_url) {
+    console.error('[Canva] design response missing id/edit_url');
+    throw new CanvaError('CANVA_CREATE_DESIGN_FAILED', 'Canva returned an unusable design');
+  }
   return { id: design.id, editUrl: design.urls.edit_url };
+}
+
+// Verifies an uploaded asset really exists (and is an image) before a design
+// is built on top of it. Returns true when Canva reports image dimensions.
+export async function verifyImageAsset(accessToken: string, assetId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/assets/${assetId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      console.error('[Canva] asset verify failed:', res.status);
+      return false;
+    }
+    const { asset } = await res.json();
+    const ok = asset?.type === 'image' && Number(asset?.thumbnail?.width) > 0;
+    console.log(`[Canva] asset ${assetId}: type=${asset?.type} thumb=${asset?.thumbnail?.width}x${asset?.thumbnail?.height} ok=${ok}`);
+    return ok;
+  } catch (err) {
+    console.error('[Canva] asset verify error:', err instanceof Error ? err.message : err);
+    return false;
+  }
 }
 
 // Blank design (no source asset): same endpoint, design_type only. Per
@@ -263,7 +291,11 @@ export async function exportDesignAsPng(accessToken: string, designId: string): 
 
   const imageRes = await fetch(downloadUrl);
   if (!imageRes.ok) throw new CanvaError('CANVA_EXPORT_FAILED', 'Failed to download the exported design');
-  return Buffer.from(await imageRes.arrayBuffer());
+  const buf = Buffer.from(await imageRes.arrayBuffer());
+  // Forensics: tiny exports (<5KB) are almost always blank canvases.
+  const pngMagic = buf[0] === 0x89 && buf[1] === 0x50;
+  console.log(`[Canva] exported design ${designId}: ${Math.round(buf.length / 1024)}KB png=${pngMagic}${buf.length < 5120 ? ' (SUSPICIOUSLY SMALL - likely blank canvas)' : ''}`);
+  return buf;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw Canva job JSON, shape varies by endpoint
@@ -398,4 +430,12 @@ export function takeReadyDesign(readyId: string): string | null {
   delete sessions.ready[readyId];
   saveSessions(sessions);
   return entry.designId;
+}
+
+// Non-consuming read: lets /api/canva/export verify the readyId BEFORE the
+// (slow, fallible) export runs, and only consume it after the export
+// succeeds - so a failed import keeps its readyId and "Retry Import" works.
+export function peekReadyDesign(readyId: string): string | null {
+  const sessions = loadSessions();
+  return sessions.ready[readyId]?.designId ?? null;
 }

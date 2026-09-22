@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import StudioWorkspace from './studio-workspace';
-import PostPreview from './post-preview';
+import SchedulerCalendar from './scheduler-calendar';
+import ConnectPlatforms from './connect-platforms';
 import { newestDrafts, postMedia, type PostRecord } from '@/lib/posts';
 import { returnStore } from '@/lib/editor-return';
 
@@ -76,30 +77,6 @@ function PlatformIcon({ platform, size = 16 }: { platform: string; size?: number
   }
 }
 
-// Shared nav/filter pill — flat + bordered at rest (matches the app's existing
-// filter-chip language), with a hover lift and an indigo-tinted active state.
-function PillButton({ active, onClick, children, icon }: { active?: boolean; onClick: () => void; children: React.ReactNode; icon?: string }) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      aria-pressed={active}
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '8px 16px', borderRadius: '999px', fontSize: '12px', fontWeight: 600,
-        border: active ? '2px solid #6366f1' : hover ? '1px solid #c7d2fe' : '1px solid #e2e8f0',
-        backgroundColor: active ? '#eef2ff' : hover ? '#f8fafc' : '#fff',
-        color: active ? '#6366f1' : hover ? '#4338ca' : '#475569',
-        cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.18s',
-        boxShadow: active ? '0 2px 8px rgba(99,102,241,0.15)' : hover ? '0 2px 6px rgba(15,23,42,0.08)' : 'none',
-        transform: hover && !active ? 'translateY(-1px)' : 'none',
-      }}
-    >{icon && <span aria-hidden>{icon}</span>}{children}</button>
-  );
-}
-
 // Prefixes each tag with a single "#", stripping any the AI already included
 // so tags never render doubled up (e.g. "##AutoLaunch2024").
 function formatHashtags(tags: string[]): string {
@@ -113,6 +90,13 @@ function formatHashtags(tags: string[]): string {
 // publish hashtags twice when `content` already contains them.
 function stripTrailingHashtags(s: string): string {
   return s.replace(/\n+\s*(#[A-Za-z0-9_]+\s*)+$/g, '').trimEnd();
+}
+
+// PERMANENT RULE: WhatsApp posts must NEVER contain hashtags. Trailing-only
+// stripping is not enough (inline #tags survive edits) — every WhatsApp send
+// path must use this full strip instead.
+function stripAllHashtags(s: string): string {
+  return s.replace(/#[A-Za-z0-9_]+/g, ' ').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // Calendar helpers — all operate in local time so "today"/day buckets match the viewer's clock.
@@ -150,11 +134,14 @@ function getPostMedia(post: { imageUrl?: string; videoUrl?: string; mediaUrl?: s
   return { url, type: isVideo ? 'video' as const : url ? 'image' as const : null, isVideo, list: url ? [{id:'0',url,type:isVideo?'video':'image'} as MediaItem] : [], count: url?1:0, videoCount: isVideo?1:0, imageCount: isVideo?0:(url?1:0) };
 }
 
-export interface MediaItem { id: string; url: string; type: 'image' | 'video'; name?: string; altText?: string }
+export interface MediaItem { id: string; url: string; type: 'image' | 'video'; name?: string; altText?: string; source?: string; canvaDesignId?: string; sourceMediaId?: string; importedAt?: number }
+// Tracks one Canva editor outing: which design, which SocialPulse media item
+// it came from (edit flow), how it was started, and when. Never holds tokens.
+export interface CanvaSession { designId: string; sourceMediaId: string | null; mode: 'edit' | 'create'; openedAt: number; importedAt?: number }
 export default function SocialMediaManager() {
   const [wizardState, setWizardState] = useState<Record<string, unknown>>({});
   const [draftId, setDraftId] = useState<string | undefined>();
-  const [plannerView, setPlannerView] = useState<'preview' | 'calendar' | 'timeline'>('preview');
+
   const [cancelTarget, setCancelTarget] = useState<{ id: string; redirectHome?: boolean } | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [rescheduleTarget, setRescheduleTarget] = useState<PostRecord | null>(null);
@@ -176,6 +163,11 @@ export default function SocialMediaManager() {
   // CAROUSEL container path (2–10, public URLs only).
   const [isCarousel, setIsCarousel] = useState(false);
   const [carouselSlideIds, setCarouselSlideIds] = useState<string[]>([]);
+  // Instagram Trial Reel intent: only meaningful for Instagram + a single
+  // video (which publishes as a Reel). Shown nowhere else; cleared the
+  // moment the post stops being an Instagram Reel. Never silently posted as
+  // a normal Reel — the publish route diverts trial posts to the trial seam.
+  const [trialReel, setTrialReel] = useState(false);
   const [carouselSlideCount, setCarouselSlideCount] = useState(4); // Generate-N-slides helper size
   const [isGeneratingCarousel, setIsGeneratingCarousel] = useState(false);
   const [topicDragOver, setTopicDragOver] = useState(false);
@@ -214,6 +206,8 @@ export default function SocialMediaManager() {
   const [isSendingToCanva, setIsSendingToCanva] = useState(false);
   const [isImportingFromCanva, setIsImportingFromCanva] = useState(false);
   const [canvaReadyId, setCanvaReadyId] = useState('');
+  const [canvaSession, setCanvaSession] = useState<CanvaSession | null>(null);
+  const [canvaLastImportedReadyId, setCanvaLastImportedReadyId] = useState('');
   const [showToast, setShowToast] = useState(false);
   const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
   const [justConnectedPlatform, setJustConnectedPlatform] = useState<string | null>(null);
@@ -224,9 +218,36 @@ export default function SocialMediaManager() {
   const [scheduleTime, setScheduleTime] = useState('');
   const [allPosts, setAllPosts] = useState<Array<PostRecord & { scheduledAt: string }>>([]);
   const [isScheduling, setIsScheduling] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'studio' | 'scheduler' | 'analytics' | 'media' | 'drafts'>('studio');
-  const [schedulerFilter, setSchedulerFilter] = useState<'all' | 'pending' | 'published' | 'failed' | 'cancelled'>('all');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'studio' | 'scheduler' | 'analytics' | 'media' | 'drafts' | 'connect'>('studio');
+  const [schedulerFilter, setSchedulerFilter] = useState<'all' | 'pending' | 'published' | 'failed' | 'cancelled' | 'drafts'>('pending');
   const [calendarWeekStart, setCalendarWeekStart] = useState<Date>(() => startOfWeekLocal(new Date()));
+  const [calView, setCalView] = useState<'week' | 'month' | 'list'>('month');
+  const [calMonth, setCalMonth] = useState<Date>(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
+  const [previewPost, setPreviewPost] = useState<PostRecord | null>(null);
+  // Auto-jump drafts calendar to week containing most recent draft if current week empty
+  useEffect(() => {
+    if (schedulerFilter !== 'drafts' && schedulerFilter !== 'all') return;
+    const drafts = newestDrafts([...allPosts.filter(p => ['draft','cancelled'].includes(p.status)), ...legacyDrafts]);
+    if (!drafts.length) return;
+    const byDay: Record<string, typeof drafts> = {};
+    drafts.forEach(post => {
+      const raw = (post as any).previousScheduledAt || post.updatedAt || post.createdAt || '';
+      const k = raw ? localDateKey(new Date(raw)) : '';
+      if (!k) return;
+      if (!byDay[k]) byDay[k] = [];
+      byDay[k].push(post);
+    });
+    const hasInWeek = calendarDays.some(d => (byDay[localDateKey(d)] || []).length > 0);
+    if (!hasInWeek) {
+      const mostRecent = drafts[0];
+      const raw = (mostRecent as any).previousScheduledAt || mostRecent.updatedAt || mostRecent.createdAt;
+      if (raw) {
+        const d = new Date(raw);
+        setCalendarWeekStart(startOfWeekLocal(d));
+        setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+      }
+    }
+  }, [schedulerFilter, allPosts, legacyDrafts]);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const timePickerRef = useRef<HTMLDivElement>(null);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
@@ -234,7 +255,7 @@ export default function SocialMediaManager() {
   const topicFileInputRef = useRef<HTMLInputElement>(null);
   const [platformContent, setPlatformContent] = useState<Record<string, { caption: string; hashtags: string[] }>>({});
   const [imagePrompt, setImagePrompt] = useState('');
-  const [activePreviewPlatform, setActivePreviewPlatform] = useState('');
+  const [activePreviewPlatform, setActivePreviewPlatform] = useState('linkedin');
   const [generationError, setGenerationError] = useState('');
   // Safety-filter popup: the image model refused the prompt (not an outage).
   const [safetyBlockedOpen, setSafetyBlockedOpen] = useState(false);
@@ -279,16 +300,17 @@ export default function SocialMediaManager() {
     mediaSkipped?: boolean; savedAt: number;
     wizardState?: Record<string, unknown>; activeTab?: typeof activeTab; draftId?: string;
     isCarousel?: boolean; carouselSlideIds?: string[]; carouselSlideCount?: number;
+    trialReel?: boolean;
     scheduleDate?: string; scheduleTime?: string; editorTab?: 'edit' | 'preview';
-    canvaReadyId?: string; path?: string;
+    canvaReadyId?: string; canvaSession?: CanvaSession | null; canvaLastImportedReadyId?: string; path?: string;
   }
   const captureEditor = (): SavedDraft => ({
     prompt, tone, imageStyle, aspectRatio, content, platformContent, imagePrompt,
     activePreviewPlatform, selectedPlatforms, mediaItems, topicMediaItems,
     generatedImage, generatedVideo, mediaType, originals: originalMediaRef.current,
     burnedLogoIds, logoImage, logoPosition, logoScale, logoOpacity, savedAt: Date.now(),
-    wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCount,
-    scheduleDate, scheduleTime, editorTab, canvaReadyId,
+    wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCount, trialReel,
+    scheduleDate, scheduleTime, editorTab, canvaReadyId, canvaSession, canvaLastImportedReadyId,
     path: window.location.pathname + window.location.search + window.location.hash,
   });
   const notify = (message: string, error = false) => {
@@ -304,8 +326,11 @@ export default function SocialMediaManager() {
     !!(d.prompt?.trim() || d.content?.trim() || d.mediaItems?.length || d.topicMediaItems?.length || d.generatedImage || d.generatedVideo);
 
   // Runs first on mount (declared before the autosaver below): offer restore.
+  // Skipped for Canva return-navigation landings (?correlation_jwt=): that
+  // tab is about to relay to /api/canva/return, never a workspace.
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has('editor_return')) return;
+    if (new URLSearchParams(window.location.search).has('correlation_jwt')) return;
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
@@ -349,7 +374,7 @@ export default function SocialMediaManager() {
       }
     }, 800);
     return () => clearTimeout(t);
-  }, [oauthRestoring, wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCount, scheduleDate, scheduleTime, editorTab, canvaReadyId, restorePromptOpen, prompt, tone, imageStyle, aspectRatio, content, platformContent, imagePrompt, activePreviewPlatform, selectedPlatforms, mediaItems, topicMediaItems, generatedImage, generatedVideo, mediaType, burnedLogoIds, logoImage, logoPosition, logoScale, logoOpacity]);
+  }, [oauthRestoring, wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCount, trialReel, scheduleDate, scheduleTime, editorTab, canvaReadyId, canvaSession, canvaLastImportedReadyId, restorePromptOpen, prompt, tone, imageStyle, aspectRatio, content, platformContent, imagePrompt, activePreviewPlatform, selectedPlatforms, mediaItems, topicMediaItems, generatedImage, generatedVideo, mediaType, burnedLogoIds, logoImage, logoPosition, logoScale, logoOpacity]);
 
   const restoreEditor = (d: SavedDraft | null) => {
     if (d) {
@@ -371,8 +396,10 @@ export default function SocialMediaManager() {
       setWizardState(d.wizardState || {}); setDraftId(d.draftId);
       setActiveTab(d.activeTab || 'studio'); setIsCarousel(!!d.isCarousel);
       setCarouselSlideIds(d.carouselSlideIds || []); setCarouselSlideCount(d.carouselSlideCount || 4);
+      setTrialReel(!!d.trialReel);
       setScheduleDate(d.scheduleDate || ''); setScheduleTime(d.scheduleTime || '');
       setEditorTab(d.editorTab || 'preview'); setCanvaReadyId(d.canvaReadyId || '');
+      setCanvaSession(d.canvaSession || null); setCanvaLastImportedReadyId(d.canvaLastImportedReadyId || '');
       if (d.mediaSkipped) {
         setPublishResult('Previous work restored (images were too large to keep and were skipped).');
         setPublishResultType('success'); setShowToast(true); setTimeout(() => setShowToast(false), 4000);
@@ -463,8 +490,19 @@ export default function SocialMediaManager() {
         // falls back to whatever single account the vault holds, so this
         // self-heals a tab whose localStorage never saw the OAuth redirect
         // (same reasoning as the Facebook check below).
-        fetch(linkedinAccount?.userId ? `/api/linkedin/status?userId=${encodeURIComponent(linkedinAccount.userId)}` : '/api/linkedin/status')
-          .then(res => res.json())
+        // A cached userId can ALSO go stale the other way: disconnect /
+        // reconnect cycles mint a new vault id while the browser still holds
+        // the old one, and the scoped check then reports "disconnected" even
+        // though the vault holds a live account - leaving Publish permanently
+        // disabled with "Connect first". So a scoped miss retries once
+        // without the id (server falls back to its held account).
+        const fetchStatusWithFallback = <T,>(base: string, cachedUserId?: string): Promise<T> =>
+          fetch(cachedUserId ? `${base}?userId=${encodeURIComponent(cachedUserId)}` : base)
+            .then(res => res.json() as Promise<T>)
+            .then(data => (((data as unknown as { connected?: boolean }).connected || !cachedUserId)
+              ? data
+              : fetch(base).then(r => r.json() as Promise<T>)));
+        fetchStatusWithFallback<{ connected: boolean; userId?: string; name?: string; email?: string }>('/api/linkedin/status', linkedinAccount?.userId)
           .then((data: { connected: boolean; userId?: string; name?: string; email?: string }) => {
             if (!data.connected || !data.userId) return; // stale/expired/nothing stored - stays out of the list
             const base = linkedinAccount?.userId === data.userId ? linkedinAccount : undefined;
@@ -482,8 +520,7 @@ export default function SocialMediaManager() {
         // what lets this self-heal when the OAuth redirect landed on a
         // different tab/origin than the one currently open, instead of
         // requiring a matching cached entry to even attempt the check.
-        fetch(facebookAccount?.userId ? `/api/facebook/status?userId=${encodeURIComponent(facebookAccount.userId)}` : '/api/facebook/status')
-          .then(res => res.json())
+        fetchStatusWithFallback<{ connected: boolean; userId?: string; name?: string; pages?: Array<{ id: string; name: string }> }>('/api/facebook/status', facebookAccount?.userId)
           .then((data: { connected: boolean; userId?: string; name?: string; pages?: Array<{ id: string; name: string }> }) => {
             if (!data.connected || !data.userId) return; // stale/expired/nothing stored - stays out of the list
             const base = facebookAccount?.userId === data.userId ? facebookAccount : undefined;
@@ -502,8 +539,7 @@ export default function SocialMediaManager() {
         // check needs no separate OAuth redirect to have landed; it just
         // needs Facebook to be connected with the right scopes. Same
         // fallback-to-any-account pattern as the Facebook check above.
-        fetch(instagramAccount?.userId ? `/api/instagram/status?userId=${encodeURIComponent(instagramAccount.userId)}` : '/api/instagram/status')
-          .then(res => res.json())
+        fetchStatusWithFallback<{ connected: boolean; userId?: string; username?: string; igUserId?: string; pageId?: string }>('/api/instagram/status', instagramAccount?.userId)
           .then((data: { connected: boolean; userId?: string; username?: string; igUserId?: string; pageId?: string }) => {
             if (!data.connected || !data.userId) return; // Facebook not connected, or no Page has Instagram linked
             setAccounts(prev => {
@@ -789,9 +825,11 @@ export default function SocialMediaManager() {
       // If no explicit media but we have a generatedImage, include it
       const effectiveMedia = mediaForWhapi.length ? mediaForWhapi : (generatedImage ? [{ id: 'gen', url: generatedImage, type: 'image' as const }] : []);
       const rawText = content.trim() || platformContent[activePreviewPlatform]?.caption || '';
-      const baseText = stripTrailingHashtags(rawText);
-      const tags = platformContent[activePreviewPlatform]?.hashtags || [];
-      const text = baseText ? (tags.length ? `${baseText}\n\n${formatHashtags(tags)}` : baseText) : rawText;
+      const isWhapp = activePreviewPlatform === 'whatsapp';
+      // WhatsApp: no hashtags ever — strip every #tag anywhere in the text.
+      const text = isWhapp
+        ? stripAllHashtags(rawText)
+        : (() => { const baseText = stripTrailingHashtags(rawText); const tags = platformContent[activePreviewPlatform]?.hashtags || []; return baseText ? (tags.length ? `${baseText}\n\n${formatHashtags(tags)}` : baseText) : rawText; })();
       const res = await fetch('/api/whatsapp/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -861,6 +899,18 @@ export default function SocialMediaManager() {
 
     const params = new URLSearchParams(window.location.search);
     if (params.has('editor_return')) return;
+    // Canva's portal Return URL points at the bare domain, so the editor's
+    // return navigation lands HERE (not /content-studio) with
+    // ?correlation_jwt=... Relay it to /api/canva/return, which verifies the
+    // JWT, marks the design ready, and lands this tab on /canva-return - the
+    // original SocialPulse tab (the opener) receives the ready id via
+    // postMessage and never moves. Without this relay the JWT is ignored and
+    // the tab sits on a fresh Step 1 with a restore prompt.
+    const correlationJwt = params.get('correlation_jwt');
+    if (correlationJwt) {
+      window.location.replace(`/api/canva/return?correlation_jwt=${encodeURIComponent(correlationJwt)}`);
+      return;
+    }
     const canvaConnectedParam = params.get('canva_connected');
     const canvaNameParam = params.get('canva_name');
     const canvaReadyParam = params.get('canva_ready');
@@ -928,30 +978,43 @@ export default function SocialMediaManager() {
     } catch { /* ignore */ }
   };
 
-  // No auto-polling: due scheduled posts publish only via explicit "Check now"
-  // (manual trigger in Scheduler). See checkDuePosts below.
   useEffect(() => {
     loadScheduledPosts();
   }, []);
 
   const [isCheckingDue, setIsCheckingDue] = useState(false);
-  const checkDuePosts = async () => {
-    setIsCheckingDue(true);
+  const checkDuePosts = async (silent = false) => {
+    if (!silent) setIsCheckingDue(true);
     try {
       const res = await fetch('/api/scheduler/check', { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       await loadScheduledPosts();
-      const n = typeof data.publishedCount === 'number' ? data.publishedCount : 0;
-      setPublishResult(n > 0 ? `Published ${n} due post${n === 1 ? '' : 's'}` : 'No due posts to publish');
-      setPublishResultType('success');
+      if (!silent) {
+        const n = typeof data.publishedCount === 'number' ? data.publishedCount : 0;
+        setPublishResult(n > 0 ? `Published ${n} due post${n === 1 ? '' : 's'}` : 'No due posts to publish');
+        setPublishResultType('success');
+      }
     } catch {
-      setPublishResult('Failed to check due posts');
-      setPublishResultType('error');
+      if (!silent) {
+        setPublishResult('Failed to check due posts');
+        setPublishResultType('error');
+      }
     }
-    setShowToast(true);
-    setIsCheckingDue(false);
-    setTimeout(() => setShowToast(false), 4000);
+    if (!silent) {
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 4000);
+    }
+    if (!silent) setIsCheckingDue(false);
   };
+
+  // Auto-publish: poll every 60s and on tab visible. Manual "Check now" stays.
+  // Auto polls are silent (no toast/spinner) — internal only.
+  useEffect(() => {
+    const id = setInterval(() => { if (!document.hidden) void checkDuePosts(true); }, 60_000);
+    const onVisible = () => { if (!document.hidden) void checkDuePosts(true); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
+  }, []);
 
   useEffect(() => {
     if (!timePickerOpen) return;
@@ -1048,6 +1111,7 @@ export default function SocialMediaManager() {
           mediaUrls: allMediaUrls,
           mediaList: publishMediaList,
           isCarousel: isCarousel && carouselValidation.valid ? true : undefined,
+          trialReel: trialReel && instagramReelReady ? true : undefined,
           platforms: connectedSelected,
           accounts: accountsData,
           scheduledAt,
@@ -1130,16 +1194,19 @@ export default function SocialMediaManager() {
     setIsRescheduling(false);
   };
 
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const saveFullDraft = async () => {
-    if (draftSavingRef.current) return false;
+    if (draftSavingRef.current) { notify('Save already in progress — please wait a moment.'); return false; }
     const cancelling = allPosts.some(post => post.id === draftId && ['pending', 'scheduled'].includes(post.status));
-    if (cancelling && !window.confirm('Cancel this scheduled post?')) return false;
+    if (cancelling && !window.confirm('Cancel this scheduled post?')) { notify('Draft save cancelled — nothing was changed.'); return false; }
     draftSavingRef.current = true;
+    setIsSavingDraft(true);
     try {
       const res = await fetch('/api/scheduler', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         id: draftId, status: 'draft', content, platforms: selectedPlatforms,
         imageUrl: generatedImage, videoUrl: generatedVideo, mediaList: publishMediaList,
         mediaUrls: publishMediaList.map(m => m.url), isCarousel, platformContent,
+        trialReel: trialReel && instagramReelReady ? true : undefined,
         source: mediaItems.some(m => m.name === 'generated') ? 'AI Generated' : 'Manual Draft',
         editorState: captureEditor(),
       }) });
@@ -1147,12 +1214,12 @@ export default function SocialMediaManager() {
       setDraftId(data.post.id); await loadScheduledPosts(); notify(cancelling ? 'Post cancelled and moved to Drafts.' : 'Draft saved.');
       return true;
     } catch (e) { notify(e instanceof Error ? e.message : 'Draft could not be saved', true); return false; }
-    finally { draftSavingRef.current = false; }
+    finally { draftSavingRef.current = false; setIsSavingDraft(false); }
   };
 
   const cancelPreview = async () => {
     const saved = await saveFullDraft();
-    if (saved) setActiveTab('drafts');
+    if (saved) { setActiveTab('scheduler'); setSchedulerFilter('drafts'); }
     return saved;
   };
 
@@ -1162,6 +1229,7 @@ export default function SocialMediaManager() {
       selectedPlatforms: post.platforms, mediaItems: (post.editorState?.mediaItems as MediaItem[]) || media,
       generatedImage: post.imageUrl || '', generatedVideo: post.videoUrl || '',
       isCarousel: !!post.isCarousel, carouselSlideIds: (post.editorState?.carouselSlideIds as string[]) || media.map(m => m.id),
+      trialReel: (post as PostRecord).trialReel === true,
       draftId: post.id.startsWith('legacy:') ? undefined : post.id,
             activeTab: 'studio', wizardState: { ...((post.editorState?.wizardState as Record<string, unknown>) || {}), currentStep: schedule ? 8 : 3 },
       scheduleDate: post.scheduledAt ? localDateKey(new Date(post.scheduledAt)) : '',
@@ -1183,6 +1251,18 @@ export default function SocialMediaManager() {
       }
       notify('Draft deleted.');
     } catch (e) { notify(e instanceof Error ? e.message : 'Draft deletion failed', true); }
+  };
+
+  const duplicatePost = async (post: PostRecord) => {
+    try {
+      const res = await fetch('/api/scheduler', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        status: 'draft', content: post.content, platforms: post.platforms,
+        imageUrl: post.imageUrl, videoUrl: post.videoUrl, mediaList: post.mediaList, mediaUrls: post.mediaUrls,
+        isCarousel: post.isCarousel, platformContent: post.platformContent, source: 'Duplicated',
+      }) });
+      const data = await res.json(); if (!res.ok) throw new Error(data.error);
+      await loadScheduledPosts(); notify('Duplicated to Drafts.');
+    } catch (e) { notify(e instanceof Error ? e.message : 'Duplication failed', true); }
   };
 
   const loadLegacyDrafts = () => {
@@ -1308,9 +1388,14 @@ export default function SocialMediaManager() {
   };
 
   const togglePlatform = (platform: string) => {
-    setSelectedPlatforms(prev =>
-      prev.includes(platform) ? prev.filter(p => p !== platform) : [...prev, platform]
-    );
+    const next = selectedPlatforms.includes(platform)
+      ? selectedPlatforms.filter(p => p !== platform)
+      : [...selectedPlatforms, platform];
+    setSelectedPlatforms(next);
+    // Keep the active preview platform inside the selection so Preview,
+    // caption editor and publish never show an unselected platform.
+    // LinkedIn is the default preview whenever it is selected.
+    setActivePreviewPlatform(cur => (next.includes(cur) ? cur : (next.includes('linkedin') ? 'linkedin' : (next[0] || ''))));
   };
 
   // Facebook Page picker: switches the publishing target within the
@@ -1359,13 +1444,54 @@ export default function SocialMediaManager() {
       }
       setPlatformContent(data.platforms);
       setImagePrompt(data.image_prompt || '');
-      const firstPlatform = genPlatforms[0];
+      // LinkedIn is the default preview whenever it was selected.
+      const firstPlatform = genPlatforms.includes('linkedin') ? 'linkedin' : genPlatforms[0];
       if (data.platforms[firstPlatform]) {
         setContent(data.platforms[firstPlatform].caption + '\n\n' + formatHashtags(data.platforms[firstPlatform].hashtags || []));
         setActivePreviewPlatform(firstPlatform);
       }
     } catch (err) {
       setGenerationError(err instanceof Error ? err.message : 'Failed to generate content');
+    }
+    setIsGeneratingContent(false);
+  };
+
+  // Regenerate ONE platform only and merge it into the existing map — other
+  // platforms' captions/hashtags are never touched.
+  const regeneratePlatform = async (platform: string) => {
+    if (!selectedPlatforms.includes(platform)) {
+      setGenerationError('Select the platform in Step 2 before regenerating it.');
+      return;
+    }
+    if (!prompt.trim() && topicMediaItems.length===0 && mediaItems.length===0 && !generatedImage && !generatedVideo) {
+      setGenerationError('Please enter a topic or attach an image/video before generating.');
+      return;
+    }
+    setGenerationError('');
+    setIsGeneratingContent(true);
+    try {
+      const refImages = [...topicMediaItems.filter(m=>m.type==='image'), ...mediaItems.filter(m=>m.type==='image')].slice(0, 4);
+      const originalImage = refImages[0]?.url || generatedImage;
+      const imageDataListForAPI = refImages.length
+        ? await Promise.all(refImages.map(m => getCompressedForAPI(m.url)))
+        : originalImage ? [await getCompressedForAPI(originalImage)] : [];
+      const imageDataForAPI = imageDataListForAPI[0];
+      const res = await fetch('/api/generate-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, tone, platforms: [platform], hasImage: imageDataListForAPI.length > 0, imageData: imageDataForAPI, imageDataList: imageDataListForAPI }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to regenerate content');
+      if (!data.platforms?.[platform]) throw new Error('Invalid response from AI. Please try again.');
+      const entry = data.platforms[platform];
+      setPlatformContent(prev => ({ ...prev, [platform]: entry }));
+      if (data.image_prompt) setImagePrompt(data.image_prompt);
+      if (activePreviewPlatform === platform) {
+        setContent(entry.caption + '\n\n' + formatHashtags(entry.hashtags || []));
+      }
+    } catch (err) {
+      setGenerationError(err instanceof Error ? err.message : 'Failed to regenerate content');
     }
     setIsGeneratingContent(false);
   };
@@ -1502,6 +1628,13 @@ export default function SocialMediaManager() {
     return { valid: true, reason: '' };
   })();
   const publishMediaList = (isCarousel ? carouselSlides : (postHasVideo ? mediaItems : [...mediaItems, ...topicImagesForPost])).slice(0, 9);
+  // Instagram Reel shape: Instagram selected + a single video (which the
+  // Instagram route publishes with media_type REELS). Photo posts, carousels
+  // and other platforms never qualify — the Trial option stays hidden there.
+  const instagramReelReady = selectedPlatforms.includes('instagram') && !isCarousel &&
+    (publishMediaList.length > 0 ? publishMediaList[0]?.type === 'video' : !!generatedVideo);
+  // Clear a stale Trial flag the moment the post stops being an IG Reel.
+  useEffect(() => { if (!instagramReelReady && trialReel) setTrialReel(false); }, [instagramReelReady]);
 
   // Carousel slide selection helpers (order = swipe order on every platform).
   const toggleCarouselSlide = (id: string) => {
@@ -1554,36 +1687,51 @@ export default function SocialMediaManager() {
   // the first image already in the media list.
   const canvaSourceImage = generatedImage || mediaItems.find(m => m.type === 'image')?.url || '';
 
-  // "Edit in Canva": upload the current image as a Canva asset, create a  // design pre-loaded with it (sized to SocialPulse's own aspect ratio
-  // setting), then open the editor in a NEW TAB - this tab stays put. When
-  // the user clicks the editor's Return button, /content-studio ->
-  // /api/canva/return verifies the JWT and lands the new tab on
-  // /canva-return, which postMessages the ready id back here and closes
-  // itself. Import stays an explicit button press (never automatic).
-  // Handle to the Canva editor tab opened by "Edit in Canva" (reused while open).
+  // "Edit in Canva": upload the current image as a Canva asset, create a
+  // design pre-loaded with it (sized to SocialPulse's own aspect ratio
+  // setting), then open the editor in a NEW TAB - this tab stays put and is
+  // NEVER navigated away. When the user finishes in Canva, /content-studio ->
+  // /api/canva/return verifies the JWT and lands the editor tab on
+  // /canva-return, which postMessages the ready id back here (the Canva tab
+  // is left open for the user to close). Import stays an explicit button
+  // press (never automatic).
+  // Handle to the Canva editor tab opened by "Edit/Create in Canva" (reused while open).
   const canvaTabRef = useRef<Window | null>(null);
 
-  // Shared new-tab opener for Canva editor URLs (never navigates this tab
-  // away): opens synchronously in the click handler so popup blockers allow
-  // it, then points it at the editor. No `noopener` - the return page uses
-  // window.opener.postMessage to hand the ready design back, then closes.
-  const openCanvaEditUrl = async (editUrl: string) => {
-    if (!canvaTabRef.current || canvaTabRef.current.closed) canvaTabRef.current = window.open('about:blank', '_blank');
-    const id = crypto.randomUUID();
+  // Opens (or reuses) the Canva editor tab SYNCHRONOUSLY inside the click
+  // stack - before any await - so popup blockers allow it. Returns the tab,
+  // or null when blocked: this tab is then NEVER navigated away, the user is
+  // simply told to allow popups and click again (all work stays intact).
+  const prepareCanvaTab = (): Window | null => {
+    if (canvaTabRef.current && !canvaTabRef.current.closed) { canvaTabRef.current.focus?.(); return canvaTabRef.current; }
+    const tab = window.open('about:blank', '_blank');
+    if (!tab) {
+      notify('Popup was blocked — allow popups for this site, then click again. Your work is safe.', true);
+      return null;
+    }
+    canvaTabRef.current = tab;
     try {
+      tab.document.write('<!doctype html><title>Opening Canva…</title><p style="font-family:sans-serif;color:#64748B;padding:24px">Opening the Canva editor…</p>');
+    } catch { /* ignore */ }
+    return tab;
+  };
+
+  // Points a prepared tab at the Canva editor URL after the design was
+  // created server-side. About:blank is same-origin, so its sessionStorage
+  // survives the editor round trip even if the external site severs opener.
+  const navigateCanvaTab = async (tab: Window, editUrl: string): Promise<boolean> => {
+    try {
+      const id = crypto.randomUUID();
       await returnStore('put', id, captureEditor());
-      if (canvaTabRef.current && !canvaTabRef.current.closed) {
-        // About:blank is same-origin. Its sessionStorage survives the editor
-        // round trip even if the external site severs window.opener.
-        try { canvaTabRef.current.sessionStorage.setItem('canva-editor-return', id); } catch { /* Existing editor tab may be cross-origin. Parent remains open. */ }
-        canvaTabRef.current.location.href = editUrl;
-        canvaTabRef.current.focus?.(); return true;
-      }
-      canvaTabRef.current = null;
-      sessionStorage.setItem('canva-editor-return', id);
-      window.location.href = editUrl;
-    } catch { notify('Could not preserve editor state. Canva navigation was stopped.', true); }
-    return false;
+      try { tab.sessionStorage.setItem('canva-editor-return', id); } catch { /* Existing editor tab may be cross-origin. Parent remains open. */ }
+      tab.location.href = editUrl;
+      tab.focus?.();
+      return true;
+    } catch {
+      tab.close();
+      notify('Could not preserve editor state. Canva was not opened; your work is still here.', true);
+      return false;
+    }
   };
 
   const openInCanva = async (sourceUrl?: string) => {
@@ -1595,7 +1743,15 @@ export default function SocialMediaManager() {
     // otherwise the working default: generated image, else first gallery image.
     // Guard: a bare onClick passes its MouseEvent - only a dataURL counts.
     const src = (typeof sourceUrl === 'string' && sourceUrl.startsWith('data:') ? sourceUrl : '') || canvaSourceImage;
-    if (!src) return;
+    if (!src) {
+      setGenerationError('Generate or upload an image first — there is nothing to edit in Canva yet.');
+      return;
+    }
+    // Link the outing to the gallery item being edited (carousel slides keep
+    // their order on re-import because the item id is preserved).
+    const sourceMediaId = mediaItems.find(m => m.type === 'image' && m.url === src)?.id || null;
+    const tab = prepareCanvaTab();
+    if (!tab) return;
 
     setIsSendingToCanva(true);
     setGenerationError('');
@@ -1616,9 +1772,13 @@ export default function SocialMediaManager() {
         if (data.error?.code === 'CANVA_NOT_CONNECTED') setCanvaConnected(false);
         throw new Error(data.error?.message || 'Failed to open design in Canva');
       }
-      openCanvaEditUrl(data.editUrl);
+      if (await navigateCanvaTab(tab, data.editUrl)) {
+        if (data.designId) setCanvaSession({ designId: data.designId, sourceMediaId, mode: 'edit', openedAt: Date.now() });
+        notify('Canva editor opened in a new tab. When you finish editing, return here and press Import from Canva.', false);
+      }
       setIsSendingToCanva(false);
     } catch (err) {
+      try { tab.close(); } catch { /* ignore */ }
       setGenerationError(err instanceof Error ? err.message : 'Failed to open design in Canva');
       setIsSendingToCanva(false);
     }
@@ -1632,6 +1792,8 @@ export default function SocialMediaManager() {
       void connectPlatform('canva');
       return;
     }
+    const tab = prepareCanvaTab();
+    if (!tab) return;
     setIsCreatingInCanva(true);
     setGenerationError('');
     try {
@@ -1650,20 +1812,31 @@ export default function SocialMediaManager() {
         if (data.error?.code === 'CANVA_NOT_CONNECTED') setCanvaConnected(false);
         throw new Error(data.error?.message || 'Failed to create design in Canva');
       }
-      openCanvaEditUrl(data.editUrl);
+      if (await navigateCanvaTab(tab, data.editUrl)) {
+        if (data.designId) setCanvaSession({ designId: data.designId, sourceMediaId: null, mode: 'create', openedAt: Date.now() });
+        notify('Canva editor opened in a new tab. When you finish your design, return here and press Import from Canva.', false);
+      }
       setIsCreatingInCanva(false);
     } catch (err) {
+      try { tab.close(); } catch { /* ignore */ }
       setGenerationError(err instanceof Error ? err.message : 'Failed to create design in Canva');
       setIsCreatingInCanva(false);
     }
   };
 
-  // "Import from Canva": exports the design the user just edited and adds it
-  // as a new media item - it never overwrites generatedImage/mediaItems
-  // automatically, matching how uploads and AI-generated images both land as
-  // additions rather than silent replacements.
+  // "Import from Canva": exports the design the user just edited and merges
+  // it into the SAME media pipeline as uploads/AI images (never a separate
+  // subsystem). A repeat import of the same design updates the linked item in
+  // place - same id, so carousel order/selection, ALT text and branding links
+  // survive - instead of stacking duplicates. The readyId is only consumed
+  // server-side after a successful export, so a failed import keeps working
+  // for "Retry Import".
   const importFromCanva = async () => {
-    if (!canvaReadyId) return;
+    if (!canvaReadyId || isImportingFromCanva) return;
+    if (canvaLastImportedReadyId === canvaReadyId) {
+      notify('This Canva design was already imported.', false);
+      return;
+    }
     setIsImportingFromCanva(true);
     setGenerationError('');
     try {
@@ -1677,9 +1850,23 @@ export default function SocialMediaManager() {
         if (data.error?.code === 'CANVA_NOT_CONNECTED') setCanvaConnected(false);
         throw new Error(data.error?.message || 'Failed to import design from Canva');
       }
-      const item: MediaItem = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 4), url: data.image, type: 'image', name: 'canva-edit' };
-      setMediaItems(prev => [...prev, item]);
+      const designId = canvaSession?.designId || '';
+      const now = Date.now();
+      const sourceMediaId = canvaSession?.sourceMediaId ?? undefined;
+      const existing = designId ? mediaItems.find(m => m.canvaDesignId === designId) : undefined;
+      if (existing) {
+        setMediaItems(prev => prev.map(m => m.id === existing.id
+          ? { ...m, url: data.image, name: 'canva-edit', source: 'canva', canvaDesignId: designId, sourceMediaId: sourceMediaId ?? m.sourceMediaId, importedAt: now }
+          : m));
+        notify('Canva design updated in your gallery (same item, no duplicate).', false);
+      } else {
+        const item: MediaItem = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 4), url: data.image, type: 'image', name: 'canva-edit', source: 'canva', canvaDesignId: designId || undefined, sourceMediaId, importedAt: now };
+        setMediaItems(prev => [...prev, item]);
+        notify('Edited image imported from Canva ✓', false);
+      }
+      setCanvaLastImportedReadyId(canvaReadyId);
       setCanvaReadyId('');
+      setCanvaSession(prev => prev ? { ...prev, importedAt: now } : prev);
     } catch (err) {
       setGenerationError(err instanceof Error ? err.message : 'Failed to import design from Canva');
     }
@@ -1693,6 +1880,8 @@ export default function SocialMediaManager() {
     setCanvaConnected(false);
     setCanvaName('');
     setCanvaReadyId('');
+    setCanvaSession(null);
+    setCanvaLastImportedReadyId('');
   };
 
   const [whatsappDisconnecting, setWhatsappDisconnecting] = useState(false);
@@ -2301,6 +2490,8 @@ export default function SocialMediaManager() {
         return 'Facebook media upload failed. The post was NOT published (no text-only fallback).';
       case 'DUPLICATE_PUBLISH_REQUEST':
         return 'Duplicate ignored — this publish is already in flight.';
+      case 'INSTAGRAM_TRIAL_REEL_NOT_SUPPORTED':
+        return 'Trial Reel publishing is not connected yet (Meta approval pending). Turn the Trial option off to publish as a normal Reel.';
       case 'LINKEDIN_PUBLISH_FAILED':
       default:
         return fallback || 'Failed to publish to LinkedIn.';
@@ -2346,9 +2537,10 @@ export default function SocialMediaManager() {
           continue;
         }
         const platformData = platformContent[platform];
+        // WhatsApp: no hashtags ever — strip every #tag anywhere in the text.
         const finalPublishContent = platformData
-          ? `${stripTrailingHashtags(platformData.caption)}\n\n${formatHashtags(platformData.hashtags || [])}`.trim()
-          : stripTrailingHashtags(content);
+          ? stripAllHashtags(platformData.caption)
+          : stripAllHashtags(content);
         const attemptId = `ui_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}_whatsapp`;
         console.log(`[publish] attempt ${attemptId} → whatsapp ${whapiSelectedGroupId.slice(0, 8)}...`);
         try {
@@ -2402,6 +2594,7 @@ export default function SocialMediaManager() {
             mediaUrls: allUrls,
             mediaList: publishMediaList,
             isCarousel: isCarousel && carouselValidation.valid ? true : undefined,
+            trialReel: platform === 'instagram' && trialReel && instagramReelReady ? true : undefined,
             userId: account.userId,
             pageId: account.pageId || undefined,
             attemptId,
@@ -2476,26 +2669,23 @@ export default function SocialMediaManager() {
     studio: { title: 'Content Studio', subtitle: 'Turn your ideas into impactful social media content with AI' },
     scheduler: { title: 'Scheduler', subtitle: 'Manage upcoming and past scheduled posts' },
     analytics: { title: 'Analytics', subtitle: 'Track your publishing performance' },
-    media: { title: 'Media Library', subtitle: 'All uploaded and generated media in one place' },
+    media: { title: 'Asset Gallery', subtitle: 'All uploaded and generated media in one place' },
     drafts: { title: 'Drafts', subtitle: 'Continue where you left off' },
+    connect: { title: 'Connect Platforms', subtitle: 'Connect and manage the accounts you use with SocialPulse.' },
   };
 
-  const filteredSchedulerPosts = (schedulerFilter === 'all' ? allPosts.filter(p => !['draft', 'cancelled'].includes(p.status)) : allPosts.filter(p => p.status === schedulerFilter))
-    .slice()
-    .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt));
-
-  // Week-calendar data for Scheduler > Pending
+  // Week-calendar data shared by all Scheduler tabs (see SchedulerCalendar).
+  // calView/calMonth persist across tabs; Month is the default view.
+  const goCalToday = () => {
+    setCalendarWeekStart(startOfWeekLocal(new Date()));
+    const n = new Date();
+    setCalMonth(new Date(n.getFullYear(), n.getMonth(), 1));
+  };
   const calendarDays = Array.from({ length: 7 }, (_, i) => addDaysLocal(calendarWeekStart, i));
   const todayKey = localDateKey(new Date());
-  const postsByDay: Record<string, typeof pendingPosts> = {};
-  pendingPosts.forEach(p => {
-    const key = localDateKey(new Date(p.scheduledAt));
-    if (!postsByDay[key]) postsByDay[key] = [];
-    postsByDay[key].push(p);
-  });
   const weekStartLabel = calendarDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const weekEndSameMonth = calendarDays[0].getMonth() === calendarDays[6].getMonth();
-  const weekEndLabel = calendarDays[6].toLocaleDateString('en-US', weekEndSameMonth ? { day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+  const weekEndSameMonth = calendarDays[0].getMonth() === calendarDays[6].getMonth() && calendarDays[0].getFullYear() === calendarDays[6].getFullYear();
+  const weekEndLabel = weekEndSameMonth ? `${calendarDays[6].getDate()}, ${calendarDays[6].getFullYear()}` : calendarDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const weekRangeLabel = `${weekStartLabel} - ${weekEndLabel}`;
 
   return (
@@ -2548,8 +2738,8 @@ export default function SocialMediaManager() {
             { icon: '✏️', label: 'Content Studio', tab: 'studio' as const },
             { icon: '📅', label: 'Scheduler', tab: 'scheduler' as const },
             { icon: '📈', label: 'Analytics', tab: 'analytics' as const },
-            { icon: '🖼️', label: 'Media Library', tab: 'media' as const },
-            { icon: '📝', label: 'Drafts', tab: 'drafts' as const },
+            { icon: '🖼️', label: 'Asset Gallery', tab: 'media' as const },
+            { icon: '🔗', label: 'Connect Platforms', tab: 'connect' as const },
           ].map(item => {
             const active = activeTab === item.tab;
             const isStudio = item.tab === 'studio';
@@ -2655,7 +2845,7 @@ export default function SocialMediaManager() {
             tone={tone} setTone={setTone}
             imageStyle={imageStyle} setImageStyle={setImageStyle}
             aspectRatio={aspectRatio} setAspectRatio={setAspectRatio} aspectRatioMap={aspectRatioMap}
-            generateContent={generateContent} isGeneratingContent={isGeneratingContent}
+            generateContent={generateContent} isGeneratingContent={isGeneratingContent} regeneratePlatform={regeneratePlatform}
             generateImage={generateImage} isGeneratingImage={isGeneratingImage}
             varyImageFromUrl={varyImageFromUrl} varyingImageUrl={varyingImageUrl}
             selectedPlatforms={selectedPlatforms}
@@ -2670,6 +2860,7 @@ export default function SocialMediaManager() {
             removeMediaItem={removeMediaItem} clearAllMedia={clearAllMedia} moveMedia={moveMedia}
             handleUploadImage={handleUploadImage} handleDrop={handleDrop}
             isCarousel={isCarousel} setIsCarousel={setIsCarousel}
+            trialReel={trialReel} setTrialReel={setTrialReel} instagramReelReady={instagramReelReady}
             carouselSlides={carouselSlides} carouselValidation={carouselValidation}
             toggleCarouselSlide={toggleCarouselSlide} moveCarouselSlide={moveCarouselSlide} removeCarouselSlide={removeCarouselSlide}
             reorderCarouselSlide={reorderCarouselSlide} setMediaCover={setMediaCover}
@@ -2692,6 +2883,7 @@ export default function SocialMediaManager() {
             openInCanva={openInCanva} isSendingToCanva={isSendingToCanva}
             createInCanva={createInCanva} isCreatingInCanva={isCreatingInCanva}
             canvaReadyId={canvaReadyId} importFromCanva={importFromCanva} isImportingFromCanva={isImportingFromCanva}
+            canvaSession={canvaSession}
             disconnectCanva={disconnectCanva}
             publishToAll={publishToAll} isPublishing={isPublishing} publishSuccessFlash={publishSuccessFlash}
             publishCooldown={publishCooldown}
@@ -2709,12 +2901,23 @@ export default function SocialMediaManager() {
           />
         )}
 
-        {/* Media Library (UI-only view over existing mediaItems + post media) */}
+        {activeTab === 'connect' && (
+          <ConnectPlatforms
+            accounts={accounts} connectPlatform={connectPlatform} disconnectPlatform={disconnectPlatform}
+            whapiConnected={whapiConnected} whapiChannelStatus={whapiChannelStatus} whapiAccountName={whapiAccountName} whapiPhoneMasked={whapiPhoneMasked}
+            whapiGroups={whapiGroups} whapiLoading={whapiLoading} whapiGroupsLoading={whapiGroupsLoading} loadWhapiGroups={loadWhapiGroups} startWhatsAppConnect={startWhatsAppConnect}
+            disconnectWhatsApp={disconnectWhatsApp} whatsappDisconnecting={whatsappDisconnecting}
+            canvaConnected={canvaConnected} canvaName={canvaName} disconnectCanva={disconnectCanva} refreshWhapiStatus={refreshWhapiStatus} refreshCanvaStatus={refreshCanvaStatus}
+            platformColors={platformColors} PlatformIcon={PlatformIcon}
+          />
+        )}
+
+        {/* Asset Gallery (UI-only view over existing mediaItems + post media) */}
         {activeTab === 'media' && (
           <div style={{ padding: 24, flex: 1, display: 'flex', flexDirection: 'column', gap: 16, backgroundColor: '#F7F8FC' }}>
             <div style={{ backgroundColor: '#fff', borderRadius: 14, border: '1px solid #E8EAF1', padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🖼️</div>
-              <div><div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>Media Library</div><div style={{ fontSize: 11, color: '#64748B' }}>{mediaItems.length} session files • {allPosts.filter(p => getPostMedia(p as never).count! > 0).length} posts with media</div></div>
+              <div><div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>Asset Gallery</div><div style={{ fontSize: 11, color: '#64748B' }}>{mediaItems.length} session files • {allPosts.filter(p => getPostMedia(p as never).count! > 0).length} posts with media</div></div>
               <button onClick={() => { setActiveTab('studio'); }} style={{ marginLeft: 'auto', padding: '9px 14px', borderRadius: 9, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', cursor: 'pointer' }}>Open Studio →</button>
             </div>
             <div style={{ backgroundColor: '#fff', borderRadius: 14, border: '1px solid #E8EAF1', padding: 18 }}>
@@ -2732,19 +2935,6 @@ export default function SocialMediaManager() {
             </div>
           </div>
         )}
-
-        {activeTab === 'drafts' && <div style={{ padding: 24, flex: 1 }}>
-          <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>Drafts</h2>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 14px' }}>Sorted by scheduled time (latest first) · legacy browser drafts remain available</p>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <PillButton icon="🗓️" onClick={() => { setActiveTab('scheduler'); setSchedulerFilter('pending'); }}>Scheduled</PillButton>
-            <PillButton icon="✅" onClick={() => { setActiveTab('scheduler'); setSchedulerFilter('published'); }}>Published</PillButton>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 20, marginTop: 20 }}>
-            {newestDrafts([...allPosts, ...legacyDrafts]).map(post => <PostPreview key={post.id} post={post} edit={schedule => editPost(post, schedule)} remove={() => deleteDraft(post)} />)}
-            {!newestDrafts([...allPosts, ...legacyDrafts]).length && <p>No drafts yet. Save a draft in Studio or cancel a schedule.</p>}
-          </div>
-        </div>}
 
         {/* Dashboard — PROFESSIONAL */}
         {activeTab === 'dashboard' && (
@@ -2859,12 +3049,13 @@ export default function SocialMediaManager() {
                 <div style={{ backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
                   <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>🌐</span> Platform Health</span>
-                    <span style={{ fontSize: '11px', color: accounts.length ? '#10b981' : '#94a3b8', fontWeight: 700 }}>{accounts.length}/3 connected</span>
+                    <span style={{ fontSize: '11px', color: (accounts.length + (whapiConnected ? 1 : 0)) ? '#10b981' : '#94a3b8', fontWeight: 700 }}>{(() => { const c = accounts.filter(a => a.connected).length + (whapiConnected ? 1 : 0); return `${c}/4 connected`; })()}</span>
                   </div>
                   <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {['linkedin', 'instagram', 'facebook'].map(platform => {
-                      const isConnected = accounts.some(a => a.platform === platform && a.connected);
-                      const justConnected = justConnectedPlatform === platform;
+                    {(['linkedin', 'instagram', 'facebook', 'whatsapp'] as const).map(platform => {
+                      const isWhapi = platform === 'whatsapp';
+                      const isConnected = isWhapi ? whapiConnected : accounts.some(a => a.platform === platform && a.connected);
+                      const justConnected = justConnectedPlatform === platform || (isWhapi && whapiConnected && justConnectedPlatform === 'whatsapp');
                       return (
                         <div key={platform} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 10px', borderRadius: '10px', backgroundColor: isConnected ? '#f8fafc' : 'transparent', border: `1px solid ${isConnected ? '#e2e8f0' : 'transparent'}`, animation: justConnected ? 'connectRowFlash 1.8s ease-out' : 'none' }}>
                           <div style={{ width: '32px', height: '32px', borderRadius: '10px', backgroundColor: platformColors[platform], color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, boxShadow: isConnected ? '0 2px 8px rgba(0,0,0,0.12)' : 'none', opacity: isConnected ? 1 : 0.45 }}>
@@ -2872,15 +3063,15 @@ export default function SocialMediaManager() {
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a', textTransform: 'capitalize' as const }}>{platform}</div>
-                            <div style={{ fontSize: '11px', color: isConnected ? '#059669' : '#94a3b8', fontWeight: 500 }}>{isConnected ? 'Connected • ready to publish' : 'Not connected'}</div>
+                            <div style={{ fontSize: '11px', color: isConnected ? '#059669' : '#94a3b8', fontWeight: 500 }}>{isConnected ? (isWhapi ? `Connected${whapiPhoneMasked ? ` • ${whapiPhoneMasked}` : ' • ready to publish'}` : 'Connected • ready to publish') : 'Not connected'}</div>
                           </div>
                           <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isConnected ? '#10b981' : '#cbd5e1', boxShadow: isConnected ? '0 0 0 3px rgba(16,185,129,0.15)' : 'none', flexShrink: 0 }} />
                         </div>
                       );
                     })}
                     <div style={{ marginTop: '6px', padding: '10px 12px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px dashed #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>{accounts.length ? 'All set for publishing' : 'Connect LinkedIn to start'}</span>
-                      {!accounts.length && <button onClick={() => setActiveTab('studio')} style={{ fontSize: '11px', fontWeight: 700, color: '#4338ca', background: 'none', border: 'none', cursor: 'pointer' }}>Connect →</button>}
+                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>{(accounts.filter(a => a.connected).length + (whapiConnected ? 1 : 0)) ? 'All set for publishing' : 'Connect a platform to start'}</span>
+                      {!(accounts.filter(a => a.connected).length + (whapiConnected ? 1 : 0)) && <button onClick={() => setActiveTab('studio')} style={{ fontSize: '11px', fontWeight: 700, color: '#4338ca', background: 'none', border: 'none', cursor: 'pointer' }}>Connect →</button>}
                     </div>
                   </div>
                 </div>
@@ -2949,51 +3140,40 @@ export default function SocialMediaManager() {
           </div>
         )}
 
-        {activeTab === 'scheduler' && <nav aria-label="Planner views" style={{ padding: '18px 32px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
-          <PillButton icon="📝" active={false} onClick={() => setActiveTab('drafts')}>Drafts</PillButton>
-          <PillButton icon="🗓️" active={schedulerFilter === 'pending'} onClick={() => setSchedulerFilter('pending')}>Scheduled</PillButton>
-          <PillButton icon="✅" active={schedulerFilter === 'published'} onClick={() => setSchedulerFilter('published')}>Published</PillButton>
-          <span style={{ width: 1, height: 20, backgroundColor: '#e2e8f0', margin: '0 2px' }} />
-          <PillButton icon="👁️" active={plannerView === 'preview'} onClick={() => setPlannerView('preview')}>Preview</PillButton>
-          <PillButton icon="📅" active={plannerView === 'calendar'} onClick={() => { setPlannerView('calendar'); setSchedulerFilter('pending'); }}>Calendar</PillButton>
-          <PillButton icon="📊" active={plannerView === 'timeline'} onClick={() => setPlannerView('timeline')}>Timeline</PillButton>
-        </nav>}
-        {activeTab === 'scheduler' && plannerView === 'preview' && <div style={{ padding: 24, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 20 }}>
-          {filteredSchedulerPosts.map(post => <PostPreview key={post.id} post={post} edit={schedule => editPost(post, schedule)} reschedule={post.status === 'pending' ? () => openReschedule(post) : undefined} cancel={post.status === 'pending' ? () => cancelScheduled(post.id) : undefined} />)}
-          {!filteredSchedulerPosts.length && <p>No posts in this view.</p>}
-        </div>}
-        {/* Scheduler */}
-        {activeTab === 'scheduler' && plannerView !== 'preview' && (
-          <div style={{ padding: '24px 32px', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' as const, alignItems: 'center' }}>
+        {activeTab === 'scheduler' && (
+          <div style={{ padding: '24px 32px', flex: 1, display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div>
+              <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', margin: 0 }}>Scheduler</h2>
+              <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0' }}>Manage your content lifecycle</p>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' as const }}>
               {([
-                { key: 'all', label: 'All', count: allPosts.filter(p => !['draft', 'cancelled'].includes(p.status)).length },
-                { key: 'pending', label: 'Pending', count: pendingPosts.length },
-                { key: 'published', label: 'Published', count: publishedPosts.length },
-                { key: 'failed', label: 'Failed', count: failedPosts.length },
+                { key: 'drafts', label: 'Drafts', icon: '📝', count: newestDrafts([...allPosts.filter(p => ['draft','cancelled'].includes(p.status)), ...legacyDrafts]).length },
+                { key: 'pending', label: 'Scheduled', icon: '🗓️', count: pendingPosts.length },
+                { key: 'published', label: 'Published', icon: '✅', count: publishedPosts.length },
               ] as const).map(f => {
-                const active = schedulerFilter === f.key;
+                const isActive = schedulerFilter === f.key || (f.key==='drafts' && schedulerFilter==='all');
                 return (
                   <button
                     key={f.key}
-                    onClick={() => setSchedulerFilter(f.key)}
+                    onClick={() => setSchedulerFilter(f.key as any)}
                     style={{
-                      padding: '8px 16px', borderRadius: '999px', fontSize: '12px', fontWeight: 600,
-                      border: active ? '2px solid #6366f1' : '2px solid #e2e8f0',
-                      backgroundColor: active ? '#eef2ff' : '#fff', color: active ? '#6366f1' : '#64748b',
-                      cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
+                      padding: '9px 18px', borderRadius: '999px', fontSize: '13px', fontWeight: 600,
+                      border: isActive ? '2px solid #6366f1' : '2px solid #e2e8f0',
+                      backgroundColor: isActive ? '#eef2ff' : '#fff', color: isActive ? '#6366f1' : '#64748b',
+                      cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6
                     }}
                   >
-                    {f.label} <span style={{ opacity: 0.7 }}>({f.count})</span>
+                    <span>{f.icon}</span> {f.label} <span style={{ opacity: 0.7 }}>({f.count})</span>
                   </button>
                 );
               })}
               <button
-                onClick={checkDuePosts}
+                onClick={() => void checkDuePosts()}
                 disabled={isCheckingDue}
                 title="Publish all due scheduled posts now"
                 style={{
-                  marginLeft: 'auto', padding: '8px 16px', borderRadius: '999px', fontSize: '12px', fontWeight: 700,
+                  marginLeft: 'auto', padding: '9px 18px', borderRadius: '999px', fontSize: '12px', fontWeight: 700,
                   border: 'none', background: 'linear-gradient(135deg, #7C3AED, #8B5CF6)', color: '#fff',
                   cursor: isCheckingDue ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                   boxShadow: '0 2px 8px rgba(124,58,237,0.3)', opacity: isCheckingDue ? 0.7 : 1,
@@ -3003,201 +3183,130 @@ export default function SocialMediaManager() {
               </button>
             </div>
 
-            {plannerView === 'calendar' ? (
-              <div style={{ backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                {/* Calendar header */}
-                <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button
-                      onClick={() => setCalendarWeekStart(w => addDaysLocal(w, -7))}
-                      style={{ width: '28px', height: '28px', borderRadius: '50%', border: 'none', backgroundColor: '#f1f5f9', color: '#475569', cursor: 'pointer', fontSize: '13px', fontFamily: 'inherit' }}
-                    >‹</button>
-                    <button
-                      onClick={() => setCalendarWeekStart(startOfWeekLocal(new Date()))}
-                      style={{ padding: '6px 14px', borderRadius: '999px', border: 'none', backgroundColor: '#f1f5f9', color: '#334155', cursor: 'pointer', fontSize: '12px', fontWeight: 600, fontFamily: 'inherit' }}
-                    >Today</button>
-                    <button
-                      onClick={() => setCalendarWeekStart(w => addDaysLocal(w, 7))}
-                      style={{ width: '28px', height: '28px', borderRadius: '50%', border: 'none', backgroundColor: '#f1f5f9', color: '#475569', cursor: 'pointer', fontSize: '13px', fontFamily: 'inherit' }}
-                    >›</button>
-                  </div>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{weekRangeLabel}</span>
-                </div>
+            {(schedulerFilter === 'drafts' || schedulerFilter === 'all') && (
+              <SchedulerCalendar
+                title="Drafts Calendar"
+                headerMeta={`${newestDrafts([...allPosts.filter(p => ['draft','cancelled'].includes(p.status)), ...legacyDrafts]).length} drafts`}
+                posts={newestDrafts([...allPosts.filter(p => ['draft','cancelled'].includes(p.status)), ...legacyDrafts])}
+                dateOf={(p) => (p as unknown as { previousScheduledAt?: string }).previousScheduledAt || p.updatedAt || p.createdAt || ''}
+                toDateKey={(iso) => localDateKey(new Date(iso))}
+                formatTime={(iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                mode="drafts"
+                emptyText="No drafts for this period."
+                days={calendarDays}
+                todayKey={todayKey}
+                dayKeyOf={(d) => localDateKey(d)}
+                weekLabel={weekRangeLabel}
+                view={calView} onViewChange={setCalView}
+                monthAnchor={calMonth}
+                monthLabel={calMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                onPrevMonth={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                onNextMonth={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                onPrevWeek={() => setCalendarWeekStart(w => addDaysLocal(w, -7))}
+                onNextWeek={() => setCalendarWeekStart(w => addDaysLocal(w, 7))}
+                onToday={goCalToday}
+                onPostClick={(post) => setPreviewPost(post)}
+                onEdit={(post) => editPost(post, false)}
+                onSchedule={(post) => editPost(post, true)}
+                onDelete={(post) => deleteDraft(post)}
+                platformColors={platformColors}
+                PlatformIcon={PlatformIcon}
+                getMedia={(post) => { const m = getPostMedia(post as never); return { url: m.url, isVideo: m.isVideo }; }}
+              />
+            )}
 
-                {/* Day headers */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #f1f5f9' }}>
-                  {calendarDays.map((day, idx) => {
-                    const key = localDateKey(day);
-                    const isToday = key === todayKey;
-                    const count = (postsByDay[key] || []).length;
-                    return (
-                      <div key={key} style={{ padding: '12px 6px', textAlign: 'center' as const, borderRight: idx < 6 ? '1px solid #f8fafc' : 'none' }}>
-                        <div style={{ fontSize: '10px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
-                          {day.toLocaleDateString('en-US', { weekday: 'short' })}
-                        </div>
-                        <div style={{
-                          margin: '4px auto 0', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          width: '26px', height: '26px', borderRadius: '50%', fontSize: '13px', fontWeight: 700,
-                          backgroundColor: isToday ? '#0f172a' : 'transparent', color: isToday ? '#fff' : '#334155',
-                        }}>
-                          {day.getDate()}
-                        </div>
-                        {count > 0 && (
-                          <div style={{ marginTop: '4px', fontSize: '10px', fontWeight: 700, color: '#6366f1' }}>
-                            {count} post{count !== 1 ? 's' : ''}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+            {schedulerFilter === 'pending' && (
+              <SchedulerCalendar
+                title="Scheduled Calendar"
+                headerMeta={`${pendingPosts.length} scheduled • ${failedPosts.length} failed`}
+                posts={[...pendingPosts, ...failedPosts]}
+                dateOf={(p) => p.scheduledAt || ''}
+                toDateKey={(iso) => localDateKey(new Date(iso))}
+                formatTime={(iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                mode="scheduled"
+                emptyText="No scheduled posts for this period."
+                days={calendarDays}
+                todayKey={todayKey}
+                dayKeyOf={(d) => localDateKey(d)}
+                weekLabel={weekRangeLabel}
+                view={calView} onViewChange={setCalView}
+                monthAnchor={calMonth}
+                monthLabel={calMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                onPrevMonth={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                onNextMonth={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                onPrevWeek={() => setCalendarWeekStart(w => addDaysLocal(w, -7))}
+                onNextWeek={() => setCalendarWeekStart(w => addDaysLocal(w, 7))}
+                onToday={goCalToday}
+                onPostClick={(post) => setPreviewPost(post)}
+                onReschedule={(post) => openReschedule(post)}
+                onCancel={(id) => cancelScheduled(id)}
+                onEdit={(post) => editPost(post, post.status === 'failed')}
+                onSchedule={(post) => editPost(post, true)}
+                platformColors={platformColors}
+                PlatformIcon={PlatformIcon}
+                getMedia={(post) => { const m = getPostMedia(post as never); return { url: m.url, isVideo: m.isVideo }; }}
+              />
+            )}
 
-                {/* Day columns with post previews */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', minHeight: '180px' }}>
-                  {calendarDays.map((day, idx) => {
-                    const key = localDateKey(day);
-                    const dayPosts = postsByDay[key] || [];
-                    return (
-                      <div key={key} style={{ padding: '10px 6px', borderRight: idx < 6 ? '1px solid #f8fafc' : 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {dayPosts.map(post => {
-                          const m = getPostMedia(post as unknown as { imageUrl?: string; videoUrl?: string; mediaUrl?: string; mediaType?: string; mediaUrls?: string[]; mediaList?: MediaItem[] });
-                          return (
-                          <div key={post.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#fafbfc' }}>
-                            {m.list && m.list.length > 1 ? (
-                              <div style={{ display: 'grid', gridTemplateColumns: m.count! > 2 ? '1fr 1fr' : '1fr 1fr', gap: '2px', height: '54px' }}>
-                                {m.list.slice(0,4).map((mm, idx) => (
-                                  <div key={idx} style={{ position: 'relative', backgroundColor: '#000', overflow: 'hidden' }}>
-                                    {mm.type==='video' ? <video src={mm.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted /> : <img src={mm.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                                    {m.count! >4 && idx===3 && <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+{m.count!-3}</div>}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : m.url ? (m.isVideo ? (
-                              <video src={m.url} style={{ width: '100%', height: '54px', objectFit: 'cover', display: 'block', backgroundColor: '#000' }} muted />
-                            ) : (
-                              <img src={m.url} alt="" style={{ width: '100%', height: '54px', objectFit: 'cover', display: 'block' }} />
-                            )) : null}
-                            {m.type && <div style={{ fontSize: '8px', fontWeight: 700, textAlign: 'center' as const, padding: '2px', backgroundColor: m.isVideo ? '#fef3c7' : '#e0f2fe', color: m.isVideo ? '#92400e' : '#0369a1' }}>{m.count! >1 ? `${m.count} FILES · ${m.videoCount}V ${m.imageCount}I` : m.type.toUpperCase()}</div>}
-                            <div style={{ padding: '8px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '5px' }}>
-                                {post.platforms.map(pl => (
-                                  <span key={pl} style={{ width: '15px', height: '15px', borderRadius: '50%', backgroundColor: platformColors[pl] || '#94a3b8', color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    <PlatformIcon platform={pl} size={8} />
-                                  </span>
-                                ))}
-                                <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                                  {new Date(post.scheduledAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                                </span>
-                              </div>
-                              <div style={{
-                                fontSize: '11px', color: '#334155', lineHeight: 1.4, overflow: 'hidden',
-                                display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as const,
-                              }}>
-                                {post.content.split('\n')[0]}
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
-                                <span style={{ fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '999px', backgroundColor: statusMeta.pending.bg, color: statusMeta.pending.color, textTransform: 'uppercase' as const, letterSpacing: '0.03em' }}>
-                                  Pending
-                                </span>
-                                <span style={{ display: 'flex', gap: '8px' }}>
-                                  <button
-                                    onClick={() => openReschedule(post)}
-                                    style={{ background: 'none', border: 'none', color: '#6366f1', fontSize: '10px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
-                                  >Reschedule</button>
-                                  <button
-                                    onClick={() => cancelScheduled(post.id, { redirectHome: true })}
-                                    style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '10px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
-                                  >Cancel</button>
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div style={{ backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '14px' }}>📅</span>
-                  <span style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>{filteredSchedulerPosts.length} Post{filteredSchedulerPosts.length !== 1 ? 's' : ''}</span>
-                </div>
-                <div style={{ padding: filteredSchedulerPosts.length ? '8px 20px' : '0' }}>
-                  {filteredSchedulerPosts.length === 0 ? (
-                    <div style={{ padding: '48px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '32px', opacity: 0.3 }}>📭</span>
-                      <span style={{ fontSize: '13px', color: '#94a3b8' }}>No {schedulerFilter === 'all' ? '' : schedulerFilter} posts</span>
+            {schedulerFilter === 'published' && (
+              <SchedulerCalendar
+                title="Published Calendar"
+                headerMeta={`${publishedPosts.length} published`}
+                posts={publishedPosts}
+                dateOf={(p) => (p as unknown as { publishedAt?: string }).publishedAt || p.scheduledAt || p.updatedAt || ''}
+                toDateKey={(iso) => localDateKey(new Date(iso))}
+                formatTime={(iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                mode="published"
+                emptyText="No published posts for this period."
+                days={calendarDays}
+                todayKey={todayKey}
+                dayKeyOf={(d) => localDateKey(d)}
+                weekLabel={weekRangeLabel}
+                view={calView} onViewChange={setCalView}
+                monthAnchor={calMonth}
+                monthLabel={calMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                onPrevMonth={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                onNextMonth={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                onPrevWeek={() => setCalendarWeekStart(w => addDaysLocal(w, -7))}
+                onNextWeek={() => setCalendarWeekStart(w => addDaysLocal(w, 7))}
+                onToday={goCalToday}
+                onPostClick={(post) => setPreviewPost(post)}
+                onDuplicate={(post) => duplicatePost(post)}
+                platformColors={platformColors}
+                PlatformIcon={PlatformIcon}
+                getMedia={(post) => { const m = getPostMedia(post as never); return { url: m.url, isVideo: m.isVideo }; }}
+              />
+            )}
+
+            {previewPost && (
+              <div onClick={() => setPreviewPost(null)} style={{ position: 'fixed' as const, inset: 0, backgroundColor: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(2px)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                <div onClick={e => e.stopPropagation()} style={{ backgroundColor: '#fff', borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto' as const, boxShadow: '0 24px 64px rgba(15,23,42,0.3)' }}>
+                  <div style={{ padding: '18px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{previewPost.status === 'published' ? 'Published Post' : previewPost.status === 'failed' ? 'Failed Post' : previewPost.status === 'draft' || previewPost.status === 'cancelled' ? 'Draft' : 'Scheduled Post'}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>{(previewPost.scheduledAt ? new Date(previewPost.scheduledAt) : new Date(previewPost.createdAt || Date.now())).toLocaleString()}</div>
                     </div>
-                  ) : (
-                    filteredSchedulerPosts.map(post => {
-                      const meta = statusMeta[post.status] || statusMeta.pending;
-                      const m = getPostMedia(post as unknown as { imageUrl?: string; videoUrl?: string; mediaUrl?: string; mediaType?: string; mediaUrls?: string[]; mediaList?: MediaItem[] });
-                      return (
-                        <div key={post.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 0', borderBottom: '1px solid #f1f5f9' }}>
-                          {m.count! > 1 ? (
-                            <div style={{ width: '48px', height: '48px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px', flexShrink: 0 }}>
-                              {m.list!.slice(0,4).map((mm,i)=>(
-                                <div key={i} style={{ backgroundColor: '#000', overflow: 'hidden', position: 'relative' }}>
-                                  {mm.type==='video' ? <video src={mm.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted /> : <img src={mm.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                                  {m.count! >4 && i===3 && <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: '9px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+{m.count!-3}</div>}
-                                </div>
-                              ))}
-                            </div>
-                          ) : m.url ? (
-                            m.isVideo ? (
-                              <video src={m.url} style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0', backgroundColor: '#000' }} muted />
-                            ) : (
-                              <img src={m.url} alt="" style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' }} />
-                            )
-                          ) : (
-                            <div style={{ width: '48px', height: '48px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0, opacity: 0.5 }}>📄</div>
-                          )}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '13px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
-                              {post.content.split('\n')[0].substring(0, 70)}
-                            </div>
-                            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span>{new Date(post.scheduledAt).toLocaleString()}</span>
-                              {m.count! >0 && <span style={{ fontSize: '9px', fontWeight: 700, padding: '2px 5px', borderRadius: '4px', backgroundColor: m.videoCount! >0 && m.imageCount! >0 ? '#f3e8ff' : m.isVideo ? '#fef3c7' : '#e0f2fe', color: m.videoCount! >0 && m.imageCount! >0 ? '#7c3aed' : m.isVideo ? '#92400e' : '#0369a1' }}>{m.count! >1 ? `${m.count} files (${m.imageCount}I ${m.videoCount}V)` : m.isVideo ? 'VIDEO' : 'IMAGE'}</span>}
-                              <span style={{ display: 'flex', gap: '4px' }}>
-                                {post.platforms.map(pl => (
-                                  <span key={pl} style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: platformColors[pl] || '#94a3b8', color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <PlatformIcon platform={pl} size={9} />
-                                  </span>
-                                ))}
-                              </span>
-                            </div>
-                          </div>
-                          <span style={{ fontSize: '10px', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', backgroundColor: meta.bg, color: meta.color, flexShrink: 0, textTransform: 'uppercase' as const, letterSpacing: '0.03em' }}>
-                            {meta.label}
-                          </span>
-                          {post.status === 'pending' && (
-                            <span style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                              <button
-                                onClick={() => openReschedule(post)}
-                                style={{ padding: '5px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, border: 'none', backgroundColor: '#eef2ff', color: '#4338ca', cursor: 'pointer', fontFamily: 'inherit' }}
-                              >Reschedule</button>
-                              <button
-                                onClick={() => cancelScheduled(post.id, { redirectHome: true })}
-                                style={{ padding: '5px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, border: 'none', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit' }}
-                              >Cancel</button>
-                            </span>
-                          )}
-                          {post.status === 'publishing' && (
-                            <span style={{ fontSize: '10px', fontWeight: 600, color: '#b45309', flexShrink: 0 }}>Publishing — locked</span>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
+                    <button onClick={() => setPreviewPost(null)} style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', backgroundColor: '#f1f5f9', color: '#64748b', cursor: 'pointer' }}>×</button>
+                  </div>
+                  <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div style={{ fontSize: 13, color: '#0f172a', whiteSpace: 'pre-wrap' as const, lineHeight: 1.6 }}>{previewPost.content}</div>
+                    {(() => { const m = getPostMedia(previewPost as unknown as never); return m.url ? (m.isVideo ? <video src={m.url} style={{ width: '100%', borderRadius: 10 }} controls /> : <img src={m.url} alt="" style={{ width: '100%', borderRadius: 10 }} />) : null; })()}
+                    <div style={{ fontSize: 11, color: '#64748b' }}>Platforms: {previewPost.platforms.join(', ')} • {previewPost.status}{previewPost.status==='failed' && ' • not published'}</div>
+                    {(previewPost as PostRecord).trialReel === true && previewPost.platforms.includes('instagram') && (
+                      <div style={{ fontSize: 11, fontWeight: 800, color: '#7c3aed', backgroundColor: '#f5f3ff', border: '1px solid #ddd6fe', padding: '7px 12px', borderRadius: 8, textAlign: 'center' as const }}>🎬 Trial Reel — shown to non-followers first</div>
+                    )}
+                    {previewPost.status === 'pending' && <div style={{ display: 'flex', gap: 8 }}><button onClick={() => { setPreviewPost(null); openReschedule(previewPost); }} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', backgroundColor: '#eef2ff', color: '#4338ca', fontWeight: 600, cursor: 'pointer' }}>Reschedule</button><button onClick={() => { cancelScheduled(previewPost.id); setPreviewPost(null); }} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 600, cursor: 'pointer' }}>Cancel → Draft</button></div>}
+                    {previewPost.status === 'failed' && <div style={{ display: 'flex', gap: 8 }}><button onClick={() => { editPost(previewPost, true); setPreviewPost(null); }} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', backgroundColor: '#eef2ff', color: '#4338ca', fontWeight: 600, cursor: 'pointer' }}>Edit as Draft</button><button onClick={() => { cancelScheduled(previewPost.id); setPreviewPost(null); }} style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#64748b', cursor: 'pointer' }}>Move to Drafts</button></div>}
+                    {previewPost.status === 'published' && <div style={{ fontSize: 11, color: '#059669', backgroundColor: '#ecfdf5', padding: '8px 12px', borderRadius: 8, textAlign: 'center' as const }}>Read-only • published {new Date(previewPost.scheduledAt || previewPost.createdAt || '').toLocaleString()}</div>}
+                    {(previewPost.status==='draft' || previewPost.status==='cancelled') && <div style={{ display: 'flex', gap: 8 }}><button onClick={() => { editPost(previewPost, true); setPreviewPost(null); }} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Edit / Schedule</button><button onClick={() => { deleteDraft(previewPost); setPreviewPost(null); }} style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}>Delete</button></div>}
+                  </div>
                 </div>
               </div>
             )}
           </div>
         )}
+
+        {/* Analytics */}
 
         {/* Analytics */}
         {activeTab === 'analytics' && (
@@ -3556,6 +3665,13 @@ export default function SocialMediaManager() {
                 </div>
               </div>
 
+              {instagramReelReady && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '11px 13px', borderRadius: '10px', border: `1.5px solid ${trialReel ? '#6366f1' : '#e2e8f0'}`, backgroundColor: trialReel ? '#eef2ff' : '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <input type="checkbox" checked={trialReel} onChange={e => setTrialReel(e.target.checked)} style={{ width: '16px', height: '16px', accentColor: '#6366f1', cursor: 'pointer' }} />
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: trialReel ? '#4338ca' : '#0f172a' }}>Post as Trial Reel</span>
+                </label>
+              )}
+
               <button
                 onClick={schedulePost}
                 disabled={scheduleSuccessFlash || isScheduling || !content.trim() || !scheduleDate || !scheduleTime || selectedPlatforms.length === 0}
@@ -3869,7 +3985,7 @@ export default function SocialMediaManager() {
         }}>
           <span style={{ fontSize: '16px', display: 'inline-block', animation: publishResultType === 'success' ? 'connectCheckPop 0.4s ease-out' : 'none' }}>{publishResultType === 'success' ? '✓' : '✕'}</span>
           <span>{publishResult}</span>
-          {publishResult === 'Post cancelled and moved to Drafts.' && <button onClick={() => { setActiveTab('drafts'); setShowToast(false); }}>View Draft</button>}
+          {publishResult === 'Post cancelled and moved to Drafts.' && <button onClick={() => { setActiveTab('scheduler'); setSchedulerFilter('drafts'); setShowToast(false); }}>View Draft</button>}
           <button
             onClick={() => setShowToast(false)}
             style={{

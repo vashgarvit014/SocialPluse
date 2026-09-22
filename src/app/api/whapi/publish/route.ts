@@ -30,6 +30,23 @@ function isValidGroupId(id: string): boolean {
   return /@g\.us$/.test(trimmed) || trimmed.includes('@g.us');
 }
 
+// Whapi media rules (per their docs): a data: URL must be split into RAW
+// base64 (no data: prefix) + explicit mime_type. Sending the full data URL
+// without mime_type makes image/video/document sends fail.
+function splitDataUrl(url: string): { raw: string; mime: string } | null {
+  const m = /^data:([^;,]+)?(?:;[^;,]+)*;base64,([\s\S]+)$/.exec(url.trim());
+  if (!m) return null;
+  return { raw: m[2].replace(/\s+/g, ''), mime: m[1] || '' };
+}
+
+// Builds { media, mime_type? }: data URLs become raw base64 + mime_type,
+// public https URLs pass through untouched (no mime needed).
+function mediaFields(url: string, fallbackMime: string): { media: string; mime_type?: string } {
+  const parts = splitDataUrl(url);
+  if (!parts) return { media: url };
+  return { media: parts.raw, mime_type: parts.mime || fallbackMime };
+}
+
 // Helper: fetch groups list to validate groupId exists (prevents arbitrary chat IDs)
 async function validateGroupExists(groupId: string, baseUrl: string, token: string): Promise<{ valid: boolean; error?: string }> {
   try {
@@ -153,9 +170,11 @@ export async function POST(request: NextRequest) {
     if (isDocument) {
       // Document: requires media + filename + caption
       const filename = firstMedia.name || 'document.pdf';
+      const ext = (filename.split('.').pop() || '').toLowerCase();
+      const docMime = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'application/octet-stream';
       const payload: Record<string, unknown> = {
         to: cleanGroupId,
-        media: mediaValue,
+        ...mediaFields(mediaValue, docMime),
         caption: caption || undefined,
         filename,
       };
@@ -180,7 +199,7 @@ export async function POST(request: NextRequest) {
       // Video + caption
       const payload: Record<string, unknown> = {
         to: cleanGroupId,
-        media: mediaValue,
+        ...mediaFields(mediaValue, 'video/mp4'),
         caption: caption || undefined,
       };
       console.log(`[whapi/publish] video to ${cleanGroupId.slice(0, 12)}... attempt ${attempt}`);
@@ -202,7 +221,7 @@ export async function POST(request: NextRequest) {
     // Default: image + caption
     const payload: Record<string, unknown> = {
       to: cleanGroupId,
-      media: mediaValue,
+      ...mediaFields(mediaValue, 'image/jpeg'),
       caption: caption || undefined,
     };
     console.log(`[whapi/publish] image to ${cleanGroupId.slice(0, 12)}... attempt ${attempt} caption ${caption.length} chars`);

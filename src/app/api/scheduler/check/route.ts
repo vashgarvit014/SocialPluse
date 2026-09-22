@@ -11,11 +11,15 @@ async function publishPost(post: ScheduledPost, platform: string, account: { acc
   const isVideo = mediaType === 'video' || mediaList?.some(m => m.type === 'video');
   // Stable attempt id per post+platform: concurrent "check now" runs dedupe server-side.
   // Server resolves the OAuth token itself from userId; legacy stored tokens ride along as fallback.
+  const isWhapp = platform === 'whatsapp';
+  // PERMANENT RULE: WhatsApp posts never contain hashtags — strip every
+  // #tag anywhere (trailing-only stripping lets inline tags leak through).
+  const stripAllHashtags = (s: string) => s.replace(/#[A-Za-z0-9_]+/g, ' ').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   const res = await fetch(`${baseUrl}/api/${platform}/publish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      content: post.platformContent?.[platform] ? [post.platformContent[platform].caption, post.platformContent[platform].hashtags.map(t => '#' + t.replace(/^#+/, '')).join(' ')].filter(Boolean).join('\n\n') : post.content,
+      content: post.platformContent?.[platform] ? (isWhapp ? stripAllHashtags(post.platformContent[platform].caption) : [post.platformContent[platform].caption, post.platformContent[platform].hashtags.map(t => '#' + t.replace(/^#+/, '')).join(' ')].filter(Boolean).join('\n\n')) : (isWhapp ? stripAllHashtags(post.content) : post.content),
       imageUrl: !isVideo ? post.imageUrl || mediaUrl : undefined,
       videoUrl: isVideo ? (post as unknown as { videoUrl?: string }).videoUrl || mediaUrl : undefined,
       mediaUrl,
@@ -23,6 +27,7 @@ async function publishPost(post: ScheduledPost, platform: string, account: { acc
       mediaUrls: mediaUrls || (mediaUrl ? [mediaUrl] : undefined),
       mediaList,
       isCarousel: (post as unknown as { isCarousel?: boolean }).isCarousel === true || undefined,
+      trialReel: (post as unknown as { trialReel?: boolean }).trialReel === true ? true : undefined,
       accessToken: account.accessToken,
       userId: account.userId,
       pageId: account.pageId,
@@ -49,20 +54,25 @@ export async function POST() {
       return { ...current, status: 'publishing', updatedAt: new Date().toISOString() };
     }); } catch { continue; }
 
-    let allSuccess = true;
+    let successCount = 0;
+    const failedPlatforms: string[] = [];
     for (const platform of post.platforms) {
       const account = post.accounts.find(a => a.platform === platform);
-      if (!account) { allSuccess = false; continue; }
+      if (!account) { failedPlatforms.push(platform); continue; }
       try {
         const ok = await publishPost(post, platform, account);
-        if (!ok) allSuccess = false;
+        if (ok) successCount++;
+        else failedPlatforms.push(platform);
       } catch {
-        allSuccess = false;
+        failedPlatforms.push(platform);
       }
     }
-
-    updatePost(post.id, current => ({ ...current, status: allSuccess ? 'published' : 'failed', updatedAt: new Date().toISOString() }));
-    if (allSuccess) publishedCount++;
+    const allSuccess = successCount === post.platforms.length;
+    const anySuccess = successCount > 0;
+    // Mark as published if at least one platform delivered (e.g. WhatsApp succeeded but Instagram failed).
+    // Keep failedPlatforms for debugging; FAILED only if nothing delivered.
+    updatePost(post.id, current => ({ ...current, status: anySuccess ? 'published' : 'failed', failedPlatforms: failedPlatforms.length ? failedPlatforms : undefined, updatedAt: new Date().toISOString() } as unknown as ScheduledPost));
+    if (anySuccess) publishedCount++;
   }
 
 

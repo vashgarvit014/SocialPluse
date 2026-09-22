@@ -1,5 +1,6 @@
 import { altPayload, mediaAlt } from '@/lib/alt-capabilities';
 import { prepareInstagramMedia } from '@/lib/instagram-media';
+import { publishInstagramTrialReel } from '@/lib/instagram-trial';
 import { NextRequest, NextResponse } from 'next/server';
 import { getInstagramAccount } from '../../facebook/vault';
 
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
     return err('INSTAGRAM_PUBLISH_FAILED', 'Invalid request body.', 400);
   }
 
-  const { content, imageUrl, videoUrl, mediaUrl, mediaType, mediaUrls, mediaList, isCarousel, userId, pageId, attemptId } = body as {
+  const { content, imageUrl, videoUrl, mediaUrl, mediaType, mediaUrls, mediaList, isCarousel, trialReel, userId, pageId, attemptId } = body as {
     content?: string;
     imageUrl?: string;
     videoUrl?: string;
@@ -85,6 +86,7 @@ export async function POST(request: NextRequest) {
     mediaUrls?: string[];
     mediaList?: Array<{ url?: string; type?: string; altText?: string }>;
     isCarousel?: boolean;
+    trialReel?: boolean;
     userId?: string;
     pageId?: string;
     attemptId?: string;
@@ -123,6 +125,15 @@ export async function POST(request: NextRequest) {
     || typeof videoUrl === 'string';
   if (wantsCarousel && hasVideoInList) {
     return err('INSTAGRAM_CAROUSEL_VIDEO', 'Instagram carousels accept images only — remove the video or switch this post back to a single post.', 400, attempt);
+  }
+  // Trial Reel seam: Instagram Reels only (single video, never carousel,
+  // never photo). Trial posts must NEVER fall through to a normal Reel
+  // publish — route them to the dedicated seam, which declines clearly until
+  // the Meta Trial Reel integration is connected (see lib/instagram-trial).
+  const isSingleVideoReel = !wantsCarousel && (hasVideoInList || resolvedType === 'video');
+  if (trialReel === true && isSingleVideoReel) {
+    const trial = await publishInstagramTrialReel({ content, attemptId: attempt });
+    if (!trial.ok) return err(trial.code, trial.message, trial.status, attempt);
   }
   if (wantsCarousel) {
     let slides = orderedUrls.length > 1 ? orderedUrls : [rawMedia];

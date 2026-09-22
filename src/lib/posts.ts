@@ -5,6 +5,11 @@ export interface PostRecord {
   isCarousel?: boolean; platforms: string[];
   accounts: Array<{ platform: string; accessToken?: string; userId?: string; pageId?: string }>;
   scheduledAt: string | null; status: string; createdAt: string; updatedAt?: string; cancelledAt?: string | null;
+  // Instagram Trial Reel intent: set in the studio when Instagram + a single
+  // video (Reel) is selected. Saved with drafts/scheduled posts, shown as a
+  // badge, and routed to the trial seam at publish time (never silently
+  // posted as a normal Reel).
+  trialReel?: boolean;
   // Last time this post was scheduled for, preserved through cancellation so
   // the Drafts view can still show/sort by "was going out at 5:00 AM" etc.
   previousScheduledAt?: string | null;

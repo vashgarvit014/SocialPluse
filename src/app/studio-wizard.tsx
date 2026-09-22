@@ -4,6 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import type { StudioWorkspaceProps } from './studio-workspace';
 import type { MediaItem } from './page';
 import AiImageLoader from './ai-image-loader';
+import InstagramPhonePreview from './instagram-preview';
+import FacebookPostPreview from './facebook-preview';
+import LinkedInPostPreview from './linkedin-preview';
+import WhatsAppCommunityPreview from './whatsapp-preview';
 
 // ---------------------------------------------------------------------------
 // Tokens (same SaaS system as studio-workspace)
@@ -209,6 +213,15 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   const [publishMode, setPublishMode] = field<'now' | 'later'>('publishMode', 'now');
   const [studioTab, setStudioTab] = field<'caption' | 'hashtags' | 'prompt'>('studioTab', 'caption');
   const [previewPlatform, setPreviewPlatform] = field('previewPlatform', 'linkedin');
+  // selectedPlatforms is the single source of truth: keep the preview tab
+  // inside the selection so Preview never shows an unselected platform.
+  useEffect(() => {
+    if (p.selectedPlatforms.length > 0 && !p.selectedPlatforms.includes(previewPlatform)) {
+      const first = p.selectedPlatforms.includes('linkedin') ? 'linkedin' : p.selectedPlatforms[0];
+      setPreviewPlatform(first);
+      if (p.platformContent[first]) p.switchPreviewPlatform(first);
+    }
+  }, [p.selectedPlatforms]);
   const [showCancelPreview, setShowCancelPreview] = useState(false);
   const [isCancellingPreview, setIsCancellingPreview] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
@@ -258,6 +271,37 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   const [dragSlideId, setDragSlideId] = useState<string | null>(null);
   const [dragOverSlideId, setDragOverSlideId] = useState<string | null>(null);
   const [showSlidePicker, setShowSlidePicker] = useState(false);
+  const [showRegenPicker, setShowRegenPicker] = useState(false);
+  const [showPreviewMenu, setShowPreviewMenu] = useState(false);
+  // Step 7 post-preview modal (transient overlay state only — all content
+  // state lives in page.tsx and is untouched by open/close).
+  const [showPostPreview, setShowPostPreview] = useState(false);
+  const previewBtnRef = useRef<HTMLButtonElement | null>(null);
+  const previewCloseRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!showPostPreview) return;
+    previewCloseRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowPostPreview(false); };
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); previewBtnRef.current?.focus(); };
+  }, [showPostPreview]);
+  const trapTab = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Tab') return;
+    const root = e.currentTarget as HTMLElement;
+    const f = Array.from(root.querySelectorAll<HTMLElement>('button, [href], select, textarea, input, [tabindex]:not([tabindex="-1"])')).filter(el => !el.hasAttribute('disabled'));
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  const openPostPreview = () => {
+    if (p.selectedPlatforms.length > 0 && !p.selectedPlatforms.includes(previewPlatform)) {
+      const first = p.selectedPlatforms.includes('linkedin') ? 'linkedin' : p.selectedPlatforms[0];
+      setPreviewPlatform(first);
+      if (p.platformContent[first]) p.switchPreviewPlatform(first);
+    }
+    setShowPostPreview(true);
+  };
   // Slide overflow menu floats above everything (fixed position from the
   // button's viewport rect) because the horizontal strip clips overflowing
   // children — an absolutely-positioned menu would be cut off mid-scroll.
@@ -289,7 +333,9 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
     ? (selectedMedia.type === 'image' ? selectedMedia : null)
     : p.mediaItems.find(m => m.type === 'image');
 
-  // Auto-advance: when AI content finishes generating, move to Step 3 (review)
+  // Auto-advance: when AI content finishes generating, move to Step 3 (review).
+  // If content already exists (user re-clicks Generate), goNext is handled
+  // by the button below — this only auto-advances fresh generations.
   const wasGeneratingContent = useRef(false);
   useEffect(() => {
     if (wasGeneratingContent.current && !p.isGeneratingContent && p.content.trim() && currentStep === 2) {
@@ -335,6 +381,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   const goNext = () => setCurrentStep(s => Math.min(8, s + 1));
   const goBack = () => setCurrentStep(s => Math.max(1, s - 1));
 
+  // Every step change (Next, Back, stepper jumps, Preview/Add-Image shortcuts,
+  // auto-advance) starts the next page at the very top.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [currentStep]);
+
   const header = (title: string, sub: string, badge?: string) => (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20 }}>
       <div style={{ flex: 1 }}>
@@ -378,6 +430,15 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-s1-drop { transition: all 0.18s; cursor: pointer; }
         .sp-s1-drop:hover { border-color: #7C3AED !important; background-color: #EDE9FE !important; }
         .sp-s2-grid { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 16px; align-items: start; }
+        .sp-prev-grid { display: grid; grid-template-columns: minmax(0,2.1fr) minmax(300px,1fr); gap: 24px; align-items: start; }
+        @media (max-width: 1024px) { .sp-prev-grid { grid-template-columns: 1fr; } }
+        .sp-review-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; align-items: start; }
+        @media (max-width: 1024px) { .sp-review-grid { grid-template-columns: 1fr; } }
+        .sp-step7-grid { display: grid; grid-template-columns: minmax(0,1.7fr) minmax(320px,0.8fr); gap: 24px; align-items: start; }
+        @media (max-width: 1024px) { .sp-step7-grid { grid-template-columns: 1fr; } .sp-step7-grid > div { display: contents; } .sp-ord-select { order: 1; } .sp-ord-final { order: 2; } .sp-ord-ready { order: 3; } .sp-ord-best { order: 4; } .sp-ord-banner { order: 5; } }
+        .sp-prev-trio { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; align-items: start; }
+        @media (max-width: 1024px) { .sp-prev-trio { grid-template-columns: 1fr 1fr; } .sp-prev-trio > :last-child { grid-column: 1 / -1; } }
+        @media (max-width: 700px) { .sp-prev-trio { grid-template-columns: 1fr; } .sp-prev-trio > :last-child { grid-column: auto; } }
         .sp-s2-opt { transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s, background-color 0.16s; }
         .sp-s2-opt:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(15,23,42,0.10); }
         .sp-ai-arrive { animation: spAiArrive 600ms ease both; }
@@ -667,8 +728,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 26, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
                 <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
                 <div style={{ flex: 1 }} />
-                <button onClick={() => { p.generateContent(); }} disabled={!canGenContent} title={!canGenContent ? genContentBlocker : 'Generate content'} style={{ minHeight: 50, padding: '14px 24px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, cursor: canGenContent ? 'pointer' : 'not-allowed', fontFamily: 'inherit', border: `1.5px solid ${canGenContent ? C.primary : '#E8EAF1'}`, backgroundColor: '#fff', color: canGenContent ? C.primaryDark : '#B6BDCC', boxShadow: canGenContent ? '0 3px 12px rgba(124,58,237,0.14)' : 'none' }}>✨ Generate Content →</button>
-                <button onClick={goNext} disabled={!hasSettings} title={!hasSettings ? 'Choose an aspect ratio to continue' : 'Continue'} style={{ minHeight: 50, padding: '14px 34px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: hasSettings ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: hasSettings ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#DDD6FE', color: '#fff', boxShadow: hasSettings ? '0 6px 22px rgba(124,58,237,0.42)' : 'none' }}>Next →</button>
+                <button onClick={() => { if (hasContent && !p.isGeneratingContent) { goNext(); return; } p.generateContent(); }} disabled={!canGenContent && !hasContent} title={!canGenContent && !hasContent ? genContentBlocker : hasContent ? 'Content ready — continue to Content' : 'Generate content'} style={{ minHeight: 50, padding: '14px 24px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, cursor: (canGenContent || hasContent) ? 'pointer' : 'not-allowed', fontFamily: 'inherit', border: `1.5px solid ${(canGenContent || hasContent) ? C.primary : '#E8EAF1'}`, background: hasContent ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#fff', color: hasContent ? '#fff' : canGenContent ? C.primaryDark : '#B6BDCC', boxShadow: hasContent ? '0 6px 22px rgba(124,58,237,0.42)' : canGenContent ? '0 3px 12px rgba(124,58,237,0.14)' : 'none' }}>{hasContent ? 'Next →' : '✨ Generate Content →'}</button>
               </div>
               {!hasSettings && <div style={{ fontSize: 12, color: '#92400E', marginTop: 10, fontWeight: 600 }}>Aspect ratio required before the image flow — pick one above.</div>}
               {!canGenContent && !p.isGeneratingContent && (
@@ -730,7 +790,31 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>AI Content Editor</div>
                   <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Step 3 of 8: Review and refine your generated content</div>
                 </div>
-                <button onClick={p.generateContent} disabled={!canGenContent} title={!canGenContent ? genContentBlocker : 'Regenerate content'} style={{ padding: '10px 18px', borderRadius: 11, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${canGenContent ? C.primary : '#E8EAF1'}`, backgroundColor: '#fff', color: canGenContent ? C.primaryDark : '#B6BDCC', cursor: canGenContent ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↻ Regenerate</button>
+                <button onClick={() => setShowRegenPicker(true)} disabled={!canGenContent} title={!canGenContent ? genContentBlocker : 'Choose what to regenerate — one platform or all'} style={{ padding: '10px 18px', borderRadius: 11, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${canGenContent ? C.primary : '#E8EAF1'}`, backgroundColor: '#fff', color: canGenContent ? C.primaryDark : '#B6BDCC', cursor: canGenContent ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↻ Regenerate</button>
+                <div style={{ position: 'relative' }}>
+                  <button onClick={() => setShowPreviewMenu(v => !v)} title="Switch the previewed platform — LinkedIn is the default" style={{ padding: '10px 18px', borderRadius: 11, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.primaryBorder}`, backgroundColor: C.primarySoft, color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>👁 Preview: {p.activePreviewPlatform || '—'}</button>
+                  {showPreviewMenu && (
+                    <>
+                      <div onClick={() => setShowPreviewMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
+                      <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', width: 200, backgroundColor: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: '0 12px 32px rgba(15,23,42,0.18)', zIndex: 61, overflow: 'hidden', padding: 6 }}>
+                        {p.selectedPlatforms.length === 0 && <div style={{ fontSize: 12, color: C.muted, padding: '10px 12px' }}>Select platforms in Step 2 first.</div>}
+                        {p.selectedPlatforms.map(pl => {
+                          const active = pl === p.activePreviewPlatform;
+                          const brand = p.platformColors[pl] || C.primary;
+                          return (
+                            <button key={pl} onClick={() => { p.switchPreviewPlatform(pl); setShowPreviewMenu(false); }} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px', borderRadius: 8, border: 'none', background: active ? C.primarySoft : 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', textTransform: 'capitalize' }}>
+                              <span style={{ width: 24, height: 24, borderRadius: 8, backgroundColor: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <p.PlatformIcon platform={pl} size={12} />
+                              </span>
+                              <span style={{ flex: 1, fontSize: 12.5, fontWeight: 800, color: active ? C.primaryDark : C.ink }}>{pl}</span>
+                              {active && <span style={{ fontSize: 12, fontWeight: 800, color: C.primaryDark }}>✓</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               {!p.content.trim() ? (
@@ -767,8 +851,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       <div style={{ display: 'flex', gap: 14, marginTop: 10, fontSize: 11.5, color: C.muted, flexWrap: 'wrap', alignItems: 'center' }}>
                         <span><b style={{ color: C.primaryDark }}>{p.charCount}</b> characters</span>
                         <span><b style={{ color: C.primaryDark }}>{p.wordCount}</b> words • ~{Math.max(1, Math.ceil(p.wordCount / 200))} min read</span>
-                        <span>{sentences} sentences • LinkedIn-ready</span>
-                        <span style={{ marginLeft: 'auto', fontWeight: 700, color: C.faint }}>{p.content.length}/500</span>
+                        <span>{sentences} sentences</span>
                       </div>
                       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                         <button onClick={() => { try { navigator.clipboard.writeText(p.content); setCopiedText(true); setTimeout(() => setCopiedText(false), 2000); } catch {} }} style={{ padding: '10px 18px', borderRadius: 10, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.border}`, backgroundColor: copiedText ? '#ECFDF5' : '#fff', color: copiedText ? '#059669' : C.ink, cursor: 'pointer', fontFamily: 'inherit' }}>📋 {copiedText ? 'Copied ✓' : 'Copy Text'}</button>
@@ -785,6 +868,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                           const inCaption = p.content.includes(tagText);
                           return (
                             <button key={i} onClick={() => {
+                              // WhatsApp is a no-hashtag channel: never inject tags into its caption.
+                              if (p.activePreviewPlatform === 'whatsapp') return;
                               const v = inCaption
                                 ? p.content.split(tagText).join('').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
                                 : `${p.content.trim()} ${tagText}`.trim();
@@ -823,6 +908,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         const inCaption = activeTags.length > 0 && p.content.includes(tagText);
                         return (
                           <button key={i} disabled={activeTags.length === 0} onClick={() => {
+                            // WhatsApp is a no-hashtag channel: never inject tags into its caption.
+                            if (p.activePreviewPlatform === 'whatsapp') return;
                             const v = inCaption
                               ? p.content.split(tagText).join('').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
                               : `${p.content.trim()} ${tagText}`.trim();
@@ -913,7 +1000,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 {[
                   ['ai', '✨', 'Generate with AI', 'Create a custom visual from your content'],
                   ['upload', '📁', 'Upload Media', 'Use your own image or video'],
-                  ['library', '🖼️', 'Media Library', 'Choose from your existing assets'],
+                  ['library', '🖼️', 'Asset Gallery', 'Choose from your existing assets'],
                 ].map(([k, i, t, d]) => {
                   const active = mediaTab === k;
                   return (
@@ -1015,7 +1102,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       <div style={{ position: 'absolute', left: 10, right: 10, bottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button onClick={p.generateImage} disabled={!canGenImage} title="Generate again with the current prompt" style={{ flex: 1, minWidth: 110, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(15,23,42,0.72)', color: '#fff', cursor: canGenImage ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canGenImage ? 1 : 0.6 }}>↻ Regenerate</button>
                         <button onClick={() => promptInputRef.current?.focus()} title="Edit the prompt above" style={{ flex: 1, minWidth: 110, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}>✏️ Edit Prompt</button>
-                        <button onClick={() => p.saveFullDraft()} title="Save your post draft with this media" style={{ flex: 1, minWidth: 90, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}>📥 Save</button>
+                        <button onClick={() => p.saveFullDraft()} title="Save your post draft with this media" disabled={p.isSavingDraft} style={{ flex: 1, minWidth: 90, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: p.isSavingDraft ? 'rgba(99,102,241,0.85)' : 'rgba(255,255,255,0.92)', color: p.isSavingDraft ? '#fff' : '#0F172A', cursor: p.isSavingDraft ? 'wait' : 'pointer', fontFamily: 'inherit' }}>{p.isSavingDraft ? '⏳ Saving…' : '📥 Save'}</button>
                         {!p.generatedVideo && (
                           <button onClick={() => p.clearGeneratedImage()} title="Remove the generated visual" style={{ flex: 1, minWidth: 90, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(220,38,38,0.85)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>🗑️ Remove</button>
                         )}
@@ -1097,13 +1184,13 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               </div>
             )}
 
-            {/* ---- Recent Media gallery (Media Library tab) ---- */}
+            {/* ---- Recent Media gallery (Asset Gallery tab) ---- */}
             {/* Same items, same handlers (upload/generate/Canva/carousel all
                 feed mediaItems) — this is a presentation layer over the
                 existing gallery: select, filter, reorder, per-item menu. */}
             {mediaTab === 'library' && (
             <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Media Library</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Asset Gallery</div>
               <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 4 }}>Choose from your existing assets.</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <div style={{ flex: 1 }}>
@@ -1266,9 +1353,10 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               </div>
 
               {/* ---- Section 1: Design with Canva ---- */}
-              {/* Edit sends an image to Canva; Import brings the edited result
-                  back as a NEW gallery item (never overwrites). All calls go
-                  through the existing /api/canva/* routes unchanged. */}
+              {/* Edit/Create opens the Canva editor in a NEW TAB (this tab is
+                  never navigated away). Import brings the edited result back
+                  into the same gallery pipeline - repeat imports of the same
+                  design update the linked item in place, never duplicating. */}
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
                 <div style={{ display: 'flex', gap: 18, alignItems: 'stretch', flexWrap: 'wrap' }}>
                   <div style={{ flex: '1 1 260px', minWidth: 0 }}>
@@ -1297,6 +1385,9 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 </div>
                 {p.canvaConnected && (
                   <div style={{ marginTop: 16 }}>
+                    {p.canvaSession && !p.canvaReadyId && !p.isImportingFromCanva && (
+                      <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, backgroundColor: '#F6F1FF', border: `1px solid ${C.primaryBorder}`, fontSize: 12.5, color: C.primaryDark, lineHeight: 1.6 }}>🎨 Your Canva editor is open in another tab. When you finish editing, return here and import the latest version.</div>
+                    )}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10 }}>
                       <button
                         onClick={p.createInCanva}
@@ -1803,220 +1894,361 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
         {/* ================= STEP 7 — PREVIEW ================= */}
         {currentStep === 7 && (
-          <div className="sp-s2-grid">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-              <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>👁️</div>
-                  <div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Preview Your Post</div>
-                    <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Step 7 of 8: See exactly how your content will look before publishing</div>
-                  </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 13, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>👁️</div>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Review & Publish</div>
+                <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Take a final look at your content and settings before publishing.</div>
+              </div>
+            </div>
+            <div className="sp-step7-grid">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+            <div style={{ ...card, borderRadius: 20, padding: '20px 22px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }} className="sp-ord-select">
+              <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap', alignItems: 'stretch' }}>
+                <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Selected Platform</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Choose where you want to publish this content.</div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                {(['linkedin', 'facebook', 'instagram', 'whatsapp'] as const).filter(pl => p.selectedPlatforms.includes(pl)).map(pl => {
+                  const active = previewPlatform === pl;
+                  const brand = p.platformColors[pl] || '#0A66C2';
+                  return (
+                    <button key={pl} onClick={() => { setPreviewPlatform(pl); if (p.platformContent[pl]) p.switchPreviewPlatform(pl); }} className="sp-s2-opt" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 999, fontSize: 12.5, fontWeight: 800, textTransform: 'capitalize', border: active ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`, backgroundColor: active ? '#F5F0FF' : '#fff', color: active ? C.primaryDark : C.muted, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      <span style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <p.PlatformIcon platform={pl} size={10} />
+                      </span>
+                      {pl}
+                    </button>
+                  );
+                })}
+                {p.selectedPlatforms.length === 0 && (
+                  <div style={{ fontSize: 12.5, color: C.muted }}>No platforms selected yet — <button onClick={() => setCurrentStep(2)} style={{ background: 'none', border: 'none', padding: 0, color: C.primaryDark, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5 }}>pick platforms in Settings →</button></div>
+                )}
+                {p.selectedPlatforms.length > 0 && (
+                  <button ref={previewBtnRef} onClick={openPostPreview} title="Open the realistic platform preview in a popup" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 20px', borderRadius: 999, fontSize: 12.5, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}>👁 {p.selectedPlatforms.length > 1 ? 'Preview Platforms' : 'Preview Post'}</button>
+                )}
                 </div>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#F5F0FF', border: '1px solid #DDD6FE', borderRadius: 14, padding: '12px 16px', marginTop: 16 }}>
-                  <span style={{ fontSize: 16, lineHeight: 1.4 }}>✨</span>
-                  <span style={{ fontSize: 12.5, color: C.primaryDark, fontWeight: 600, lineHeight: 1.6 }}>Review, refine, and publish with confidence.</span>
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-                  {(['linkedin', 'facebook', 'instagram', 'whatsapp'] as const).map(pl => {
-                    const active = previewPlatform === pl;
-                    const brand = p.platformColors[pl] || '#0A66C2';
-                    return (
-                      <button key={pl} onClick={() => { setPreviewPlatform(pl); if (p.platformContent[pl]) p.switchPreviewPlatform(pl); }} className="sp-s2-opt" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', borderRadius: 999, fontSize: 12.5, fontWeight: 800, textTransform: 'capitalize', border: active ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`, backgroundColor: active ? '#F5F0FF' : '#fff', color: active ? C.primaryDark : C.muted, cursor: 'pointer', fontFamily: 'inherit' }}>
-                        <span style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <p.PlatformIcon platform={pl} size={10} />
-                        </span>
-                        {pl}
-                      </button>
-                    );
-                  })}
+                <div style={{ flex: '0 1 260px', minWidth: 220, borderRadius: 14, background: 'linear-gradient(135deg,#F5F0FF,#EDE9FE)', border: '1px solid #DDD6FE', padding: '14px 16px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span style={{ width: 32, height: 32, borderRadius: 10, background: '#fff', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>✅</span>
+                  <span>
+                    <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: C.primaryDark }}>Ready for final review?</span>
+                    <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>Review the details below to make sure your content is ready before publishing.</span>
+                  </span>
                 </div>
               </div>
-
-              <div style={{ ...card, borderRadius: 20, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                <div style={{ padding: '16px 20px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <div style={{ width: 46, height: 46, borderRadius: '50%', background: p.logoImage ? `url(${p.logoImage}) center/cover` : 'linear-gradient(135deg,#0A66C2,#004182)', border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13, overflow: 'hidden', flexShrink: 0 }}>{!p.logoImage && 'SP'}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>SocialPulse <span style={{ fontSize: 11, color: C.muted, fontWeight: 400 }}>• 1st</span></div>
-                    <div style={{ fontSize: 11.5, color: C.muted, marginTop: 1 }}>Just now • 🌐 Public</div>
-                  </div>
-                  <span style={{ color: C.faint, fontSize: 18, fontWeight: 800 }}>⋯</span>
-                </div>
-                <div style={{ padding: '0 20px 6px', fontSize: 13.5, lineHeight: 1.7, color: C.ink, whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'hidden' }}>
+                <div style={{ ...card, borderRadius: 20, padding: '18px 20px', background: '#FFFBEB', borderColor: '#FDE68A' }} className="sp-ord-best">
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>💡 Platform Best Practices</div>
+                  <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2, marginBottom: 8, textTransform: 'capitalize' }}>Follow these tips for the best results on {previewPlatform}.</div>
                   {(() => {
-                    if (!p.content.trim()) return `Your amazing post will appear here...\nThis is how it will look on ${previewPlatform.charAt(0).toUpperCase() + previewPlatform.slice(1)}.`;
-                    // Caption already carries appended hashtags — strip the trailing tag block for display
-                    // (tags render separately below in platform blue, exactly as published)
-                    const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || [];
-                    if (!tags.length) return p.content;
-                    return p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/, '').trim() || p.content;
+                    const tips = previewPlatform === 'linkedin' ? [
+                      'Keep your tone professional',
+                      'Use meaningful structure',
+                      'Use relevant hashtags',
+                      'Include a professional CTA',
+                    ] : previewPlatform === 'whatsapp' ? [
+                      'Keep your message clear and concise',
+                      'Use WhatsApp-friendly formatting (*bold*, • lists)',
+                      'Use visuals sized correctly (16:9)',
+                      'Add a direct CTA',
+                    ] : previewPlatform === 'instagram' ? [
+                      'Lead with a striking visual hook',
+                      'Keep captions short and scannable',
+                      'Use 8-12 discoverability hashtags',
+                      'End with a save-worthy CTA',
+                    ] : previewPlatform === 'facebook' ? [
+                      'Write warm, community-first copy',
+                      'Spark conversation with a question',
+                      'Keep videos under a minute where possible',
+                      'Reply to early comments quickly',
+                    ] : [
+                      'Keep your message clear and concise',
+                      'Use visuals sized for this platform',
+                      'Add a call-to-action',
+                      'Check your preview before publishing',
+                    ];
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 20px' }}>
+                        {tips.map(tip => (
+                          <div key={tip} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '6px 0' }}>
+                            <span style={{ width: 19, height: 19, borderRadius: '50%', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>✓</span>
+                            <span style={{ fontSize: 12.5, fontWeight: 600, color: '#334155', lineHeight: 1.5 }}>{tip}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
                   })()}
                 </div>
-                {(p.platformContent[p.activePreviewPlatform]?.hashtags || []).length > 0 && (
-                  <div style={{ padding: '0 20px 14px', fontSize: 13, lineHeight: 1.7, color: '#0A66C2', fontWeight: 600 }}>
-                    {(p.platformContent[p.activePreviewPlatform]?.hashtags || []).map(t => '#' + String(t).replace(/^#+/, '')).join(' ')}
-                  </div>
-                )}
-                {(p.mediaItems.length > 0 || postExtraImages.length > 0 || p.generatedImage || p.generatedVideo) ? (
-                  <div style={{ backgroundColor: '#000' }}>
-                    {(() => {
-                      // Carousel swipe preview: one slide at a time with
-                      // arrows + dots + counter, mirroring the real
-                      // swipeable album on every platform.
-                      if (p.isCarousel && p.carouselSlides.length > 0) {
-                        const slides = p.carouselSlides.slice(0, 9);
-                        const idx = Math.min(carouselPreviewIndex, slides.length - 1);
-                        const it = slides[idx];
-                        const go = (d: -1 | 1) => setCarouselPreviewIndex((idx + d + slides.length) % slides.length);
-                        return (
-                          <div>
-                            <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden', backgroundColor: '#000' }}>
-                              {it.type === 'video' ? <video src={it.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted /> : <img src={it.url} alt={it.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                              {slides.length > 1 && (
-                                <>
-                                  <button onClick={() => go(-1)} title="Previous slide" style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-                                  <button onClick={() => go(1)} title="Next slide" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
-                                </>
-                              )}
-                              <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 10, fontWeight: 800, backgroundColor: 'rgba(124,58,237,0.92)', color: '#fff', padding: '3px 9px', borderRadius: 999 }}>🎠 {idx + 1}/{slides.length}</span>
-                              <button onClick={e => { e.stopPropagation(); setLightboxItem({ url: it.url, type: it.type }); }} title="View full, uncropped" style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🔍</button>
-                              {p.logoImage && !p.burnedLogoIds[it.id] && (
-                                <img src={p.logoImage} alt="logo" style={{
-                                  position: 'absolute', width: `${Math.round(p.logoScale * 100)}%`, maxWidth: '28%', opacity: p.logoOpacity,
-                                  ...(p.logoPosition === 'top-left' ? { top: 8, left: 8 } : p.logoPosition === 'top-right' ? { top: 8, right: 8 } : p.logoPosition === 'bottom-left' ? { bottom: 8, left: 8 } : p.logoPosition === 'bottom-right' ? { bottom: 8, right: 8 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
-                                  backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6,
-                                }} />
-                              )}
-                            </div>
-                            {slides.length > 1 && (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 0', backgroundColor: '#000' }}>
-                                {slides.map((s, i) => (
-                                  <button key={s.id} onClick={() => setCarouselPreviewIndex(i)} title={`Slide ${i + 1}`} style={{ width: i === idx ? 18 : 7, height: 7, borderRadius: 999, border: 'none', backgroundColor: i === idx ? '#8B5CF6' : 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: 0, transition: 'all 0.18s' }} />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-                      const items = previewItems;
-                      const single = items.length === 1;
-                      return (
-                        <div style={{ display: 'grid', gridTemplateColumns: single ? '1fr' : '1fr 1fr', gap: 2 }}>
-                          {items.map(it => (
-                            <div key={it.id} style={{ position: 'relative', aspectRatio: single ? '16/9' : '1', overflow: 'hidden', backgroundColor: '#000', cursor: 'zoom-in' }} onClick={() => setLightboxItem({ url: it.url, type: it.type })}>
-                              {it.type === 'video' ? <video src={it.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted /> : <img src={it.url} alt={it.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                              <button onClick={e => { e.stopPropagation(); setLightboxItem({ url: it.url, type: it.type }); }} title="View full, uncropped" style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🔍</button>
-                              {p.logoImage && !p.burnedLogoIds[it.id] && (
-                                <img src={p.logoImage} alt="logo" style={{
-                                  position: 'absolute', width: `${Math.round(p.logoScale * 100)}%`, maxWidth: '28%', opacity: p.logoOpacity,
-                                  ...(p.logoPosition === 'top-left' ? { top: 8, left: 8 } : p.logoPosition === 'top-right' ? { top: 8, right: 8 } : p.logoPosition === 'bottom-left' ? { bottom: 8, left: 8 } : p.logoPosition === 'bottom-right' ? { bottom: 8, right: 8 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
-                                  backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6,
-                                }} />
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  <div style={{ margin: '4px 20px 16px', border: '2px dashed #C4B5FD', borderRadius: 14, backgroundColor: '#FAF8FF', padding: 32, textAlign: 'center' }}>
-                    <div style={{ fontSize: 30 }}>🖼️</div>
-                    <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginTop: 8 }}>No image yet</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Add media from Step 4</div>
-                    <button onClick={() => setCurrentStep(4)} style={{ marginTop: 12, padding: '10px 22px', borderRadius: 10, fontSize: 12.5, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}>Add Image +</button>
-                  </div>
-                )}
-                <div style={{ padding: '12px 20px', display: 'flex', gap: 22, borderTop: `1px solid ${C.borderSoft}`, fontSize: 12, color: C.muted, fontWeight: 600 }}>
-                  <span>👍 Like</span><span>💬 Comment</span><span>🔄 Repost</span><span style={{ marginLeft: 'auto' }}>✈️ Send</span>
+                <div style={{ borderRadius: 16, padding: '14px 20px', background: 'linear-gradient(135deg,#EDE9FE,#FCE7F3)', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', gap: 12, position: 'relative', overflow: 'hidden' }} className="sp-ord-banner">
+                  <span style={{ position: 'absolute', top: -20, right: 60, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.5)' }} />
+                  <span style={{ fontSize: 22, flexShrink: 0 }}>✨</span>
+                  <span>
+                    <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800, color: C.ink }}>Everything looks ready</span>
+                    <span style={{ display: 'block', fontSize: 12, color: '#475569', marginTop: 1 }}>Preview once before publishing.</span>
+                  </span>
                 </div>
               </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 6, flexWrap: 'wrap' }}>
-                <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
-                <div style={{ flex: 1 }} />
-                <button onClick={() => setShowCancelPreview(true)} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14, color: '#B91C1C' }}>Cancel</button>
-                <button onClick={goNext} style={{ minHeight: 50, padding: '14px 34px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Continue to Publish →</button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+              {showPostPreview && (
+              <div onClick={() => setShowPostPreview(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                <div role="dialog" aria-modal="true" aria-label="Platform preview" onClick={e => e.stopPropagation()} onKeyDown={trapTab} style={{ width: 'min(720px, 94vw)', maxHeight: '90vh', backgroundColor: '#fff', borderRadius: 20, boxShadow: '0 24px 64px rgba(15,23,42,0.3)', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'inherit' }}>
+                  <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid #eef2f7', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: C.ink }}>👁 Preview Post</div>
+                      <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>See exactly how your post will appear before publishing.</div>
+                    </div>
+                    <button ref={previewCloseRef} onClick={() => setShowPostPreview(false)} aria-label="Close preview" style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', color: C.muted, fontSize: 15, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                  </div>
+                  <div style={{ padding: '12px 22px 0', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {(['linkedin', 'facebook', 'instagram', 'whatsapp'] as const).filter(pl => p.selectedPlatforms.includes(pl)).map(pl => {
+                      const active = previewPlatform === pl;
+                      const brand = p.platformColors[pl] || '#0A66C2';
+                      return (
+                        <button key={pl} onClick={() => { setPreviewPlatform(pl); if (p.platformContent[pl]) p.switchPreviewPlatform(pl); }} aria-label={`Preview ${pl}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 999, fontSize: 12.5, fontWeight: 800, textTransform: 'capitalize', border: active ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`, backgroundColor: active ? '#F5F0FF' : '#fff', color: active ? C.primaryDark : C.muted, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          <span style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <p.PlatformIcon platform={pl} size={10} />
+                          </span>
+                          {pl}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ padding: '14px 22px', overflowY: 'auto', maxHeight: '62vh' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minWidth: 0 }}>
+                <div style={{ width: '100%', maxWidth: previewPlatform === 'instagram' ? 480 : previewPlatform === 'whatsapp' ? 400 : 660 }}>
+                {previewPlatform === 'instagram' ? (
+                  <InstagramPhonePreview
+                    username={(p.accounts.find(a => a.platform === 'instagram' && a.connected) as any)?.instagramUsername || p.accounts.find(a => a.platform === 'instagram' && a.connected)?.name || p.accounts.find(a => a.platform === 'facebook' && a.connected)?.name || 'socialpulse'}
+                    avatarUrl={p.logoImage || undefined}
+                    mediaUrl={previewItems[0]?.url || p.generatedImage || ''}
+                    mediaType={previewItems[0]?.type || (p.generatedVideo ? 'video' : 'image')}
+                    mediaList={p.isCarousel ? p.carouselSlides : previewItems}
+                    currentSlide={carouselPreviewIndex}
+                    onSlideChange={setCarouselPreviewIndex}
+                    caption={(() => { const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || []; if (!p.content.trim()) return ''; return tags.length ? p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim() : p.content; })()}
+                    hashtags={p.platformContent[p.activePreviewPlatform]?.hashtags || []}
+                  aspectRatio={p.aspectRatio || '1:1'}
+                  isCarousel={p.isCarousel && p.carouselSlides.length > 1}
+                />
+                ) : previewPlatform === 'facebook' ? (
+                  <FacebookPostPreview
+                    caption={(() => { const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || []; if (!p.content.trim()) return ''; return tags.length ? p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim() : p.content; })()}
+                    hashtags={p.platformContent[p.activePreviewPlatform]?.hashtags || []}
+                    mediaUrl={previewItems[0]?.url || p.generatedImage || ''}
+                    mediaType={previewItems[0]?.type || (p.generatedVideo ? 'video' : 'image')}
+                    mediaList={p.isCarousel ? p.carouselSlides : previewItems}
+                    pageName="SocialPulse"
+                    avatarUrl={p.logoImage || undefined}
+                    aspectRatio={p.aspectRatio || '1:1'}
+                  />
+                ) : previewPlatform === 'linkedin' ? (
+                  <LinkedInPostPreview
+                    caption={(() => { const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || []; if (!p.content.trim()) return ''; return tags.length ? p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim() : p.content; })()}
+                    hashtags={p.platformContent[p.activePreviewPlatform]?.hashtags || []}
+                    mediaUrl={previewItems[0]?.url || p.generatedImage || ''}
+                    mediaType={previewItems[0]?.type || (p.generatedVideo ? 'video' : 'image')}
+                    mediaList={p.isCarousel ? p.carouselSlides : previewItems}
+                    currentSlide={carouselPreviewIndex}
+                    onSlideChange={setCarouselPreviewIndex}
+                    aspectRatio={p.aspectRatio || '1:1'}
+                    isCarousel={p.isCarousel && p.carouselSlides.length > 1}
+                    profileName="SocialPulse"
+                    profileSubtitle="Social Media Content Manager"
+                    avatarUrl={p.logoImage || undefined}
+                    logoUrl={p.logoImage || undefined}
+                    logoPosition={p.logoPosition}
+                    logoScale={p.logoScale}
+                    logoOpacity={p.logoOpacity}
+                    burnedIds={p.burnedLogoIds}
+                  />
+                ) : previewPlatform === 'whatsapp' ? (
+                  <WhatsAppCommunityPreview
+                    communityName={p.whapiGroups.find(g => g.id === p.whapiSelectedGroupId)?.name || 'SocialPulse Testing 🚀'}
+                    subtitle="Announcements"
+                    destinationType={p.whapiGroups.find(g => g.id === p.whapiSelectedGroupId)?.type || 'announcement_group'}
+                    caption={(() => { const c = p.platformContent[p.activePreviewPlatform]?.caption || p.content; return c.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim(); })()}
+                    hashtags={[]}
+                    mediaUrl={previewItems[0]?.url || p.generatedImage || ''}
+                    mediaType={previewItems[0]?.type || (p.generatedVideo ? 'video' : 'image')}
+                    mediaList={p.isCarousel ? p.carouselSlides : previewItems}
+                    currentSlide={carouselPreviewIndex}
+                    onSlideChange={setCarouselPreviewIndex}
+                    aspectRatio={p.aspectRatio || '1:1'}
+                    isCarousel={p.isCarousel && p.carouselSlides.length > 1}
+                  />
+                ) : (
+                  <div style={{ ...card, borderRadius: 20, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+                    <div style={{ padding: '16px 20px', display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <div style={{ width: 46, height: 46, borderRadius: '50%', background: p.logoImage ? `url(${p.logoImage}) center/cover` : 'linear-gradient(135deg,#0A66C2,#004182)', border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13, overflow: 'hidden', flexShrink: 0 }}>{!p.logoImage && 'SP'}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>SocialPulse <span style={{ fontSize: 11, color: C.muted, fontWeight: 400 }}>• 1st</span></div>
+                        <div style={{ fontSize: 11.5, color: C.muted, marginTop: 1 }}>Just now • 🌐 Public</div>
+                      </div>
+                      <span style={{ color: C.faint, fontSize: 18, fontWeight: 800 }}>⋯</span>
+                    </div>
+                    <div style={{ padding: '0 20px 6px', fontSize: 13.5, lineHeight: 1.7, color: C.ink, whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'hidden' }}>
+                      {(() => {
+                        if (!p.content.trim()) return `Your amazing post will appear here...\nThis is how it will look on ${previewPlatform.charAt(0).toUpperCase() + previewPlatform.slice(1)}.`;
+                        const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || [];
+                        if (!tags.length) return p.content;
+                        return p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/, '').trim() || p.content;
+                      })()}
+                    </div>
+                    {(p.platformContent[p.activePreviewPlatform]?.hashtags || []).length > 0 && (
+                      <div style={{ padding: '0 20px 14px', fontSize: 13, lineHeight: 1.7, color: '#0A66C2', fontWeight: 600 }}>
+                        {(p.platformContent[p.activePreviewPlatform]?.hashtags || []).map(t => '#' + String(t).replace(/^#+/, '')).join(' ')}
+                      </div>
+                    )}
+                    {(p.mediaItems.length > 0 || postExtraImages.length > 0 || p.generatedImage || p.generatedVideo) ? (
+                      <div style={{ backgroundColor: '#000' }}>
+                        {(() => {
+                          if (p.isCarousel && p.carouselSlides.length > 0) {
+                            const slides = p.carouselSlides.slice(0, 9);
+                            const idx = Math.min(carouselPreviewIndex, slides.length - 1);
+                            const it = slides[idx];
+                            const go = (d: -1 | 1) => setCarouselPreviewIndex((idx + d + slides.length) % slides.length);
+                            return (
+                              <div>
+                                <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden', backgroundColor: '#000' }}>
+                                  {it.type === 'video' ? <video src={it.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted /> : <img src={it.url} alt={it.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                                  {slides.length > 1 && (
+                                    <>
+                                      <button onClick={() => go(-1)} title="Previous slide" style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+                                      <button onClick={() => go(1)} title="Next slide" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+                                    </>
+                                  )}
+                                  <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 10, fontWeight: 800, backgroundColor: 'rgba(124,58,237,0.92)', color: '#fff', padding: '3px 9px', borderRadius: 999 }}>🎠 {idx + 1}/{slides.length}</span>
+                                  <button onClick={e => { e.stopPropagation(); setLightboxItem({ url: it.url, type: it.type }); }} title="View full, uncropped" style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🔍</button>
+                                  {p.logoImage && !p.burnedLogoIds[it.id] && (
+                                    <img src={p.logoImage} alt="logo" style={{
+                                      position: 'absolute', width: `${Math.round(p.logoScale * 100)}%`, maxWidth: '28%', opacity: p.logoOpacity,
+                                      ...(p.logoPosition === 'top-left' ? { top: 8, left: 8 } : p.logoPosition === 'top-right' ? { top: 8, right: 8 } : p.logoPosition === 'bottom-left' ? { bottom: 8, left: 8 } : p.logoPosition === 'bottom-right' ? { bottom: 8, right: 8 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
+                                      backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6,
+                                    }} />
+                                  )}
+                                </div>
+                                {slides.length > 1 && (
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 0', backgroundColor: '#000' }}>
+                                    {slides.map((s, i) => (
+                                      <button key={s.id} onClick={() => setCarouselPreviewIndex(i)} title={`Slide ${i + 1}`} style={{ width: i === idx ? 18 : 7, height: 7, borderRadius: 999, border: 'none', backgroundColor: i === idx ? '#8B5CF6' : 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: 0, transition: 'all 0.18s' }} />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          const items = previewItems;
+                          const single = items.length === 1;
+                          return (
+                            <div style={{ display: 'grid', gridTemplateColumns: single ? '1fr' : '1fr 1fr', gap: 2 }}>
+                              {items.map(it => (
+                                <div key={it.id} style={{ position: 'relative', aspectRatio: single ? '16/9' : '1', overflow: 'hidden', backgroundColor: '#000', cursor: 'zoom-in' }} onClick={() => setLightboxItem({ url: it.url, type: it.type })}>
+                                  {it.type === 'video' ? <video src={it.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted /> : <img src={it.url} alt={it.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                                  <button onClick={e => { e.stopPropagation(); setLightboxItem({ url: it.url, type: it.type }); }} title="View full, uncropped" style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🔍</button>
+                                  {p.logoImage && !p.burnedLogoIds[it.id] && (
+                                    <img src={p.logoImage} alt="logo" style={{
+                                      position: 'absolute', width: `${Math.round(p.logoScale * 100)}%`, maxWidth: '28%', opacity: p.logoOpacity,
+                                      ...(p.logoPosition === 'top-left' ? { top: 8, left: 8 } : p.logoPosition === 'top-right' ? { top: 8, right: 8 } : p.logoPosition === 'bottom-left' ? { bottom: 8, left: 8 } : p.logoPosition === 'bottom-right' ? { bottom: 8, right: 8 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
+                                      backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6,
+                                    }} />
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    ) : (
+                      <div style={{ margin: '4px 20px 16px', border: '2px dashed #C4B5FD', borderRadius: 14, backgroundColor: '#FAF8FF', padding: 32, textAlign: 'center' }}>
+                        <div style={{ fontSize: 30 }}>🖼️</div>
+                        <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginTop: 8 }}>No image yet</div>
+                        <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Add media from Step 4</div>
+                        <button onClick={() => setCurrentStep(4)} style={{ marginTop: 12, padding: '10px 22px', borderRadius: 10, fontSize: 12.5, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}>Add Image +</button>
+                      </div>
+                    )}
+                    <div style={{ padding: '12px 20px', display: 'flex', gap: 22, borderTop: `1px solid ${C.borderSoft}`, fontSize: 12, color: C.muted, fontWeight: 600 }}>
+                      <span>👍 Like</span><span>💬 Comment</span><span>🔄 Repost</span><span style={{ marginLeft: 'auto' }}>✈️ Send</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              </div>
+                  </div>
+                  <div style={{ padding: '14px 22px 18px', borderTop: '1px solid #eef2f7', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', backgroundColor: '#fff' }}>
+                    <button onClick={() => setShowPostPreview(false)} style={{ ...ghostBtn, padding: '11px 20px', fontSize: 13 }}>Close Preview</button>
+                    <div style={{ flex: 1 }} />
+                    <button onClick={() => { setShowPostPreview(false); goNext(); }} style={{ padding: '11px 26px', borderRadius: 11, fontSize: 13.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Continue to Publish →</button>
+                  </div>
+                </div>
+              </div>
+              )}
+              <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+                <div style={{ ...card, borderRadius: 20, padding: '18px 20px' }} className="sp-ord-final">
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Final Review</div>
+                  <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2, marginBottom: 6 }}>Here’s a summary of your content settings.</div>
+                  {[
+                    ['📝', 'Topic', p.prompt ? (p.prompt.length > 60 ? p.prompt.slice(0, 60) + '…' : p.prompt) : '—'],
+                    ['🎭', 'Tone', p.tone],
+                    ['🎨', 'Image Style', p.imageStyle],
+                    ['📐', 'Aspect Ratio', p.aspectRatio || '—'],
+                    ['🖼️', 'Media Count', `${previewMediaCount} file${previewMediaCount === 1 ? '' : 's'}`],
+                    ['🏷️', 'Branding', p.logoImage ? `Logo • ${p.logoPosition}` : 'No logo'],
+                    ['📣', 'Platform', previewPlatform.charAt(0).toUpperCase() + previewPlatform.slice(1)],
+                    ['🎠', 'Post Type', p.isCarousel ? `Carousel • ${p.carouselSlides.length} slides` : 'Single Post'],
+                  ].map(([icon, k, v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '5px 0', borderBottom: `1px solid ${C.borderSoft}`, fontSize: 12 }}>
+                      <span style={{ color: C.muted, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 7 }}><span style={{ fontSize: 13 }}>{icon}</span>{k}</span>
+                      <span style={{ color: C.ink, fontWeight: 600, textAlign: 'right', maxWidth: '58%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ ...card, borderRadius: 20, padding: '18px 20px' }} className="sp-ord-ready">
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Readiness</div>
+                  <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2, marginBottom: 6 }}>Check that everything is ready to go.</div>
+                  {(() => {
+                    const hasContent = !!p.content.trim();
+                    const hasMedia = p.mediaItems.length > 0 || postExtraImages.length > 0 || !!p.generatedImage || !!p.generatedVideo;
+                    const mediaCount = previewMediaCount;
+                    const platNames = p.selectedPlatforms.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(', ');
+                    const rows: Array<{ ok: boolean | null; text: string; sub: string; step: number }> = [
+                      { ok: hasContent, text: hasContent ? 'Content ready' : 'Content missing — generate in Step 3', sub: hasContent ? 'Your post content has been generated.' : 'Head back to create your copy.', step: 3 },
+                      { ok: hasMedia, text: hasMedia ? 'Media ready' : 'Media missing — add a visual from Step 4', sub: hasMedia ? `${mediaCount} media file${mediaCount === 1 ? '' : 's'} attached and optimized.` : 'A visual makes your post perform better.', step: 4 },
+                      { ok: p.logoImage ? true : null, text: p.logoImage ? 'Branding applied' : 'No logo — optional', sub: p.logoImage ? 'Your logo will be applied to your visuals.' : 'You can add a logo, or continue without one.', step: 6 },
+                      { ok: p.selectedPlatforms.length > 0 ? true : null, text: p.selectedPlatforms.length > 0 ? `${p.selectedPlatforms.length} platform${p.selectedPlatforms.length === 1 ? '' : 's'} selected` : 'Previewing as LinkedIn', sub: p.selectedPlatforms.length > 0 ? `Content is set for ${platNames}.` : 'Pick a platform to publish to.', step: 2 },
+                    ];
+                    return rows.map(r => (
+                      <button key={r.text} onClick={() => setCurrentStep(r.step)} title="Go to this step" style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 10px', margin: '0 -10px', borderRadius: 10, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                        <span style={{
+                          width: 20, height: 20, borderRadius: '50%', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                          background: r.ok === true ? '#ECFDF5' : r.ok === false ? '#FFFBEB' : '#F1F3F9',
+                          border: `1px solid ${r.ok === true ? '#A7F3D0' : r.ok === false ? '#FDE68A' : '#E2E8F0'}`,
+                          color: r.ok === true ? '#059669' : r.ok === false ? '#92400E' : '#94A3B8',
+                        }}>{r.ok === true ? '✓' : r.ok === false ? '⚠' : '○'}</span>
+                        <span>
+                          <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: r.ok === false ? '#92400E' : '#334155', lineHeight: 1.4 }}>{r.text}</span>
+                          <span style={{ display: 'block', fontSize: 11, fontWeight: 400, color: C.faint, lineHeight: 1.4 }}>{r.sub}</span>
+                        </span>
+                      </button>
+                    ));
+                  })()}
+                </div>
+              </aside>
               </div>
             </div>
 
-            <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 6 }}>Final Review</div>
-                {[
-                  ['Topic', p.prompt ? (p.prompt.length > 60 ? p.prompt.slice(0, 60) + '…' : p.prompt) : '—'],
-                  ['Tone', p.tone],
-                  ['Image Style', p.imageStyle],
-                  ['Aspect Ratio', p.aspectRatio || '—'],
-                  ['Media Count', `${previewMediaCount} file${previewMediaCount === 1 ? '' : 's'}`],
-                  ['Branding', p.logoImage ? `Logo • ${p.logoPosition}` : 'No logo'],
-                  ['Platform', previewPlatform.charAt(0).toUpperCase() + previewPlatform.slice(1)],
-                  ['Carousel', p.isCarousel ? `Carousel • ${p.carouselSlides.length} slides` : 'Single Post'],
-                ].map(([k, v]) => (
-                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 0', borderBottom: `1px solid ${C.borderSoft}`, fontSize: 12 }}>
-                    <span style={{ color: C.muted, flexShrink: 0 }}>{k}</span>
-                    <span style={{ color: C.ink, fontWeight: 600, textAlign: 'right', maxWidth: '62%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ borderRadius: 20, padding: '20px 22px', background: 'linear-gradient(135deg,#ECFDF5,#F5F0FF)', border: '1px solid #A7F3D0', display: 'flex', gap: 12 }}>
-                <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0, boxShadow: '0 4px 12px rgba(16,185,129,0.2)', border: '1px solid #A7F3D0' }}>🤖</div>
-                <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>✨ Looks good?</div>
-                  <div style={{ fontSize: 12, color: '#475569', marginTop: 4, lineHeight: 1.6 }}>Review your content, check the platform preview, and make sure everything is ready before publishing.</div>
-                </div>
-              </div>
-
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 10 }}>💡 Platform Best Practices</div>
-                {(previewPlatform === 'linkedin' ? [
-                  'Keep your message clear and professional',
-                  'Use relevant hashtags',
-                  'Add an engaging visual',
-                  'Maintain a strong call-to-action',
-                ] : [
-                  'Keep your message clear and concise',
-                  'Use visuals sized for this platform',
-                  'Add a call-to-action',
-                  'Check your preview before publishing',
-                ]).map(tip => (
-                  <div key={tip} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '6px 0' }}>
-                    <span style={{ width: 19, height: 19, borderRadius: '50%', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>✓</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: '#334155', lineHeight: 1.5 }}>{tip}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 10 }}>Readiness</div>
-                {(() => {
-                  const hasContent = !!p.content.trim();
-                  const hasMedia = p.mediaItems.length > 0 || postExtraImages.length > 0 || !!p.generatedImage || !!p.generatedVideo;
-                  const rows: Array<{ ok: boolean | null; text: string; step: number }> = [
-                    { ok: hasContent, text: hasContent ? 'Content ready' : 'Content missing — generate in Step 3', step: 3 },
-                    { ok: hasMedia, text: hasMedia ? 'Media ready' : 'Media missing — add a visual from Step 4', step: 4 },
-                    { ok: p.logoImage ? true : null, text: p.logoImage ? 'Branding applied' : 'No logo — optional', step: 6 },
-                    { ok: p.selectedPlatforms.length > 0 ? true : null, text: p.selectedPlatforms.length > 0 ? `${p.selectedPlatforms.length} platform${p.selectedPlatforms.length === 1 ? '' : 's'} selected` : 'Previewing as LinkedIn', step: 2 },
-                  ];
-                  return rows.map(r => (
-                    <button key={r.text} onClick={() => setCurrentStep(r.step)} title="Go to this step" style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', margin: '0 -10px', borderRadius: 10, border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-                      <span style={{
-                        width: 20, height: 20, borderRadius: '50%', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                        background: r.ok === true ? '#ECFDF5' : r.ok === false ? '#FFFBEB' : '#F1F3F9',
-                        border: `1px solid ${r.ok === true ? '#A7F3D0' : r.ok === false ? '#FDE68A' : '#E2E8F0'}`,
-                        color: r.ok === true ? '#059669' : r.ok === false ? '#92400E' : '#94A3B8',
-                      }}>{r.ok === true ? '✓' : r.ok === false ? '⚠' : '○'}</span>
-                      <span style={{ fontSize: 12.5, fontWeight: 600, color: r.ok === false ? '#92400E' : '#334155', lineHeight: 1.5 }}>{r.text}</span>
-                    </button>
-                  ));
-                })()}
-              </div>
-            </aside>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => setShowCancelPreview(true)} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14, color: '#B91C1C' }}>Cancel</button>
+              <button ref={previewBtnRef} onClick={openPostPreview} title="Open the realistic platform preview in a popup" style={{ minHeight: 50, padding: '14px 26px', borderRadius: 12, fontSize: 14, fontWeight: 800, border: `1.5px solid ${C.primary}`, backgroundColor: '#fff', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit' }}>👁 Preview</button>
+              <button onClick={goNext} style={{ minHeight: 50, padding: '14px 34px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Publish →</button>
+            </div>
           </div>
         )}
 
-        {/* ================= STEP 8 — PUBLISH ================= */}
+                {/* ================= STEP 8 — PUBLISH ================= */}
         {currentStep === 8 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div className="sp-s2-grid">
@@ -2042,7 +2274,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Publishing Platforms</div>
                   <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 14 }}>Connect your social media accounts to publish your content.</div>
                   <div className="sp-wiz-grid2" style={{ gap: 12 }}>
-                    {['linkedin', 'instagram', 'facebook', 'whatsapp'].map(pl => {
+                    {p.selectedPlatforms.length === 0 && (
+                      <div style={{ gridColumn: '1 / -1', fontSize: 12.5, color: C.muted, border: `1.5px dashed ${C.border}`, borderRadius: 14, padding: '18px', textAlign: 'center' }}>
+                        No platforms selected — <button onClick={() => setCurrentStep(2)} style={{ background: 'none', border: 'none', padding: 0, color: C.primaryDark, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5 }}>pick platforms in Settings →</button>
+                      </div>
+                    )}
+                    {['linkedin', 'instagram', 'facebook', 'whatsapp'].filter(pl => p.selectedPlatforms.includes(pl)).map(pl => {
                       const label = pl === 'whatsapp' ? 'WhatsApp' : pl.charAt(0).toUpperCase() + pl.slice(1);
                       const isWhapi = pl === 'whatsapp';
                       const selected = p.selectedPlatforms.includes(pl);
@@ -2282,6 +2519,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       p.isCarousel ? `Carousel • ${p.carouselSlides.length}` : 'Single Post',
                       p.aspectRatio || 'No ratio',
                       p.imageStyle,
+                      ...(p.trialReel && p.instagramReelReady ? ['Trial Reel'] : []),
                     ].map(chip => (
                       <span key={chip} style={{ fontSize: 10.5, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '4px 11px', borderRadius: 999 }}>{chip}</span>
                     ))}
@@ -2289,6 +2527,17 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   {p.isCarousel && (
                     <div style={{ marginTop: 10, fontSize: 11, fontWeight: 700, padding: '7px 10px', borderRadius: 8, border: `1px solid ${p.carouselValidation.valid ? '#A7F3D0' : '#FDE68A'}`, backgroundColor: p.carouselValidation.valid ? '#ECFDF5' : '#FFFBEB', color: p.carouselValidation.valid ? '#065F46' : '#92400E' }}>
                       {p.carouselValidation.valid ? `🎠 Carousel: ${p.carouselSlides.length} slides ✓ ready` : `🎠 Carousel: ${p.carouselValidation.reason}`}
+                    </div>
+                  )}
+                  {p.instagramReelReady && (
+                    <div style={{ marginTop: 10 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 13px', borderRadius: 11, border: `1.5px solid ${p.trialReel ? C.primary : C.border}`, backgroundColor: p.trialReel ? C.primarySoft : '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        <input type="checkbox" checked={p.trialReel} onChange={e => p.setTrialReel(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#7C3AED', cursor: 'pointer' }} />
+                        <span style={{ fontSize: 12.5, fontWeight: 800, color: p.trialReel ? C.primaryDark : C.ink }}>Post as Trial Reel</span>
+                      </label>
+                      {p.trialReel && (
+                        <div style={{ marginTop: 7, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>Trial Reels are shown to non-followers first. Trial publishing connects separately — until then, publishing reports it clearly instead of posting a normal Reel.</div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2371,6 +2620,45 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 try { if (await p.cancelPreview()) setShowCancelPreview(false); }
                 finally { setIsCancellingPreview(false); }
               }} disabled={isCancellingPreview} style={{ ...primaryBtn(isCancellingPreview), background: isCancellingPreview ? '#FCA5A5' : '#DC2626', boxShadow: 'none' }}>{isCancellingPreview ? 'Saving…' : 'Cancel Post'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRegenPicker && (
+        <div onClick={() => setShowRegenPicker(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(15,23,42,0.46)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="regen-picker-title" onClick={e => e.stopPropagation()} style={{ width: 'min(440px, 100%)', backgroundColor: '#fff', borderRadius: 16, padding: 22, boxShadow: '0 20px 60px rgba(15,23,42,0.22)', fontFamily: 'inherit' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <h3 id="regen-picker-title" style={{ margin: 0, fontSize: 16, fontWeight: 800, color: C.ink }}>↻ Regenerate Content</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12.5, color: C.muted }}>Your selected platforms — regenerate one, or all at once.</p>
+              </div>
+              <button onClick={() => setShowRegenPicker(false)} title="Close" style={{ width: 30, height: 30, borderRadius: 9, border: `1px solid ${C.border}`, background: '#fff', color: C.muted, fontSize: 14, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '16px 0' }}>
+              {p.selectedPlatforms.map(plat => {
+                const entry = p.platformContent[plat];
+                const ready = !!entry?.caption?.trim();
+                const busy = !canGenContent || p.isGeneratingContent;
+                const brand = p.platformColors[plat] || C.primary;
+                return (
+                  <div key={plat} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 12, border: `1px solid ${C.border}`, backgroundColor: '#fff' }}>
+                    <span style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <p.PlatformIcon platform={plat} size={16} />
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800, color: C.ink, textTransform: 'capitalize' }}>{plat}</span>
+                      <span style={{ display: 'block', fontSize: 11.5, color: ready ? '#15803D' : C.faint }}>{ready ? `✓ Ready · ${entry.caption.length} chars` : '○ Not generated yet'}</span>
+                    </span>
+                    <button onClick={() => p.regeneratePlatform(plat)} disabled={busy} title={busy ? (p.isGeneratingContent ? 'Generating — please wait' : genContentBlocker) : `Regenerate only ${plat} — other platforms are untouched`} style={{ padding: '7px 13px', borderRadius: 9, fontSize: 12, fontWeight: 800, border: `1.5px solid ${busy ? '#E8EAF1' : C.primaryBorder}`, backgroundColor: busy ? '#fff' : C.primarySoft, color: busy ? '#B6BDCC' : C.primaryDark, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↻ Regen</button>
+                  </div>
+                );
+              })}
+            </div>
+            {p.isGeneratingContent && <p style={{ margin: '0 0 12px', fontSize: 12, color: C.primaryDark, background: C.primarySoft, borderRadius: 9, padding: '8px 12px' }}>Generating… you can close this popup, the work continues in the background.</p>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button onClick={() => setShowRegenPicker(false)} style={ghostBtn}>Cancel</button>
+              <button onClick={() => { setShowRegenPicker(false); p.generateContent(); }} disabled={!canGenContent || p.isGeneratingContent} title={!canGenContent ? genContentBlocker : 'Regenerate content for all selected platforms'} style={{ padding: '10px 18px', borderRadius: 11, fontSize: 12.5, fontWeight: 800, border: 'none', background: (!canGenContent || p.isGeneratingContent) ? '#E8EAF1' : 'linear-gradient(135deg,#7C3AED,#A855F7)', color: (!canGenContent || p.isGeneratingContent) ? '#B6BDCC' : '#fff', cursor: (!canGenContent || p.isGeneratingContent) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', boxShadow: (!canGenContent || p.isGeneratingContent) ? 'none' : '0 6px 22px rgba(124,58,237,0.42)' }}>✨ Regenerate All</button>
             </div>
           </div>
         </div>
