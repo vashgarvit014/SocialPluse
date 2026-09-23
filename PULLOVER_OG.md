@@ -1,10 +1,26 @@
 # PULLOVER - SocialPulse live tunnel + model state
 
-Updated: 2026-09-20, Studio 8-step redesign + WhatsApp publish/admin fixes + AI gated loader + branding replace-not-stack (committed a6c3569). See CURRENT HANDOVER below.
+Updated: 2026-09-22, committed prior-session platform-preview/scheduler-calendar work (c111ae0) + fixed Generated-Media Download button, Edit Prompt lock, and added a Pollinations fallback API key. See CURRENT HANDOVER below.
 
 ## CURRENT HANDOVER — authoritative; supersedes historical sections below
 
-### Latest implementation handover (2026-09-20 — Studio redesign + WhatsApp + AI loader — a6c3569)
+### Latest implementation handover (2026-09-22 — Download/Edit-Prompt fixes + Pollinations fallback key — c111ae0 + uncommitted)
+
+**Checkpoint commit `c111ae0`** (23 files, +4247/-669): the working tree already carried a large batch of prior-session uncommitted work — `connect-platforms.tsx`, per-platform preview components (`facebook-preview.tsx`, `instagram-preview.tsx`, `linkedin-preview.tsx`, `whatsapp-preview.tsx`), `scheduler-calendar.tsx`, `src/lib/instagram-trial.ts`, plus fixes across the Canva routes, `generate-content/route.ts`, `instagram/publish/route.ts`, `scheduler/check/route.ts`, `whapi/publish/route.ts`, `canva-return/page.tsx`, `page.tsx`, `studio-wizard.tsx`, `studio-workspace.tsx`, `canva.ts`, `posts.ts`. Nothing in this batch was authored this session — it was simply reviewed (no secrets in the diff) and committed as one checkpoint, same pattern as the 2026-09-16 checkpoint.
+
+**Generated Media "Save" button now actually downloads (`studio-wizard.tsx`):** the button at the bottom of the AI-generated image/video preview (row: `↻ Regenerate → ✏️ Edit Prompt → 📥 Download → 🗑️ Remove`) previously called `p.saveFullDraft()` despite being labeled "📥 Save" — it saved a draft, it never saved a file to disk. Added `downloadGeneratedMedia()` (studio-wizard.tsx, near `saveDraft`): builds a hidden `<a download>` pointing at `p.generatedVideo || p.generatedImage` (both are same-origin `data:`/`blob:` URLs, so the `download` attribute works without a CORS fetch/blob step) and clicks it. Button relabeled "📥 Download".
+
+**"Edit Prompt" button was a dead click (`studio-wizard.tsx`):** the image-prompt textarea (`studio-wizard.tsx:1049`) is `readOnly={useContentContext}`, and `useContentContext` defaults to `true` (`studio-wizard.tsx:240`) — the field is locked to "use post content as context" out of the box. The Edit Prompt button only called `.focus()`, so clicking it focused a read-only field and looked broken. Fixed: it now flips `useContentContext` off first (seeding `p.imagePrompt` with the same derived-from-content text the field was already showing, so it doesn't blank out) before focusing.
+
+**Pollinations image-gen now has a fallback API key (`generate-image/route.ts`, `.env.local`):** added `POLLINATIONS_API_KEY_FALLBACK` alongside the existing `POLLINATIONS_API_KEY`. `callPollinations(key)` was factored out of the inline `fetch`; if the primary key's request fails for any reason *other than* Azure's content-safety block (400 + `/safety system/i`), it now retries once against `gen.pollinations.ai` with the fallback key before giving up. A safety-block on either key still short-circuits straight to `status:'blocked'` — retrying gibberish/unsafe prompts on a second key would never help. **The model itself still has no fallback** (`PRIMARY_MODEL = 'gpt-image-2'`, per the pre-existing "no fallback, no timeout limit (user requested)" comment) — this only adds redundancy for key-level failures (rate limit/quota/auth), not model outages. Dev server (`next dev -p 3001 -H 0.0.0.0`) was restarted to pick up the new env var — Next.js only reads `.env.local` at process start, unlike code which hot-reloads. Both `http://localhost:3001` and `https://socialpulse.dotstark.tech` confirmed `200` after the restart.
+
+**`tsc --noEmit`:** clean except the one pre-existing, unrelated error (`page.tsx:2837`, `StudioWorkspaceProps` missing `isSavingDraft` — confirmed present before any of this session's edits via `git stash`, not introduced here).
+
+**Uncommitted at end of this session:** `src/app/studio-wizard.tsx` (Download + Edit Prompt fixes), `src/app/api/generate-image/route.ts` (fallback key), `scheduled-posts.json` (runtime state, changes as the app runs). Not committed — only asked to fix the bugs and update this handover, not to checkpoint again.
+
+**Not verified in a real browser this session** (no click-through was run against the live site) — confirmed via source-read + `tsc` + dev-server/tunnel `200`s only. Re-verify the Download button actually saves a file and the Edit Prompt field accepts typing before considering this fully done.
+
+### Previous implementation handover (2026-09-20 — Studio redesign + WhatsApp + AI loader — a6c3569)
 
 Committed as `a6c3569` (8 files, +2193/-751): `src/app/ai-image-loader.tsx` (new), `src/app/page.tsx`, `src/app/studio-wizard.tsx`, `src/app/studio-workspace.tsx`, `src/app/api/whapi/client.ts`, `src/app/api/whapi/publish/route.ts`, `src/app/api/whatsapp/publish/route.ts`, `src/lib/whatsapp-service.ts`. `tsc --noEmit` clean; `next dev -p 3001` + `cloudflared tunnel socialpulse` (9ada467b) both `200` local + public; no posts sent except isolated Whapi verification texts.
 

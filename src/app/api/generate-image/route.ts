@@ -53,8 +53,12 @@ export async function POST(request: NextRequest) {
     const width = size?.width || 768;
     const height = size?.height || 768;
 
-    // Use Pollinations authenticated API with user's API key
+    // Use Pollinations authenticated API with user's API key. A second key
+    // (POLLINATIONS_API_KEY_FALLBACK) is tried if the primary key's request
+    // fails for a reason other than content-safety (e.g. rate limit/quota) —
+    // the model itself still has no fallback (see PRIMARY_MODEL below).
     const apiKey = process.env.POLLINATIONS_API_KEY;
+    const fallbackApiKey = process.env.POLLINATIONS_API_KEY_FALLBACK;
     if (!apiKey) {
       return NextResponse.json(
         { error: 'Pollinations API key not configured' },
@@ -74,11 +78,10 @@ export async function POST(request: NextRequest) {
     // the job store whenever it actually finishes.
     (async () => {
       try {
-        console.log(`[Image] Calling ${PRIMARY_MODEL} via POST (size: ${width}x${height}, no timeout)... job ${jobId}`);
-        const response = await fetch('https://gen.pollinations.ai/v1/images/generations', {
+        const callPollinations = (key: string) => fetch('https://gen.pollinations.ai/v1/images/generations', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${apiKey}`,
+            'Authorization': `Bearer ${key}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -89,19 +92,39 @@ export async function POST(request: NextRequest) {
             n: 1,
           }),
         });
+
+        console.log(`[Image] Calling ${PRIMARY_MODEL} via POST (size: ${width}x${height}, no timeout)... job ${jobId}`);
+        let response = await callPollinations(apiKey);
+        let usedFallbackKey = false;
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(`[Image] ${PRIMARY_MODEL} failed: ${response.status} - ${errorText.slice(0, 300)}`);
+          console.error(`[Image] ${PRIMARY_MODEL} failed with primary key: ${response.status} - ${errorText.slice(0, 300)}`);
           // Azure's content-safety filter rejects gibberish/vague prompts with
-          // a 400. Retrying the same words never works - surface it distinctly
-          // so the UI can explain that instead of a generic "unavailable".
+          // a 400. Retrying the same words (even with a different key) never
+          // works - surface it distinctly instead of burning the fallback key.
           if (response.status === 400 && /safety system/i.test(errorText)) {
             jobs.set(jobId, { status: 'blocked', model: PRIMARY_MODEL, createdAt: Date.now() });
             return;
           }
-          jobs.set(jobId, { status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} is currently unavailable. Please try again in a moment — no fallback will be used (hold).`, createdAt: Date.now() });
-          return;
+          if (!fallbackApiKey) {
+            jobs.set(jobId, { status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} is currently unavailable. Please try again in a moment — no fallback will be used (hold).`, createdAt: Date.now() });
+            return;
+          }
+          console.log(`[Image] Retrying ${PRIMARY_MODEL} with fallback Pollinations key... job ${jobId}`);
+          usedFallbackKey = true;
+          response = await callPollinations(fallbackApiKey);
+          if (!response.ok) {
+            const fallbackErrorText = await response.text();
+            console.error(`[Image] ${PRIMARY_MODEL} failed with fallback key too: ${response.status} - ${fallbackErrorText.slice(0, 300)}`);
+            if (response.status === 400 && /safety system/i.test(fallbackErrorText)) {
+              jobs.set(jobId, { status: 'blocked', model: PRIMARY_MODEL, createdAt: Date.now() });
+              return;
+            }
+            jobs.set(jobId, { status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} is currently unavailable on both keys. Please try again in a moment.`, createdAt: Date.now() });
+            return;
+          }
         }
+        if (usedFallbackKey) console.log(`[Image] Fallback Pollinations key succeeded, job ${jobId}`);
         const data = await response.json();
         const imageBase64 = data.data?.[0]?.b64_json;
         if (!imageBase64) {

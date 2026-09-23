@@ -1796,12 +1796,13 @@
       "logoPosition": "bottom-right",
       "logoScale": 0.18,
       "logoOpacity": 1,
-      "savedAt": 1790075133902,
+      "savedAt": 1790077813242,
       "wizardState": {
         "currentStep": 4,
         "previewPlatform": "instagram"
       },
       "activeTab": "studio",
+      "draftId": "af3959ef-d278-4c72-b03b-e7f1e5ddb3ec",
       "isCarousel": false,
       "carouselSlideIds": [],
       "carouselSlideCount": 4,
@@ -1818,7 +1819,7 @@
     "accounts": [],
     "scheduledAt": null,
     "createdAt": "2026-09-22T11:05:36.021Z",
-    "updatedAt": "2026-09-22T11:05:36.021Z",
+    "updatedAt": "2026-09-22T11:50:24.180Z",
     "cancelledAt": null
   }
 ]

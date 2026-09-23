@@ -378,6 +378,19 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
   const saveDraft = p.saveFullDraft;
 
+  const downloadGeneratedMedia = () => {
+    const url = p.generatedVideo || p.generatedImage;
+    if (!url) return;
+    const isVideo = !!p.generatedVideo;
+    const ext = isVideo ? 'mp4' : (url.match(/^data:image\/(\w+)/)?.[1] || 'jpg');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `socialpulse-${Date.now()}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   const goNext = () => setCurrentStep(s => Math.min(8, s + 1));
   const goBack = () => setCurrentStep(s => Math.max(1, s - 1));
 
@@ -1101,8 +1114,17 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         : <img src={p.generatedImage} alt="AI generated visual" style={{ width: '100%', maxHeight: 420, objectFit: 'contain', display: 'block', backgroundColor: '#0F172A' }} />}
                       <div style={{ position: 'absolute', left: 10, right: 10, bottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button onClick={p.generateImage} disabled={!canGenImage} title="Generate again with the current prompt" style={{ flex: 1, minWidth: 110, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(15,23,42,0.72)', color: '#fff', cursor: canGenImage ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canGenImage ? 1 : 0.6 }}>↻ Regenerate</button>
-                        <button onClick={() => promptInputRef.current?.focus()} title="Edit the prompt above" style={{ flex: 1, minWidth: 110, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}>✏️ Edit Prompt</button>
-                        <button onClick={() => p.saveFullDraft()} title="Save your post draft with this media" disabled={p.isSavingDraft} style={{ flex: 1, minWidth: 90, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: p.isSavingDraft ? 'rgba(99,102,241,0.85)' : 'rgba(255,255,255,0.92)', color: p.isSavingDraft ? '#fff' : '#0F172A', cursor: p.isSavingDraft ? 'wait' : 'pointer', fontFamily: 'inherit' }}>{p.isSavingDraft ? '⏳ Saving…' : '📥 Save'}</button>
+                        <button onClick={() => {
+                          if (useContentContext) {
+                            setUseContentContext(false);
+                            if (!p.imagePrompt) {
+                              const derived = p.content.trim().split('\n')[0].substring(0, 200) || p.prompt.trim();
+                              if (derived) p.setImagePrompt(derived);
+                            }
+                          }
+                          promptInputRef.current?.focus();
+                        }} title="Edit the prompt above" style={{ flex: 1, minWidth: 110, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}>✏️ Edit Prompt</button>
+                        <button onClick={downloadGeneratedMedia} title="Download this file to your device" style={{ flex: 1, minWidth: 90, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}>📥 Download</button>
                         {!p.generatedVideo && (
                           <button onClick={() => p.clearGeneratedImage()} title="Remove the generated visual" style={{ flex: 1, minWidth: 90, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(220,38,38,0.85)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>🗑️ Remove</button>
                         )}
