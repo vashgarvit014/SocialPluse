@@ -1,0 +1,63 @@
+# Dependencies & build output
+node_modules
+.next
+out
+build
+dist
+coverage
+
+# Version control
+.git
+.gitignore
+.github
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.pem
+.idea
+.vscode
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+logs
+*.log
+
+# Env — NEVER bake secrets into image (injected at runtime via --env-file)
+.env
+.env.*
+.env.local
+.env.production
+
+# Runtime state — must survive via volumes, not inside image
+scheduled-posts.json
+linkedin-tokens.json
+facebook-tokens.json
+canva-sessions.json
+whatsapp-events.log
+whapi-events.log
+.instagram-media
+
+# Temp / cache
+tmp
+.tmp
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+.turbo
+
+# Docs / non-runtime (keep public assets — do NOT ignore images globally)
+README.md
+*.xlsx
+*.pptx
+HANDOFF.md
+PULLOVER_OG.md
+UX_IMPLEMENTATION_REPORT.md
+AGENTS.md
+CLAUDE.md
+tests
+# Keep public/ even though *.png/*.webp would otherwise be ignored if added — explicitly re-include
+!public/**

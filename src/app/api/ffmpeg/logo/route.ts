@@ -42,7 +42,7 @@ function positionToOverlay(pos: string, pad = 12) {
 function runFfmpeg(args: string[]): Promise<void> {
   const ffmpegPath = getFfmpegPath();
   return new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegPath, args);
+    const proc = spawn(/* turbopackIgnore: true */ ffmpegPath, args);
     let stderr = '';
     proc.stderr.on('data', (d) => { stderr += d.toString(); });
     proc.on('close', (code) => {

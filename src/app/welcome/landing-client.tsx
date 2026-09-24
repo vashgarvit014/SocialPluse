@@ -107,7 +107,7 @@ const CAPTIONS: Record<'linkedin' | 'facebook' | 'instagram' | 'whatsapp', { acc
   linkedin: { account: 'Northwind Studio', sub: '2,340 followers · Promoted by you', caption: 'We rebuilt our onboarding from scratch this quarter. Three changes cut setup time from 40 minutes to 6. Here is what we learned and what we would do differently.', meta: 'Professional tone · Single image · 3,000 char limit', actions: 'Like · Comment · Repost · Send', img: IMG[1], overlay: '40 min → 6 min' },
   facebook: { account: 'Northwind Studio', sub: 'Just now · Public', caption: 'Big news from the studio: our new onboarding is live. Setup now takes about 6 minutes. Give it a try and tell us what you think in the comments.', meta: 'Friendly tone · Single image · Link preview', actions: 'Like · Comment · Share', img: IMG[2], overlay: 'New onboarding is live' },
   instagram: { account: 'northwind.studio', sub: 'Sponsored · Carousel 1/4', caption: 'Setup in 6 minutes. Swipe through to see the new flow. #productdesign #onboarding #studiolife', meta: 'Casual tone · Carousel · 4 slides · Hashtags', actions: 'Like · Comment · Share · Save', img: IMG[0], overlay: 'Swipe to see the new flow' },
-  whatsapp: { account: 'Northwind Partners', sub: '48 members · via Whapi', caption: 'Hi team, the new onboarding is live. Setup takes about 6 minutes now. Full walkthrough: northwind.studio/new', meta: 'Direct tone · Sent to 2 groups via Whapi', actions: '', img: IMG[3], overlay: 'Onboarding walkthrough' },
+  whatsapp: { account: 'Northwind Partners', sub: '48 members', caption: 'Hi team, the new onboarding is live. Setup takes about 6 minutes now. Full walkthrough: northwind.studio/new', meta: 'Direct tone · Sent to 2 groups', actions: '', img: IMG[3], overlay: 'Onboarding walkthrough' },
 };
 
 const ASSET_FILTERS = ['All', 'Generated', 'Uploaded', 'Canva', 'Branded', 'Carousel'];
@@ -262,7 +262,7 @@ export default function LandingClient() {
               <Hover tag={Link} href="/" base="color:#fff;background:linear-gradient(135deg,#5b6cff,#8b5cf6);padding:18px 30px;border-radius:14px;font-weight:600;font-size:17px;box-shadow:0 14px 30px rgba(91,76,245,.35);display:inline-block;" hover="transform:translateY(-2px)">
                 Get Started Free →
               </Hover>
-              <Hover tag="a" href="#workflow" base="color:#0f1020;background:#fff;padding:18px 26px;border-radius:14px;font-weight:600;font-size:17px;border:1px solid #e4e4ee;display:flex;align-items:center;gap:10px;" hover="border-color:#c9c3ff">
+              <Hover tag="a" href="#workflow" base="color:#0f1020;background:#fff;padding:18px 26px;border-radius:14px;font-weight:600;font-size:17px;border:1px solid #e4e4ee;display:flex;align-items:center;gap:10px;" hover="border:1px solid #c9c3ff">
                 <span style={sx('width:24px;height:24px;border-radius:50%;background:#0f1020;display:flex;align-items:center;justify-content:center;')}>
                   <span style={sx('width:0;height:0;border-left:8px solid #fff;border-top:5px solid transparent;border-bottom:5px solid transparent;margin-left:2px;')} />
                 </span>
@@ -373,7 +373,6 @@ export default function LandingClient() {
             <div key={k} style={sx('display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;color:#2a2c3d;')}>
               <span style={{ ...sx('width:30px;height:30px;border-radius:9px;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;'), background: P[k].bg }}>{P[k].short}</span>
               {P[k].name}
-              {k === 'whatsapp' && <span style={sx('font-size:12px;font-weight:600;color:#8a8ca0;')}>via Whapi</span>}
             </div>
           ))}
         </div>
@@ -671,7 +670,7 @@ export default function LandingClient() {
                   </div>
                   <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-top:12px;')}>
                     <span style={sx('font-size:12px;color:#5b4cf5;font-weight:700;')}>{p.time}</span>
-                    <Hover tag="button" onClick={() => move(p.id, 'draft', `"${p.title}" moved back to Drafts`)} base="cursor:pointer;border:1px solid #e4e4ee;background:#fff;color:#4d5065;font-weight:700;font-size:12px;padding:6px 11px;border-radius:9px;" hover="border-color:#f0a8a8;color:#c0392b">← Cancel to Drafts</Hover>
+                    <Hover tag="button" onClick={() => move(p.id, 'draft', `"${p.title}" moved back to Drafts`)} base="cursor:pointer;border:1px solid #e4e4ee;background:#fff;color:#4d5065;font-weight:700;font-size:12px;padding:6px 11px;border-radius:9px;" hover="border:1px solid #f0a8a8;color:#c0392b">← Cancel to Drafts</Hover>
                   </div>
                 </div>
               ))}
@@ -752,7 +751,7 @@ export default function LandingClient() {
           </div>
 
           <div style={sx('background:#fff;border-radius:26px;padding:30px;box-shadow:0 0 0 1px #efeff5;')}>
-            <div style={sx('font-size:13px;font-weight:700;color:#16a34a;')}>WhatsApp via Whapi</div>
+            <div style={sx('font-size:13px;font-weight:700;color:#16a34a;')}>WhatsApp</div>
             <h3 style={sx('font-size:24px;letter-spacing:-.02em;margin:10px 0;font-weight:800;')}>Post to the groups you already have.</h3>
             <div style={sx('display:flex;flex-direction:column;gap:8px;margin-top:22px;')}>
               {groups.map((g, i) => (
@@ -763,7 +762,7 @@ export default function LandingClient() {
                 </Hover>
               ))}
             </div>
-            <Hover tag="button" onClick={() => flash(`Sent to ${nGroups} WhatsApp groups via Whapi`)} base="cursor:pointer;margin-top:14px;width:100%;border:none;background:#25d366;color:#fff;padding:12px;border-radius:12px;font-weight:700;font-size:14px;" hover="background:#1fb857">
+            <Hover tag="button" onClick={() => flash(`Sent to ${nGroups} WhatsApp groups`)} base="cursor:pointer;margin-top:14px;width:100%;border:none;background:#25d366;color:#fff;padding:12px;border-radius:12px;font-weight:700;font-size:14px;" hover="background:#1fb857">
               Send to {nGroups} groups
             </Hover>
           </div>
@@ -794,7 +793,7 @@ export default function LandingClient() {
             <p style={sx('font-size:18px;line-height:1.6;color:#c9cadb;margin:0 0 32px;max-width:460px;')}>Bring your ideas, media, brand, and schedule into one workspace.</p>
             <div style={sx('display:flex;gap:14px;flex-wrap:wrap;')}>
               <Hover tag={Link} href="/" base="color:#0f1020;background:#fff;padding:17px 28px;border-radius:14px;font-weight:700;font-size:16px;display:inline-block;" hover="transform:translateY(-2px)">Get Started Free →</Hover>
-              <Hover tag="a" href="#workflow" base="color:#fff;padding:17px 24px;border-radius:14px;font-weight:600;font-size:16px;border:1px solid rgba(255,255,255,.22);display:inline-block;" hover="border-color:rgba(255,255,255,.5)">See the workflow</Hover>
+              <Hover tag="a" href="#workflow" base="color:#fff;padding:17px 24px;border-radius:14px;font-weight:600;font-size:16px;border:1px solid rgba(255,255,255,.22);display:inline-block;" hover="border:1px solid rgba(255,255,255,.5)">See the workflow</Hover>
             </div>
           </div>
           <div style={sx('position:relative;height:340px;perspective:1100px;display:flex;align-items:center;justify-content:center;')}>

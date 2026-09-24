@@ -2866,6 +2866,7 @@ export default function SocialMediaManager() {
             reorderCarouselSlide={reorderCarouselSlide} setMediaCover={setMediaCover}
             generateCarouselSlides={generateCarouselSlides} isGeneratingCarousel={isGeneratingCarousel}
             carouselSlideCount={carouselSlideCount} setCarouselSlideCount={setCarouselSlideCount}
+            isSavingDraft={isSavingDraft}
             handleMediaDragStart={handleMediaDragStart} handleMediaDragOver={handleMediaDragOver} handleMediaDrop={handleMediaDrop} handleMediaDragEnd={handleMediaDragEnd}
             draggedMediaId={draggedMediaId} dragOverMediaId={dragOverMediaId}
             dragOverPreview={dragOverPreview} setDragOverPreview={setDragOverPreview}
