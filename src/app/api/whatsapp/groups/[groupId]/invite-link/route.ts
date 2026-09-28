@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhatsAppConfig, waFetch, whatsAppError } from '../../../client';
+import { requireApiSession } from '@/lib/auth/api';
 
 function notConfigured() {
   return NextResponse.json({ success: false, code: 'WHATSAPP_NOT_CONFIGURED', message: 'WhatsApp is not configured. Add WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN to .env.local.' }, { status: 401 });
 }
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ groupId: string }> }) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhatsAppConfig();
   if (!config) return notConfigured();
   const { groupId } = await params;
@@ -27,6 +30,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 // Resets the invite link - the previous one stops working immediately. Use
 // deliberately, not on every load.
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ groupId: string }> }) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhatsAppConfig();
   if (!config) return notConfigured();
   const { groupId } = await params;

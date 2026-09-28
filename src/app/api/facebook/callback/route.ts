@@ -15,7 +15,7 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 const APP_ORIGIN = new URL(FACEBOOK_REDIRECT_URI).origin;
 
 export async function GET(request: NextRequest) {
-  if (invalidReturnState(request)) return finishReturn(request, new URL('/?error=state_mismatch', APP_ORIGIN));
+  if (invalidReturnState(request)) return finishReturn(request, new URL('/dashboard?error=state_mismatch', APP_ORIGIN));
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
@@ -27,16 +27,16 @@ export async function GET(request: NextRequest) {
   const errorMessage = searchParams.get('error_message');
 
   if (error) {
-    return finishReturn(request, new URL(`/?error=${error}`, APP_ORIGIN));
+    return finishReturn(request, new URL(`/dashboard?error=${error}`, APP_ORIGIN));
   }
 
   if (errorCode || errorMessage) {
     console.error(`[facebook/callback] dialog error ${errorCode}: ${errorMessage}`);
-    return finishReturn(request, new URL(`/?error=${encodeURIComponent(errorMessage || errorCode || 'facebook_dialog_error')}`, APP_ORIGIN));
+    return finishReturn(request, new URL(`/dashboard?error=${encodeURIComponent(errorMessage || errorCode || 'facebook_dialog_error')}`, APP_ORIGIN));
   }
 
   if (!code) {
-    return finishReturn(request, new URL('/?error=no_code', APP_ORIGIN));
+    return finishReturn(request, new URL('/dashboard?error=no_code', APP_ORIGIN));
   }
 
   try {
@@ -45,11 +45,11 @@ export async function GET(request: NextRequest) {
       `${GRAPH}/oauth/access_token?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(FACEBOOK_REDIRECT_URI)}&client_secret=${FACEBOOK_APP_SECRET}&code=${code}`,
     );
     if (!shortRes.ok) {
-      return finishReturn(request, new URL('/?error=token_exchange_failed', APP_ORIGIN));
+      return finishReturn(request, new URL('/dashboard?error=token_exchange_failed', APP_ORIGIN));
     }
     const shortData = await shortRes.json();
     if (!shortData.access_token) {
-      return finishReturn(request, new URL('/?error=token_exchange_failed', APP_ORIGIN));
+      return finishReturn(request, new URL('/dashboard?error=token_exchange_failed', APP_ORIGIN));
     }
 
     // ...traded for a long-lived one (~60 days), so Page tokens derived from
@@ -62,12 +62,12 @@ export async function GET(request: NextRequest) {
 
     const profileRes = await fetch(`${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(userToken)}`);
     if (!profileRes.ok) {
-      return finishReturn(request, new URL('/?error=profile_fetch_failed', APP_ORIGIN));
+      return finishReturn(request, new URL('/dashboard?error=profile_fetch_failed', APP_ORIGIN));
     }
     const profile = await profileRes.json();
     const userId = profile.id || '';
     if (!userId) {
-      return finishReturn(request, new URL('/?error=profile_fetch_failed', APP_ORIGIN));
+      return finishReturn(request, new URL('/dashboard?error=profile_fetch_failed', APP_ORIGIN));
     }
 
     // Pages this user can publish to (needs pages_show_list). Each entry
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
     if (pages.length === 0) {
       // Connected, but there is no Page to publish to - send them back with
       // a clear reason instead of a dead "connected" state.
-      return finishReturn(request, new URL('/?error=no_facebook_page', APP_ORIGIN));
+      return finishReturn(request, new URL('/dashboard?error=no_facebook_page', APP_ORIGIN));
     }
 
     // Tokens stay server-side only. The browser gets the user id plus the
@@ -116,8 +116,8 @@ export async function GET(request: NextRequest) {
       pages: JSON.stringify(pages.map(p => ({ id: p.id, name: p.name }))),
     });
 
-    return finishReturn(request, new URL(`/?${params.toString()}`, APP_ORIGIN));
+    return finishReturn(request, new URL(`/dashboard?${params.toString()}`, APP_ORIGIN));
   } catch {
-    return finishReturn(request, new URL('/?error=callback_failed', APP_ORIGIN));
+    return finishReturn(request, new URL('/dashboard?error=callback_failed', APP_ORIGIN));
   }
 }

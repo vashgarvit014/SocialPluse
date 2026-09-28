@@ -1,8 +1,11 @@
 import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { publishWhatsAppMessage } from '@/lib/whatsapp-service';
+import { requireApiSession } from '@/lib/auth/api';
 
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const body = await request.json().catch(() => ({}));
   const response = await publishWhatsAppMessage({
     communityId: body.communityId,

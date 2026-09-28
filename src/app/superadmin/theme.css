@@ -1,0 +1,28 @@
+/* Design tokens for the Superadmin section only — scoped under
+   [data-superadmin] so this never leaks into the rest of the app (which has
+   its own #0f172a/#7C3AED palette, see _shell/social-media-manager.tsx).
+   Light is the default; [data-theme="dark"] overrides via the same
+   selector, toggled client-side in shell.tsx and remembered in
+   localStorage (a per-viewer convenience only, never security-relevant). */
+[data-superadmin] {
+  --bg: #f5f6fa; --sf: #ffffff; --sf2: #f4f4f8; --bd: #e6e7ef; --tx: #14152b; --mu: #62647c;
+  --ac: #6b5cf6; --acs: #efecff; --act: #5443e0;
+  --ok: #117a55; --oks: #e3f5ec;
+  --warn: #8f5400; --warns: #fdf0d3;
+  --bad: #c0352c; --bads: #fde7e5;
+  --neu: #5f6177; --neus: #eeeff4;
+  --ov: rgba(13, 15, 43, 0.4);
+}
+[data-superadmin][data-theme='dark'] {
+  --bg: #0b0c1c; --sf: #13142a; --sf2: #1a1c36; --bd: #262846; --tx: #eceef9; --mu: #9a9cb8;
+  --ac: #7c6dff; --acs: #252150; --act: #c1b9ff;
+  --ok: #4fd79a; --oks: #0f2c20;
+  --warn: #f2c14e; --warns: #332a0e;
+  --bad: #ff8a80; --bads: #3a1614;
+  --neu: #a4a6bf; --neus: #22243c;
+  --ov: rgba(0, 0, 0, 0.6);
+}
+[data-superadmin] * { box-sizing: border-box; }
+[data-superadmin] button, [data-superadmin] input, [data-superadmin] select { font: inherit; color: inherit; }
+[data-superadmin] input::placeholder { color: var(--mu); }
+[data-superadmin] a { color: var(--act); }

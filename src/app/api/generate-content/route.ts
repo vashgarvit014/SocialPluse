@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/auth/api';
+import { recordAiUsage } from '@/lib/ai-usage';
 
 const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
 const NVIDIA_API_URL = `${NVIDIA_BASE_URL.replace(/\/$/, '')}/chat/completions`;
@@ -772,6 +774,8 @@ function sanitizeHashtags(tags: string[]): string[] {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const { prompt, tone, platforms, hasImage, imageData, imageDataList } = await request.json();
 
@@ -790,10 +794,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No valid platforms selected' }, { status: 400 });
     }
 
+    const startedAt = Date.now();
     const result = await generateContent(prompt.trim(), selectedPlatforms, tone || 'professional', !!hasImage, imageData, Array.isArray(imageDataList) ? imageDataList : undefined);
+    // Provider label is coarse ('text-generation') rather than the specific
+    // model that happened to win — generateContent() races/falls back across
+    // several models internally and doesn't surface which one succeeded to
+    // this outer scope; threading that through would mean touching its
+    // large internal branching logic, which isn't worth the risk for a
+    // usage-count metric. Success/failure and timing are still exact.
+    recordAiUsage({ type: 'CONTENT', provider: 'text-generation', success: true, durationMs: Date.now() - startedAt });
 
     return NextResponse.json(result);
   } catch (error) {
+    recordAiUsage({ type: 'CONTENT', provider: 'text-generation', success: false });
     console.error('Error generating content:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to generate content' },

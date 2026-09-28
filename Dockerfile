@@ -1,15 +1,21 @@
-# SocialPulse — production Dockerfile (Step 1: no DB, no auth)
+# SocialPulse — production Dockerfile (auth: PostgreSQL via pg, see
+# docker-compose.yml's "db" service and src/lib/db.ts)
 # Multi-stage, Debian slim (sharp + ffmpeg-static require glibc, not musl/Alpine)
 # Next.js 16.3.2 standalone output
-
-FROM node:20-bookworm-slim AS base
+#
+# Node pinned to 22 (kept from an earlier node:sqlite-based iteration of this
+# file; auth storage has since moved to PostgreSQL, which needs no particular
+# Node version, but there's no reason to downgrade). pg is pure JS — no
+# native compiler toolchain needed for it, unlike an earlier better-sqlite3
+# attempt that segfaulted on this project's arm64 Docker target.
+FROM node:22-bookworm-slim AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # ---- Stage 1: dependencies ----
 FROM base AS deps
-# libc6-compat not needed on Debian; sharp needs no extra apt on bookworm-slim for runtime,
-# but building from source fallback would need python/make — we use prebuilt via npm ci.
+# libc6-compat not needed on Debian; sharp ships a prebuilt binary for this
+# image (Node 22, glibc), so `npm ci` alone is enough for it too.
 COPY package.json package-lock.json ./
 RUN npm ci
 
@@ -52,6 +58,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # - .instagram-media at /app/.instagram-media (24h staging for Instagram publishes)
 # - whapi/whatsapp event logs at /app/*.log
 # - ffmpeg temp at OS tmpdir (/tmp/socialpulse-ffmpeg)
+# Auth/OTP data no longer lives here — it's in the "db" (PostgreSQL) service,
+# see docker-compose.yml and src/lib/db.ts.
 # Create empty placeholders so bind mounts have correct ownership and the app can
 # write even when no host file is mounted yet (fresh clone).
 # /app itself must be writable by nextjs for atomic rename temp files

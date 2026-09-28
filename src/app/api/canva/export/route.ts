@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getValidAccessToken, setTokenCookies, exportDesignAsPng, peekReadyDesign, takeReadyDesign, CanvaError } from '@/lib/canva';
+import { requireApiSession } from '@/lib/auth/api';
 
 // "Import from Canva" - only runs when the user explicitly clicks it (never
 // automatically on return-navigation). Peeks the one-time readyId handed out
@@ -8,6 +9,8 @@ import { getValidAccessToken, setTokenCookies, exportDesignAsPng, peekReadyDesig
 // and the user can press "Retry Import". Returns the image inline so the
 // caller can push it into mediaItems[] itself.
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const { readyId } = await request.json();
     if (!readyId || typeof readyId !== 'string') {

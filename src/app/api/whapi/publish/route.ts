@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhapiConfig, whapiFetch, whapiError, sanitizeForLog } from '../client';
+import { requireApiSession } from '@/lib/auth/api';
 
 // In-memory publish-attempt registry — same pattern as linkedin/publish, facebook/publish
 const seenAttempts = new Map<string, number>();
@@ -70,6 +71,8 @@ async function validateGroupExists(groupId: string, baseUrl: string, token: stri
 }
 
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   let body: Record<string, unknown>;
   try {
     body = await request.json();

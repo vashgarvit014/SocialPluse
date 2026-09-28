@@ -14,17 +14,17 @@ const LINKEDIN_REDIRECT_URI = process.env.LINKEDIN_REDIRECT_URI || 'http://local
 const APP_ORIGIN = new URL(LINKEDIN_REDIRECT_URI).origin;
 
 export async function GET(request: NextRequest) {
-  if (invalidReturnState(request)) return finishReturn(request, new URL('/?error=state_mismatch', APP_ORIGIN));
+  if (invalidReturnState(request)) return finishReturn(request, new URL('/dashboard?error=state_mismatch', APP_ORIGIN));
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
 
   if (error) {
-    return finishReturn(request, new URL(`/?error=${error}`, APP_ORIGIN));
+    return finishReturn(request, new URL(`/dashboard?error=${error}`, APP_ORIGIN));
   }
 
   if (!code) {
-    return finishReturn(request, new URL('/?error=no_code', APP_ORIGIN));
+    return finishReturn(request, new URL('/dashboard?error=no_code', APP_ORIGIN));
   }
 
   try {
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!tokenResponse.ok) {
-      return finishReturn(request, new URL('/?error=token_exchange_failed', APP_ORIGIN));
+      return finishReturn(request, new URL('/dashboard?error=token_exchange_failed', APP_ORIGIN));
     }
 
     const tokenData = await tokenResponse.json();
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!profileResponse.ok) {
-      return finishReturn(request, new URL('/?error=profile_fetch_failed', APP_ORIGIN));
+      return finishReturn(request, new URL('/dashboard?error=profile_fetch_failed', APP_ORIGIN));
     }
 
     const profileData = await profileResponse.json();
@@ -70,8 +70,8 @@ export async function GET(request: NextRequest) {
       user_id: userId,
     });
 
-    return finishReturn(request, new URL(`/?${params.toString()}`, APP_ORIGIN));
+    return finishReturn(request, new URL(`/dashboard?${params.toString()}`, APP_ORIGIN));
   } catch (error) {
-    return finishReturn(request, new URL('/?error=callback_failed', APP_ORIGIN));
+    return finishReturn(request, new URL('/dashboard?error=callback_failed', APP_ORIGIN));
   }
 }

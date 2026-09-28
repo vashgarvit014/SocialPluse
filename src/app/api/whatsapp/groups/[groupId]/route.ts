@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhatsAppConfig, waFetch, whatsAppError } from '../../client';
+import { requireApiSession } from '@/lib/auth/api';
 
 function notConfigured() {
   return NextResponse.json({ success: false, code: 'WHATSAPP_NOT_CONFIGURED', message: 'WhatsApp is not configured. Add WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN to .env.local.' }, { status: 401 });
@@ -8,6 +9,8 @@ function notConfigured() {
 const INFO_FIELDS = 'subject,description,participants,join_approval_mode,suspended,creation_timestamp,total_participant_count';
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ groupId: string }> }) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhatsAppConfig();
   if (!config) return notConfigured();
   const { groupId } = await params;
@@ -30,6 +33,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 // - it needs multipart media upload, not JSON, and nothing in this app
 // currently needs it.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ groupId: string }> }) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhatsAppConfig();
   if (!config) return notConfigured();
   const { groupId } = await params;
@@ -69,6 +74,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 // Deliberately no "are you sure" here server-side - the frontend must
 // confirm before calling this, same as it must for any other destructive action.
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ groupId: string }> }) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhatsAppConfig();
   if (!config) return notConfigured();
   const { groupId } = await params;

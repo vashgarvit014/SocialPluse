@@ -2,13 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { loadPosts, savePosts, updatePost } from '@/lib/post-store';
 import { cancelPost, reschedulePost, type PostRecord } from '@/lib/posts';
+import { requireApiSession } from '@/lib/auth/api';
 
 export async function GET() {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     return NextResponse.json({ posts: loadPosts().map(p => ({ ...p, accounts: (p.accounts || []).map(({ accessToken: _token, ...a }) => { void _token; return a; }) })) });
   } catch { return NextResponse.json({ error: 'Unable to read post storage; no data changed.' }, { status: 500 }); }
 }
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const body = await request.json();
     const draft = body.status === 'draft';
@@ -36,6 +41,8 @@ export async function POST(request: NextRequest) {
 // publish worker (which claims the post by flipping it to "publishing"
 // before its first network call).
 export async function PATCH(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const { id, scheduledAt } = await request.json();
     if (typeof id !== 'string' || !id) return NextResponse.json({ error: 'Missing post id' }, { status: 400 });
@@ -48,6 +55,8 @@ export async function PATCH(request: NextRequest) {
 }
 // Existing DELETE clients cancel. Permanent deletion requires an explicit action.
 export async function DELETE(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const { id, action } = await request.json();
     if (action === 'delete-draft') {

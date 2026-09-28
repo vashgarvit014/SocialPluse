@@ -7,6 +7,7 @@ import {
   savePendingDesign,
   CanvaError,
 } from '@/lib/canva';
+import { requireApiSession } from '@/lib/auth/api';
 
 const MIN_DIM = 40;
 const MAX_DIM = 8000;
@@ -19,6 +20,8 @@ const MAX_AREA = 25_000_000; // Canva custom-design limit (px²)
 // back, stays open) -> explicit "Import from Canva" export. Nothing is
 // imported automatically.
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const { width, height, title } = await request.json();
 

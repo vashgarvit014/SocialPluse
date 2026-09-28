@@ -1,6 +1,7 @@
 import { altPayload, mediaAlt } from '@/lib/alt-capabilities';
 import { NextRequest, NextResponse } from 'next/server';
 import { getFacebookPageToken } from '../vault';
+import { requireApiSession } from '@/lib/auth/api';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 
@@ -66,6 +67,8 @@ function parseDataUrl(dataUrl: string): { buffer: Buffer; mime: string; ext: str
 }
 
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   let body: Record<string, unknown>;
   try {
     body = await request.json();

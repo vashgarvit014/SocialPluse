@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhatsAppConfig, waFetch, whatsAppError } from '../client';
+import { requireApiSession } from '@/lib/auth/api';
 
 // Sends a 1:1 message - this is how you actually invite someone to a group
 // (send them the invite link from ../groups/[groupId]/invite-link), since
@@ -15,6 +16,8 @@ import { getWhatsAppConfig, waFetch, whatsAppError } from '../client';
 // the number first, or this route is extended to send an approved template
 // instead (a separate Meta-side setup: WhatsApp Manager > Message Templates).
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhatsAppConfig();
   if (!config) {
     return NextResponse.json({ success: false, code: 'WHATSAPP_NOT_CONFIGURED', message: 'WhatsApp is not configured. Add WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN to .env.local.' }, { status: 401 });

@@ -237,8 +237,8 @@ export default function LandingClient() {
             <a href="#features" style={sx('color:#2a2c3d;')}>Features</a>
           </div>
           <div style={sx('display:flex;align-items:center;gap:22px;')}>
-            <Link href="/" style={sx('color:#0f1020;font-weight:600;font-size:15px;')}>Log in</Link>
-            <Hover tag={Link} href="/" base="color:#fff;background:linear-gradient(135deg,#5b6cff,#8b5cf6);padding:12px 22px;border-radius:12px;font-weight:600;font-size:15px;box-shadow:0 10px 24px rgba(91,76,245,.3);display:inline-block;" hover="transform:translateY(-1px);box-shadow:0 14px 30px rgba(91,76,245,.4)">
+            <Link href="/login-signup?mode=login" style={sx('color:#0f1020;font-weight:600;font-size:15px;')}>Log in</Link>
+            <Hover tag={Link} href="/login-signup?mode=signup" base="color:#fff;background:linear-gradient(135deg,#5b6cff,#8b5cf6);padding:12px 22px;border-radius:12px;font-weight:600;font-size:15px;box-shadow:0 10px 24px rgba(91,76,245,.3);display:inline-block;" hover="transform:translateY(-1px);box-shadow:0 14px 30px rgba(91,76,245,.4)">
               Get Started →
             </Hover>
           </div>
@@ -259,7 +259,7 @@ export default function LandingClient() {
               An AI-powered social media workspace for creating, previewing, scheduling, and publishing content across multiple platforms.
             </p>
             <div style={sx('display:flex;gap:14px;flex-wrap:wrap;')}>
-              <Hover tag={Link} href="/" base="color:#fff;background:linear-gradient(135deg,#5b6cff,#8b5cf6);padding:18px 30px;border-radius:14px;font-weight:600;font-size:17px;box-shadow:0 14px 30px rgba(91,76,245,.35);display:inline-block;" hover="transform:translateY(-2px)">
+              <Hover tag={Link} href="/login-signup?mode=signup" base="color:#fff;background:linear-gradient(135deg,#5b6cff,#8b5cf6);padding:18px 30px;border-radius:14px;font-weight:600;font-size:17px;box-shadow:0 14px 30px rgba(91,76,245,.35);display:inline-block;" hover="transform:translateY(-2px)">
                 Get Started Free →
               </Hover>
               <Hover tag="a" href="#workflow" base="color:#0f1020;background:#fff;padding:18px 26px;border-radius:14px;font-weight:600;font-size:17px;border:1px solid #e4e4ee;display:flex;align-items:center;gap:10px;" hover="border:1px solid #c9c3ff">
@@ -792,7 +792,7 @@ export default function LandingClient() {
             </h2>
             <p style={sx('font-size:18px;line-height:1.6;color:#c9cadb;margin:0 0 32px;max-width:460px;')}>Bring your ideas, media, brand, and schedule into one workspace.</p>
             <div style={sx('display:flex;gap:14px;flex-wrap:wrap;')}>
-              <Hover tag={Link} href="/" base="color:#0f1020;background:#fff;padding:17px 28px;border-radius:14px;font-weight:700;font-size:16px;display:inline-block;" hover="transform:translateY(-2px)">Get Started Free →</Hover>
+              <Hover tag={Link} href="/login-signup?mode=signup" base="color:#0f1020;background:#fff;padding:17px 28px;border-radius:14px;font-weight:700;font-size:16px;display:inline-block;" hover="transform:translateY(-2px)">Get Started Free →</Hover>
               <Hover tag="a" href="#workflow" base="color:#fff;padding:17px 24px;border-radius:14px;font-weight:600;font-size:16px;border:1px solid rgba(255,255,255,.22);display:inline-block;" hover="border:1px solid rgba(255,255,255,.5)">See the workflow</Hover>
             </div>
           </div>

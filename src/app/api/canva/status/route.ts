@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getValidAccessToken, getCanvaProfile, setTokenCookies, clearTokenCookies, CanvaError } from '@/lib/canva';
+import { requireApiSession } from '@/lib/auth/api';
 
 // Real connection status, computed server-side from the httpOnly token
 // cookies - never trust a client-side flag for this.
 export async function GET(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const accessToken = request.cookies.get('canva_access_token')?.value;
   const refreshToken = request.cookies.get('canva_refresh_token')?.value;
   const expiresAt = request.cookies.get('canva_expires_at')?.value;

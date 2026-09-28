@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { StudioWorkspaceProps } from './studio-workspace';
-import type { MediaItem } from './page';
+import type { MediaItem } from './social-media-manager';
 import AiImageLoader from './ai-image-loader';
 import InstagramPhonePreview from './instagram-preview';
 import FacebookPostPreview from './facebook-preview';
@@ -2542,6 +2542,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       p.aspectRatio || 'No ratio',
                       p.imageStyle,
                       ...(p.trialReel && p.instagramReelReady ? ['Trial Reel'] : []),
+                      ...(p.collaborator ? [`@${p.collaborator}`] : []),
                     ].map(chip => (
                       <span key={chip} style={{ fontSize: 10.5, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '4px 11px', borderRadius: 999 }}>{chip}</span>
                     ))}
@@ -2558,7 +2559,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         <span style={{ fontSize: 12.5, fontWeight: 800, color: p.trialReel ? C.primaryDark : C.ink }}>Post as Trial Reel</span>
                       </label>
                       {p.trialReel && (
-                        <div style={{ marginTop: 7, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>Trial Reels are shown to non-followers first. Trial publishing connects separately — until then, publishing reports it clearly instead of posting a normal Reel.</div>
+                        <div style={{ marginTop: 7, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>Trial Reels are shown to non-followers first (single video only, never a normal Reel to followers).</div>
                       )}
                     </div>
                   )}

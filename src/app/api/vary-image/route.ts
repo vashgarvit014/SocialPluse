@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/auth/api';
 
 const NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
@@ -11,6 +12,8 @@ const VARY_MODELS = ['meta/llama-3.2-11b-vision-instruct'];
 // client can feed it straight into /api/generate-image for a fresh AI
 // variation. No pixels are copied - the new image is generated from text.
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const { imageData, style } = await request.json();
     if (!imageData || typeof imageData !== 'string') {

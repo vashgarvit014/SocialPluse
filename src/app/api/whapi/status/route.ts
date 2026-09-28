@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getWhapiConfig, whapiFetch, whapiError, maskPhone } from '../client';
+import { requireApiSession } from '@/lib/auth/api';
 
 // GET /api/whapi/status — separate from Meta /api/whatsapp/status
 // Calls Whapi /health to verify channel is connected.
 // Never exposes token.
 
 export async function GET() {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhapiConfig();
   if (!config) {
     return NextResponse.json({ connected: false, reason: 'NOT_CONFIGURED', message: 'Whapi is not configured. Add WHAPI_API_TOKEN to .env.local.' });

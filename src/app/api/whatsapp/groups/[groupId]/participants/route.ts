@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhatsAppConfig, waFetch, whatsAppError } from '../../../client';
+import { requireApiSession } from '@/lib/auth/api';
 
 // Removal only - there is no "add participant" endpoint. Joining only
 // happens via the invite link (see ../invite-link/route.ts), which is a
 // deliberate WhatsApp platform restriction, not a gap in this route.
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ groupId: string }> }) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhatsAppConfig();
   if (!config) {
     return NextResponse.json({ success: false, code: 'WHATSAPP_NOT_CONFIGURED', message: 'WhatsApp is not configured. Add WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN to .env.local.' }, { status: 401 });

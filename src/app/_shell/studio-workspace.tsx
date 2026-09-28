@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { MediaItem } from './page';
+import type { MediaItem } from './social-media-manager';
 import StudioWizard from './studio-wizard';
 
 // ---------------------------------------------------------------------------
@@ -148,6 +148,7 @@ export interface StudioWorkspaceProps {
   carouselSlideCount: number; setCarouselSlideCount: (v: number) => void;
   // Instagram Trial Reel (checkbox only for IG + single video Reel)
   trialReel: boolean; setTrialReel: (v: boolean) => void; instagramReelReady: boolean;
+  collaborator: string; setCollaborator: (v: string) => void;
   isSavingDraft: boolean;
   // brand
   logoImage: string; logoPosition: string; logoScale: number; logoOpacity: number;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLinkedInToken, getAnyLinkedInToken, deleteLinkedInToken } from '../vault';
+import { requireApiSession } from '@/lib/auth/api';
 
 // Real connection status, computed server-side from the token vault - never
 // trust the client's cached name/email. localStorage can go stale (e.g. a
@@ -13,6 +14,8 @@ import { getLinkedInToken, getAnyLinkedInToken, deleteLinkedInToken } from '../v
 // different tab), fall back to whatever single account the vault holds
 // rather than reporting disconnected forever with no way to self-heal.
 export async function GET(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const requestedUserId = request.nextUrl.searchParams.get('userId');
   const resolved = requestedUserId
     ? (() => { const t = getLinkedInToken(requestedUserId); return t ? { userId: requestedUserId, accessToken: t } : null; })()

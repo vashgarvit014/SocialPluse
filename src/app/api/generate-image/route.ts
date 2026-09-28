@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/auth/api';
+import { recordAiUsage } from '@/lib/ai-usage';
 
 // In-memory job store so image generation can run as a background job
 // instead of inside one held-open HTTP request. gpt-image-2 via Pollinations
@@ -29,6 +31,8 @@ function cleanupJobs() {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const { prompt, style, size } = await request.json();
 
@@ -71,6 +75,15 @@ export async function POST(request: NextRequest) {
     cleanupJobs();
     const jobId = `img_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     jobs.set(jobId, { status: 'pending', createdAt: Date.now() });
+    const genStartedAt = Date.now();
+
+    // Wraps jobs.set for the three terminal states so every exit path
+    // records usage exactly once, instead of repeating recordAiUsage() at
+    // five separate call sites below (easy to miss one on a future edit).
+    function setTerminalJob(job: ImageJob) {
+      jobs.set(jobId, job);
+      recordAiUsage({ type: 'IMAGE', provider: PRIMARY_MODEL, success: job.status === 'done', durationMs: Date.now() - genStartedAt });
+    }
 
     // Fire-and-forget: this process stays alive (next dev / a long-running
     // node server, not a serverless function that dies on response), so the
@@ -103,11 +116,11 @@ export async function POST(request: NextRequest) {
           // a 400. Retrying the same words (even with a different key) never
           // works - surface it distinctly instead of burning the fallback key.
           if (response.status === 400 && /safety system/i.test(errorText)) {
-            jobs.set(jobId, { status: 'blocked', model: PRIMARY_MODEL, createdAt: Date.now() });
+            setTerminalJob({ status: 'blocked', model: PRIMARY_MODEL, createdAt: Date.now() });
             return;
           }
           if (!fallbackApiKey) {
-            jobs.set(jobId, { status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} is currently unavailable. Please try again in a moment — no fallback will be used (hold).`, createdAt: Date.now() });
+            setTerminalJob({ status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} is currently unavailable. Please try again in a moment — no fallback will be used (hold).`, createdAt: Date.now() });
             return;
           }
           console.log(`[Image] Retrying ${PRIMARY_MODEL} with fallback Pollinations key... job ${jobId}`);
@@ -117,10 +130,10 @@ export async function POST(request: NextRequest) {
             const fallbackErrorText = await response.text();
             console.error(`[Image] ${PRIMARY_MODEL} failed with fallback key too: ${response.status} - ${fallbackErrorText.slice(0, 300)}`);
             if (response.status === 400 && /safety system/i.test(fallbackErrorText)) {
-              jobs.set(jobId, { status: 'blocked', model: PRIMARY_MODEL, createdAt: Date.now() });
+              setTerminalJob({ status: 'blocked', model: PRIMARY_MODEL, createdAt: Date.now() });
               return;
             }
-            jobs.set(jobId, { status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} is currently unavailable on both keys. Please try again in a moment.`, createdAt: Date.now() });
+            setTerminalJob({ status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} is currently unavailable on both keys. Please try again in a moment.`, createdAt: Date.now() });
             return;
           }
         }
@@ -129,15 +142,15 @@ export async function POST(request: NextRequest) {
         const imageBase64 = data.data?.[0]?.b64_json;
         if (!imageBase64) {
           console.error(`[Image] ${PRIMARY_MODEL} returned no b64`);
-          jobs.set(jobId, { status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} returned no image data. Please try again.`, createdAt: Date.now() });
+          setTerminalJob({ status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} returned no image data. Please try again.`, createdAt: Date.now() });
           return;
         }
         const mime = imageBase64.startsWith('iVBORw0KGgo') ? 'image/png' : 'image/jpeg';
         console.log(`[Image] Generated with ${PRIMARY_MODEL} ✅ ${Math.round(imageBase64.length / 1024)}KB, job ${jobId}`);
-        jobs.set(jobId, { status: 'done', image: `data:${mime};base64,${imageBase64}`, model: PRIMARY_MODEL, createdAt: Date.now() });
+        setTerminalJob({ status: 'done', image: `data:${mime};base64,${imageBase64}`, model: PRIMARY_MODEL, createdAt: Date.now() });
       } catch (err) {
         console.error(`[Image] ${PRIMARY_MODEL} failed:`, err instanceof Error ? err.message : err);
-        jobs.set(jobId, { status: 'error', model: PRIMARY_MODEL, message: 'Network error reaching the image model. Please try again.', createdAt: Date.now() });
+        setTerminalJob({ status: 'error', model: PRIMARY_MODEL, message: 'Network error reaching the image model. Please try again.', createdAt: Date.now() });
       }
     })();
 
@@ -152,6 +165,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const jobId = request.nextUrl.searchParams.get('jobId');
   if (!jobId) return NextResponse.json({ error: 'jobId is required' }, { status: 400 });
   const job = jobs.get(jobId);

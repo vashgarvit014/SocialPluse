@@ -7,7 +7,7 @@ export default function OAuthReturn() {
     const params = new URLSearchParams(location.search);
     const id = params.get('editor_return');
     if (!id) return;
-    const target = '/?' + params.toString();
+    const target = '/dashboard?' + params.toString();
     if (window.opener && !window.opener.closed) {
       const onAck = (event: MessageEvent) => {
         if (event.origin === location.origin && event.source === window.opener && event.data?.type === 'socialpulse-oauth-ack' && event.data.id === id) window.close();
@@ -18,5 +18,5 @@ export default function OAuthReturn() {
     }
     location.replace(target);
   }, []);
-  return <main style={{ padding: 40 }}><h1>Connection returned</h1><p>Your editor content is saved. This window closes when SocialPulse receives the result.</p><button onClick={() => router.push('/' + location.search)}>Return to my editor</button></main>;
+  return <main style={{ padding: 40 }}><h1>Connection returned</h1><p>Your editor content is saved. This window closes when SocialPulse receives the result.</p><button onClick={() => router.push('/dashboard' + location.search)}>Return to my editor</button></main>;
 }

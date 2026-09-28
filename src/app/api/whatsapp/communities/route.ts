@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getWhatsAppCommunities } from '@/lib/whatsapp-service';
+import { requireApiSession } from '@/lib/auth/api';
 
 export async function GET() {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const communities = await getWhatsAppCommunities();
     return NextResponse.json({ success: true, communities });

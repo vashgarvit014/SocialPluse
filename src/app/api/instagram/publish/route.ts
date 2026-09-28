@@ -3,6 +3,7 @@ import { prepareInstagramMedia } from '@/lib/instagram-media';
 import { publishInstagramTrialReel } from '@/lib/instagram-trial';
 import { NextRequest, NextResponse } from 'next/server';
 import { getInstagramAccount } from '../../facebook/vault';
+import { requireApiSession } from '@/lib/auth/api';
 
 // Instagram Business/Creator publishing goes through graph.facebook.com using
 // the linked Page's access token (NOT graph.instagram.com - that's a
@@ -70,6 +71,8 @@ async function waitForContainer(id: string, token: string) {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -77,7 +80,7 @@ export async function POST(request: NextRequest) {
     return err('INSTAGRAM_PUBLISH_FAILED', 'Invalid request body.', 400);
   }
 
-  const { content, imageUrl, videoUrl, mediaUrl, mediaType, mediaUrls, mediaList, isCarousel, trialReel, userId, pageId, attemptId } = body as {
+  const { content, imageUrl, videoUrl, mediaUrl, mediaType, mediaUrls, mediaList, isCarousel, trialReel, collaborator, userId, pageId, attemptId } = body as {
     content?: string;
     imageUrl?: string;
     videoUrl?: string;
@@ -87,6 +90,7 @@ export async function POST(request: NextRequest) {
     mediaList?: Array<{ url?: string; type?: string; altText?: string }>;
     isCarousel?: boolean;
     trialReel?: boolean;
+    collaborator?: string;
     userId?: string;
     pageId?: string;
     attemptId?: string;
@@ -131,9 +135,33 @@ export async function POST(request: NextRequest) {
   // publish — route them to the dedicated seam, which declines clearly until
   // the Meta Trial Reel integration is connected (see lib/instagram-trial).
   const isSingleVideoReel = !wantsCarousel && (hasVideoInList || resolvedType === 'video');
+  if (trialReel === true && !isSingleVideoReel) {
+    return err('INSTAGRAM_TRIAL_REEL_VIDEO_ONLY', 'Trial Reels require a single video — photos and carousels cannot be published as Trial Reels. Turn the Trial option off or switch this post to a single video.', 400, attempt);
+  }
   if (trialReel === true && isSingleVideoReel) {
-    const trial = await publishInstagramTrialReel({ content, attemptId: attempt });
+    // Trial posts must NEVER fall through to a normal Reel publish (a normal
+    // Reel goes to followers). Return on both success and failure here.
+    let stagedVideo: string;
+    try {
+      stagedVideo = await prepareInstagramMedia(rawMedia, true);
+    } catch (e) {
+      console.error(`[instagram/publish] trial media staging failure (attempt ${attempt}):`, e instanceof Error ? e.message : e);
+      return err('INSTAGRAM_PUBLISH_FAILED', e instanceof Error ? e.message : 'Instagram trial media staging failed; no retry was attempted.', 502, attempt);
+    }
+    const collaboratorUsernames = typeof collaborator === 'string' && collaborator.trim()
+      ? collaborator.split(/[,\s]+/).map((c) => c.trim().replace(/^@+/, '')).filter(Boolean).slice(0, 3)
+      : undefined;
+    const trial = await publishInstagramTrialReel({
+      caption: content,
+      videoUrl: stagedVideo,
+      graduationStrategy: 'MANUAL',
+      collaborators: collaboratorUsernames,
+      igUserId: ig.igUserId,
+      token: ig.token,
+      attemptId: attempt,
+    });
     if (!trial.ok) return err(trial.code, trial.message, trial.status, attempt);
+    return NextResponse.json({ success: true, postId: trial.postId, attemptId: attempt, mock: trial.mock === true, message: trial.message });
   }
   if (wantsCarousel) {
     let slides = orderedUrls.length > 1 ? orderedUrls : [rawMedia];
@@ -197,12 +225,18 @@ export async function POST(request: NextRequest) {
       caption: content || '',
       access_token: ig.token,
     };
+    // Collaborators is a list of up to 3 Instagram usernames (not IDs).
+    const collaboratorUsernames = typeof collaborator === 'string' && collaborator.trim()
+      ? collaborator.split(/[,\s]+/).map((c) => c.trim().replace(/^@+/, '')).filter(Boolean).slice(0, 3)
+      : undefined;
     if (resolvedType === 'video') {
       containerBody.video_url = rawMedia;
       containerBody.media_type = 'REELS'; // Graph API video posts publish as Reels
+      if (collaboratorUsernames) containerBody.collaborators = collaboratorUsernames;
     } else {
       containerBody.image_url = rawMedia;
       Object.assign(containerBody, altPayload('instagram', 'image', mediaAlt(mediaList, orderedUrls[0] || mediaUrl || imageUrl || '')));
+      if (collaboratorUsernames) containerBody.collaborators = collaboratorUsernames;
     }
 
     const containerRes = await fetch(`${GRAPH}/${ig.igUserId}/media`, {

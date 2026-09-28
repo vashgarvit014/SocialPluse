@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { loadPosts, updatePost } from '@/lib/post-store';
 import type { PostRecord as ScheduledPost, PostMedia as MediaItem } from '@/lib/posts';
+import { requireApiSession } from '@/lib/auth/api';
 
 async function publishPost(post: ScheduledPost, platform: string, account: { accessToken?: string; userId?: string; pageId?: string }) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -38,6 +39,8 @@ async function publishPost(post: ScheduledPost, platform: string, account: { acc
 }
 
 export async function POST() {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const posts = loadPosts();
   const now = new Date();
   let publishedCount = 0;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFacebookAuth, getAnyFacebookAuth, getInstagramAccount } from '../../facebook/vault';
+import { requireApiSession } from '@/lib/auth/api';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 
@@ -9,6 +10,8 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 // facebook/status) has an Instagram Business account linked. Same pattern:
 // computed server-side, never trusted from client cache.
 export async function GET(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const requestedUserId = request.nextUrl.searchParams.get('userId');
   let resolved: { userId: string; pages: Array<{ id: string; name: string; instagramAccountId?: string; instagramUsername?: string }> } | null;
   if (requestedUserId) {

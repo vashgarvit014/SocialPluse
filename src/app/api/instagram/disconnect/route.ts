@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/auth/api';
 
 // Instagram has no credentials of its own to revoke here - it's derived
 // live from the connected Facebook Page's linked Instagram Business account
@@ -8,5 +9,7 @@ import { NextResponse } from 'next/server';
 // may still want. The actual unlink happens on Meta's side (Meta Business
 // Suite) if that's what's intended.
 export async function POST() {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   return NextResponse.json({ success: true });
 }

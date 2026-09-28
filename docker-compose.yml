@@ -1,7 +1,14 @@
-# SocialPulse Step 1 — Docker Compose (app only, no DB)
+# SocialPulse — Docker Compose (app + PostgreSQL + Cloudflare Tunnel)
 # Run from this directory (social-media-manager) or from repo root with -f path.
-# Cloudflare Tunnel stays OUTSIDE Docker and forwards to host:3000 -> container:3000
-#   Internet -> socialpulse.dotstark.tech -> Cloudflare Tunnel -> http://localhost:3000 -> container:3000
+# Cloudflare Tunnel runs as its own container on the compose network and forwards
+# straight to the app container by service name:
+#   Internet -> socialpulse.dotstark.tech -> cloudflared container -> http://socialpulse:3000
+# Tunnel config/credentials live on the host at ~/.cloudflared (mounted read-only below).
+#
+# DB: PostgreSQL runs as its own container ("db", reachable at db:5432 only
+# from inside this compose network — never published to the host, never
+# public). The app connects via DATABASE_URL from .env.local. See
+# src/lib/db.ts for the connection/migration code.
 
 services:
   socialpulse:
@@ -29,6 +36,12 @@ services:
       HOSTNAME: 0.0.0.0
       # Ensure public URL is also available at runtime (server-side reads)
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://socialpulse.dotstark.tech}
+      # DATABASE_URL uses the Docker service name "db", not localhost — inside
+      # this container, "localhost" would mean the app container itself, not
+      # the DB container. Built from the same POSTGRES_* vars as the db
+      # service below (both come from .env.local via env_file) so there is
+      # exactly one place credentials are set, not two.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     volumes:
       # ----- Persistence: MUST survive container recreation (bind mounts) -----
       # Host files are the source of truth; container writes are preserved on host.
@@ -40,6 +53,12 @@ services:
       - ./.instagram-media:/app/.instagram-media
       - ./whatsapp-events.log:/app/whatsapp-events.log
       - ./whapi-events.log:/app/whapi-events.log
+      # NOTE: no more socialpulse.db bind mount here — auth/OTP data now lives
+      # in the "db" (PostgreSQL) service below, persisted via the
+      # postgres_data named volume, not a host file.
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/"]
       interval: 30s
@@ -51,3 +70,48 @@ services:
     #   resources:
     #     limits:
     #       memory: 1G
+
+  # PostgreSQL — persistence layer for the auth/OTP system (users,
+  # otp_challenges, rate_limit_counters, auth_audit_logs — see
+  # src/lib/db.ts). Internal-only: no "ports:" mapping, so it is reachable
+  # exclusively from other containers on this compose network (i.e. the
+  # "socialpulse" service above), never from the host or the internet.
+  db:
+    image: postgres:16
+    container_name: socialpulse-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Deliberately no "ports:" — do NOT add "5432:5432" here. That would
+    # expose PostgreSQL to the host/internet; the app reaches it purely over
+    # the internal Docker network at db:5432. If you ever need host access
+    # for local debugging, run `docker exec -it socialpulse-db psql ...`
+    # (see README/deliverables) rather than publishing the port.
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: socialpulse-tunnel
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run socialpulse
+    volumes:
+      # Tunnel credentials + ingress config, generated once via `cloudflared tunnel login/create`.
+      - ${HOME}/.cloudflared:/etc/cloudflared:ro
+    depends_on:
+      socialpulse:
+        condition: service_healthy
+
+# Named volume: survives `docker compose down` (without -v), container
+# recreation, image rebuilds, and host reboots. Only `docker compose down -v`
+# or `docker volume rm` deletes it — see the warning in the deliverables
+# summary before ever running that.
+volumes:
+  postgres_data:

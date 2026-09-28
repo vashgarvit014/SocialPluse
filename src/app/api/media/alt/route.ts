@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sharp from 'sharp';
+import { requireApiSession } from '@/lib/auth/api';
 
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const { image } = await request.json();
     // Gallery media are data URLs. Do not fetch arbitrary user-provided URLs

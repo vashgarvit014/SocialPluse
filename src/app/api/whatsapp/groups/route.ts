@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhatsAppConfig, waFetch, whatsAppError } from '../client';
+import { requireApiSession } from '@/lib/auth/api';
 
 function notConfigured() {
   return NextResponse.json({ success: false, code: 'WHATSAPP_NOT_CONFIGURED', message: 'WhatsApp is not configured. Add WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN to .env.local.' }, { status: 401 });
@@ -9,6 +10,8 @@ function notConfigured() {
 // the phone number - a real "insufficient permission" Graph API error here
 // most likely means that isn't granted, not a bug in this route.
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhatsAppConfig();
   if (!config) return notConfigured();
 
@@ -47,6 +50,8 @@ export async function POST(request: NextRequest) {
 
 // Lists groups the business phone number currently belongs to.
 export async function GET(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhatsAppConfig();
   if (!config) return notConfigured();
 

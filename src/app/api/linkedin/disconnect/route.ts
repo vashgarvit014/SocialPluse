@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { deleteLinkedInToken } from '../vault';
+import { requireApiSession } from '@/lib/auth/api';
 
 const POSTS_FILE = join(process.cwd(), 'scheduled-posts.json');
 
@@ -22,6 +23,8 @@ interface StoredPost {
 // - deletes the OAuth token from the server vault
 // - scrubs accessToken/userId copies stored inside scheduled posts
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const { platform, userId } = await request.json();
 

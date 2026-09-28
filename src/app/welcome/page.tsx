@@ -1,11 +1,8 @@
-import type { Metadata } from "next";
-import LandingClient from "./landing-client";
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = {
-  title: "SocialPulse — Create. Brand. Schedule. Grow.",
-  description: "An AI-powered social media workspace for creating, previewing, scheduling, and publishing content across LinkedIn, Facebook, Instagram, and WhatsApp.",
-};
-
+// The landing page now lives at / (see src/app/page.tsx, which renders the
+// same LandingClient this page used to). Keep this route only so old
+// /welcome links/bookmarks still land somewhere sensible.
 export default function WelcomePage() {
-  return <LandingClient />;
+  redirect('/');
 }

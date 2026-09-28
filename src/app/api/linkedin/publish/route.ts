@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLinkedInToken } from '../vault';
+import { requireApiSession } from '@/lib/auth/api';
 
 // In-memory publish-attempt registry: one attempt ID = one LinkedIn request.
 // Guards against double-clicks / rapid resubmits racing each other.
@@ -53,6 +54,8 @@ function linkedInErrorMessage(status: number, context: string): { code: string; 
 }
 
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   let body: Record<string, unknown>;
   try {
     body = await request.json();

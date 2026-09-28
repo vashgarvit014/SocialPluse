@@ -44,6 +44,16 @@ yarn-error.log*
 # WhatsApp webhook event log - local inspection log, not project source.
 /whatsapp-events.log
 
+# Auth database — legacy SQLite-era files, no longer created (PostgreSQL now,
+# see docker-compose.yml's "db" service + src/lib/db.ts), left ignored in
+# case an old one still exists on a host from before this migration.
+/socialpulse.db
+/socialpulse.db-wal
+/socialpulse.db-shm
+
+# PostgreSQL backups (pg_dump output) - contain password hashes, never commit.
+/backups/
+
 # vercel
 .vercel
 

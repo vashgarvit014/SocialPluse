@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhapiConfig, whapiFetch, whapiError } from '../client';
+import { requireApiSession } from '@/lib/auth/api';
 
 // GET /api/whapi/groups — existing WhatsApp groups only via Whapi
 // Uses official Whapi endpoint GET https://gate.whapi.cloud/groups?count=100&offset=0
@@ -13,6 +14,8 @@ function notConfigured() {
 }
 
 export async function GET(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhapiConfig();
   if (!config) return notConfigured();
 

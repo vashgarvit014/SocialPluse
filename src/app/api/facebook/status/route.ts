@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFacebookAuth, getAnyFacebookAuth, deleteFacebookAuth } from '../vault';
+import { requireApiSession } from '@/lib/auth/api';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 
@@ -14,6 +15,8 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 // localStorage), fall back to whatever single account the vault holds
 // rather than reporting disconnected forever with no way to self-heal.
 export async function GET(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const requestedUserId = request.nextUrl.searchParams.get('userId');
   let auth: { userId: string; userToken: string; pages: Array<{ id: string; name: string }> } | null;
   if (requestedUserId) {

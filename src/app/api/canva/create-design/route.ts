@@ -9,6 +9,7 @@ import {
   savePendingDesign,
   CanvaError,
 } from '@/lib/canva';
+import { requireApiSession } from '@/lib/auth/api';
 
 const MIN_DIM = 40;
 const MAX_DIM = 8000;
@@ -18,6 +19,8 @@ const MAX_DIM = 8000;
 // user picked in SocialPulse. Hands back an edit URL to send the browser to;
 // Canva calls our return-navigation route when the user is done editing.
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     const { imageData, width, height, title } = await request.json();
 

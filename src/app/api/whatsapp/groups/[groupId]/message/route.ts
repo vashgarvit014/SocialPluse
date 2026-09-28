@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhatsAppConfig, waFetch, whatsAppError } from '../../../client';
+import { requireApiSession } from '@/lib/auth/api';
 
 // The actual "broadcast" step: one call here reaches every participant
 // already in the group. Getting people INTO the group first is a separate
@@ -7,6 +8,8 @@ import { getWhatsAppConfig, waFetch, whatsAppError } from '../../../client';
 // ../../send-message/route.ts) - group membership is invite-link-based,
 // there is no "add participant by phone number" push API.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ groupId: string }> }) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const config = getWhatsAppConfig();
   if (!config) {
     return NextResponse.json({ success: false, code: 'WHATSAPP_NOT_CONFIGURED', message: 'WhatsApp is not configured. Add WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN to .env.local.' }, { status: 401 });

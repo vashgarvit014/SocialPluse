@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/auth/api';
 import { writeFile, readFile, unlink, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -64,6 +65,8 @@ async function dataUrlToBuffer(dataUrl: string): Promise<{ buffer: Buffer; ext: 
 }
 
 export async function POST(request: NextRequest) {
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   try {
     let videoBuffer: Buffer | null = null;
     let videoExt = 'mp4';
