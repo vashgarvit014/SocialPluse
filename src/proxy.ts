@@ -44,7 +44,31 @@ export default async function proxy(request: NextRequest) {
 
   if (!isProtected && !isAuthPage) return NextResponse.next();
 
+  // Separate Superadmin auth pages are PUBLIC (unauthenticated users must
+  // reach them) and carry their own role enforcement server-side
+  // (/api/superadmin/auth/* + the layout gate below). Authenticated users
+  // (either role) may also open them — e.g. to switch accounts.
+  const normPath = pathname.endsWith('/') && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
+  const isSuperadminAuthPage = normPath === '/superadmin/login' || normPath === '/superadmin/signup';
+
   const session = await readSessionFromCookieValue(request.cookies.get(SESSION_COOKIE)?.value);
+
+  // x-pathname lets the /superadmin layout know which child is rendering so
+  // it can skip the SUPERADMIN gate (and the sidebar shell) for exactly the
+  // two public auth pages above — never trust client claims for this.
+  if (pathname === '/superadmin' || pathname.startsWith('/superadmin/')) {
+    const headers = new Headers(request.headers);
+    headers.set('x-pathname', normPath);
+    if (isSuperadminAuthPage) {
+      return NextResponse.next({ request: { headers } });
+    }
+    if (!session) {
+      const target = new URL(AUTH_PAGE, request.url);
+      target.searchParams.set('callbackUrl', pathname + search);
+      return NextResponse.redirect(target);
+    }
+    return NextResponse.next({ request: { headers } });
+  }
 
   if (isProtected && !session) {
     const target = new URL(AUTH_PAGE, request.url);

@@ -1,6 +1,7 @@
 import { finishReturn, invalidReturnState } from '@/lib/oauth-return';
 import { NextRequest } from 'next/server';
 import { storeFacebookAuth } from '../vault';
+import { logSystem } from '@/lib/system-log';
 
 const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID || '';
 const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET || '';
@@ -106,6 +107,10 @@ export async function GET(request: NextRequest) {
     // Tokens stay server-side only. The browser gets the user id plus the
     // Page id/name list (no secrets) for the account card + page picker.
     storeFacebookAuth(userId, userToken, pages);
+    logSystem({ level: 'SUCCESS', category: 'PLATFORM', event: 'FACEBOOK_CONNECTED', platform: 'facebook', message: `Facebook connected (${pages.length} page${pages.length === 1 ? '' : 's'})` });
+    if (pages.some(p => p.instagramAccountId)) {
+      logSystem({ level: 'SUCCESS', category: 'PLATFORM', event: 'INSTAGRAM_CONNECTED', platform: 'instagram', message: 'Instagram Business account linked via Facebook Page' });
+    }
 
     const params = new URLSearchParams({
       platform: 'facebook',

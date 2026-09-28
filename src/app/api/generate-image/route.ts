@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiSession } from '@/lib/auth/api';
+import { logSystem } from '@/lib/system-log';
 import { recordAiUsage } from '@/lib/ai-usage';
 
 // In-memory job store so image generation can run as a background job
@@ -80,9 +81,19 @@ export async function POST(request: NextRequest) {
     // Wraps jobs.set for the three terminal states so every exit path
     // records usage exactly once, instead of repeating recordAiUsage() at
     // five separate call sites below (easy to miss one on a future edit).
+    const actorId = session.userId;
     function setTerminalJob(job: ImageJob) {
       jobs.set(jobId, job);
       recordAiUsage({ type: 'IMAGE', provider: PRIMARY_MODEL, success: job.status === 'done', durationMs: Date.now() - genStartedAt });
+      logSystem({
+        level: job.status === 'done' ? 'SUCCESS' : 'ERROR',
+        category: 'AI',
+        event: job.status === 'done' ? 'IMAGE_GENERATION_SUCCESS' : 'IMAGE_GENERATION_FAILED',
+        userId: actorId,
+        message: job.status === 'done' ? 'Image generated' : `Image generation failed (${job.status})`,
+        metadata: { durationMs: Date.now() - genStartedAt },
+        requestId: jobId,
+      });
     }
 
     // Fire-and-forget: this process stays alive (next dev / a long-running

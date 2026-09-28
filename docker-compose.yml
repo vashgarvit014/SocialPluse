@@ -45,12 +45,13 @@ services:
     volumes:
       # ----- Persistence: MUST survive container recreation (bind mounts) -----
       # Host files are the source of truth; container writes are preserved on host.
-      # If a host file does not exist yet, run: touch scheduled-posts.json linkedin-tokens.json facebook-tokens.json canva-sessions.json whatsapp-events.log whapi-events.log && mkdir -p .instagram-media
+      # If a host file does not exist yet, run: touch scheduled-posts.json linkedin-tokens.json facebook-tokens.json canva-sessions.json whatsapp-events.log whapi-events.log && mkdir -p .instagram-media .media-assets
       - ./scheduled-posts.json:/app/scheduled-posts.json
       - ./linkedin-tokens.json:/app/linkedin-tokens.json
       - ./facebook-tokens.json:/app/facebook-tokens.json
       - ./canva-sessions.json:/app/canva-sessions.json
       - ./.instagram-media:/app/.instagram-media
+      - ./.media-assets:/app/.media-assets
       - ./whatsapp-events.log:/app/whatsapp-events.log
       - ./whapi-events.log:/app/whapi-events.log
       # NOTE: no more socialpulse.db bind mount here — auth/OTP data now lives

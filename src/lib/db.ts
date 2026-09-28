@@ -161,6 +161,50 @@ async function migrate(client: PoolClient) {
       updated_at TIMESTAMPTZ NOT NULL
     );
   `);
+
+  // Central structured operational log (see src/lib/system-log.ts). Auth/AI
+  // history already lives in auth_audit_logs/ai_usage_log and is UNIONed in
+  // at read time — this table carries everything else (media, publishing,
+  // platform, system). Retention: documented, not automated — no auto-delete
+  // runs against this table (see the /superadmin/logs footer).
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS system_logs (
+      id UUID PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL,
+      level TEXT NOT NULL CHECK (level IN ('INFO', 'WARN', 'ERROR', 'SUCCESS')),
+      category TEXT NOT NULL CHECK (category IN ('AUTH', 'USER', 'AI', 'MEDIA', 'PUBLISHING', 'PLATFORM', 'SYSTEM')),
+      event TEXT NOT NULL,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      user_email TEXT,
+      platform TEXT,
+      resource_id TEXT,
+      message TEXT NOT NULL,
+      metadata JSONB,
+      request_id TEXT
+    );
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_system_logs_created ON system_logs(created_at DESC)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_system_logs_cat_level ON system_logs(category, level)`);
+
+  // Persistent asset library for /asset-gallery direct uploads (see
+  // src/lib/media-assets.ts). Unlike session-state mediaItems (React state +
+  // drafts) or 24h Instagram staging, rows here survive restarts. Sources
+  // are only ever the real origin that wrote the row — never fabricated.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS media_assets (
+      id UUID PRIMARY KEY,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      filename TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('image', 'video')),
+      mime TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      source TEXT NOT NULL CHECK (source IN ('UPLOAD', 'AI', 'CANVA', 'BRANDED', 'SESSION')),
+      storage_path TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_media_assets_user ON media_assets(user_id, created_at DESC)`);
 }
 
 // Runs once per process (not once per request) — every route module import

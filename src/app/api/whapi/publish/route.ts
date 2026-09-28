@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhapiConfig, whapiFetch, whapiError, sanitizeForLog } from '../client';
 import { requireApiSession } from '@/lib/auth/api';
+import { logSystem } from '@/lib/system-log';
 
 // In-memory publish-attempt registry — same pattern as linkedin/publish, facebook/publish
 const seenAttempts = new Map<string, number>();
@@ -150,6 +151,7 @@ export async function POST(request: NextRequest) {
         return err(code, mapped.message, status, attempt);
       }
       const data = await res.json().catch(() => ({}));
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: session.userId, platform: 'whatsapp', resourceId: groupId, message: 'Message sent to WhatsApp group', requestId: attempt });
       return NextResponse.json({ success: true, message: 'Message sent to WhatsApp group.', attemptId: attempt, data });
     }
 
@@ -195,6 +197,7 @@ export async function POST(request: NextRequest) {
         return err(code, mapped.message, status, attempt);
       }
       const data = await res.json().catch(() => ({}));
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: session.userId, platform: 'whatsapp', resourceId: groupId, message: 'Document sent to WhatsApp group', requestId: attempt });
       return NextResponse.json({ success: true, message: 'Document sent to WhatsApp group.', attemptId: attempt, data });
     }
 
@@ -218,6 +221,7 @@ export async function POST(request: NextRequest) {
         return err(code, mapped.message, status, attempt);
       }
       const data = await res.json().catch(() => ({}));
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: session.userId, platform: 'whatsapp', resourceId: groupId, message: 'Video sent to WhatsApp group', requestId: attempt });
       return NextResponse.json({ success: true, message: 'Video sent to WhatsApp group.', attemptId: attempt, data });
     }
 
@@ -240,9 +244,11 @@ export async function POST(request: NextRequest) {
       return err(code, mapped.message, status, attempt);
     }
     const data = await res.json().catch(() => ({}));
+    logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: session.userId, platform: 'whatsapp', resourceId: groupId, message: 'Image sent to WhatsApp group', requestId: attempt });
     return NextResponse.json({ success: true, message: 'Image sent to WhatsApp group.', attemptId: attempt, data });
   } catch (e) {
     console.error('[whapi/publish] network failure:', e instanceof Error ? e.message : e);
+    logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', userId: session.userId, platform: 'whatsapp', resourceId: groupId, message: e instanceof Error ? e.message : 'Network error sending to Whapi.', requestId: attempt });
     return err('WHAPI_PUBLISH_FAILED', 'Network error sending to Whapi.', 502, attempt);
   }
 }

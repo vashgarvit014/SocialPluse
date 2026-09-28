@@ -63,3 +63,6 @@ next-env.d.ts
 
 # Temporary Instagram publishing media
 /.instagram-media/
+# Persistent Asset Gallery uploads (bytes on disk, metadata in Postgres)
+# - never committed: user content, not source
+/.media-assets/

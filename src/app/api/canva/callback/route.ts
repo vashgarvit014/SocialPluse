@@ -1,6 +1,7 @@
 import { finishReturn, invalidReturnState } from '@/lib/oauth-return';
 import { NextRequest } from 'next/server';
 import { exchangeCodeForToken, getCanvaProfile, setTokenCookies, takePkceVerifier, CanvaError, APP_ORIGIN } from '@/lib/canva';
+import { logSystem } from '@/lib/system-log';
 
 export async function GET(request: NextRequest) {
   if (invalidReturnState(request)) return finishReturn(request, new URL('/dashboard?error=state_mismatch', APP_ORIGIN));
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
       new URL(`/dashboard?canva_connected=true&canva_name=${encodeURIComponent(displayName)}`, APP_ORIGIN)
     );
     setTokenCookies(res, token);
+    logSystem({ level: 'SUCCESS', category: 'PLATFORM', event: 'CANVA_CONNECTED', platform: 'canva', message: `Canva connected${displayName ? ` (${displayName})` : ''}` });
     return res;
   } catch (err) {
     console.error('Canva callback error:', err);

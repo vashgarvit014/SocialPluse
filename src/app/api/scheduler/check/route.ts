@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { loadPosts, updatePost } from '@/lib/post-store';
 import type { PostRecord as ScheduledPost, PostMedia as MediaItem } from '@/lib/posts';
 import { requireApiSession } from '@/lib/auth/api';
+import { logSystem } from '@/lib/system-log';
 
 async function publishPost(post: ScheduledPost, platform: string, account: { accessToken?: string; userId?: string; pageId?: string }) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -67,10 +68,16 @@ export async function POST() {
       if (!account) { failedPlatforms.push(platform); continue; }
       try {
         const ok = await publishPost(post, platform, account);
-        if (ok) successCount++;
-        else failedPlatforms.push(platform);
+        if (ok) {
+          successCount++;
+          logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', platform, resourceId: post.id, message: `Scheduled post published to ${platform}`, requestId: `sched:${post.id}:${platform}` });
+        } else {
+          failedPlatforms.push(platform);
+          logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', platform, resourceId: post.id, message: `Scheduled post failed on ${platform}`, requestId: `sched:${post.id}:${platform}` });
+        }
       } catch {
         failedPlatforms.push(platform);
+        logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', platform, resourceId: post.id, message: `Scheduled post errored on ${platform}`, requestId: `sched:${post.id}:${platform}` });
       }
     }
     const allSuccess = successCount === post.platforms.length;

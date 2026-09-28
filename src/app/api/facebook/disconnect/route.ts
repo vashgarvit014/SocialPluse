@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { deleteFacebookAuth } from '../vault';
 import { requireApiSession } from '@/lib/auth/api';
+import { logSystem } from '@/lib/system-log';
 
 const POSTS_FILE = join(process.cwd(), 'scheduled-posts.json');
 
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    logSystem({ level: 'INFO', category: 'PLATFORM', event: 'FACEBOOK_DISCONNECTED', userId: session.userId, platform: 'facebook', message: 'Facebook disconnected' });
     return NextResponse.json({ success: true, scrubbedPosts });
   } catch (error) {
     console.error('[facebook/disconnect] error:', error instanceof Error ? error.message : error);

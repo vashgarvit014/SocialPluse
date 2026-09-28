@@ -56,6 +56,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Runtime writable locations:
 # - scheduled-posts.json, *-tokens.json, canva-sessions.json at /app (process.cwd())
 # - .instagram-media at /app/.instagram-media (24h staging for Instagram publishes)
+# - .media-assets at /app/.media-assets (persistent Asset Gallery uploads)
 # - whapi/whatsapp event logs at /app/*.log
 # - ffmpeg temp at OS tmpdir (/tmp/socialpulse-ffmpeg)
 # Auth/OTP data no longer lives here — it's in the "db" (PostgreSQL) service,
@@ -64,9 +65,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # write even when no host file is mounted yet (fresh clone).
 # /app itself must be writable by nextjs for atomic rename temp files
 # (post-store writes scheduled-posts.json.<uuid>.tmp then renameSync).
-RUN mkdir -p /app/.instagram-media /tmp/socialpulse-ffmpeg \
+RUN mkdir -p /app/.instagram-media /app/.media-assets /tmp/socialpulse-ffmpeg \
   && touch /app/scheduled-posts.json /app/linkedin-tokens.json /app/facebook-tokens.json /app/canva-sessions.json /app/whatsapp-events.log /app/whapi-events.log \
-  && chown -R nextjs:nodejs /app/.instagram-media /tmp/socialpulse-ffmpeg \
+  && chown -R nextjs:nodejs /app/.instagram-media /app/.media-assets /tmp/socialpulse-ffmpeg \
   && chown nextjs:nodejs /app/scheduled-posts.json /app/linkedin-tokens.json /app/facebook-tokens.json /app/canva-sessions.json /app/whatsapp-events.log /app/whapi-events.log \
   && chmod 600 /app/scheduled-posts.json /app/linkedin-tokens.json /app/facebook-tokens.json /app/canva-sessions.json || true \
   && chown nextjs:nodejs /app \

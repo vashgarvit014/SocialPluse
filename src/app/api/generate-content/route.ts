@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiSession } from '@/lib/auth/api';
 import { recordAiUsage } from '@/lib/ai-usage';
+import { logSystem } from '@/lib/system-log';
 
 const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
 const NVIDIA_API_URL = `${NVIDIA_BASE_URL.replace(/\/$/, '')}/chat/completions`;
@@ -803,10 +804,12 @@ export async function POST(request: NextRequest) {
     // large internal branching logic, which isn't worth the risk for a
     // usage-count metric. Success/failure and timing are still exact.
     recordAiUsage({ type: 'CONTENT', provider: 'text-generation', success: true, durationMs: Date.now() - startedAt });
+    logSystem({ level: 'SUCCESS', category: 'AI', event: 'CONTENT_GENERATION_SUCCESS', userId: session.userId, message: `Content generated (${selectedPlatforms.join(', ')})`, metadata: { durationMs: Date.now() - startedAt } });
 
     return NextResponse.json(result);
   } catch (error) {
     recordAiUsage({ type: 'CONTENT', provider: 'text-generation', success: false });
+    logSystem({ level: 'ERROR', category: 'AI', event: 'CONTENT_GENERATION_FAILED', userId: session?.userId, message: error instanceof Error ? error.message : 'Failed to generate content' });
     console.error('Error generating content:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to generate content' },

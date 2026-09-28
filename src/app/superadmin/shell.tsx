@@ -41,6 +41,7 @@ function buildGroups(pendingUsers: number, healthIssues: number, failedPublishin
     { label: 'MONITORING', items: [
       { id: 'auth', href: '/superadmin/auth-activity', label: 'Auth Activity', icon: 'auth' },
       { id: 'ai', href: '/superadmin/ai-usage', label: 'AI & Usage', icon: 'ai' },
+      { id: 'logs', href: '/superadmin/logs', label: 'Logs', icon: 'audit' },
       { id: 'audit', href: '/superadmin/audit-logs', label: 'Audit Logs', icon: 'audit' },
     ] },
     { label: 'SYSTEM', items: [{ id: 'settings', href: '/superadmin/settings', label: 'Settings', icon: 'settings' }] },
@@ -57,6 +58,7 @@ const TITLES: Record<string, string> = {
   '/superadmin/publishing': 'Publishing Monitor',
   '/superadmin/auth-activity': 'Auth Activity',
   '/superadmin/ai-usage': 'AI & Usage',
+  '/superadmin/logs': 'Logs',
   '/superadmin/audit-logs': 'Audit Logs',
   '/superadmin/settings': 'Settings',
 };
@@ -70,6 +72,7 @@ const PATH_TO_ID: Record<string, string> = {
   '/superadmin/publishing': 'publishing',
   '/superadmin/auth-activity': 'auth',
   '/superadmin/ai-usage': 'ai',
+  '/superadmin/logs': 'logs',
   '/superadmin/audit-logs': 'audit',
   '/superadmin/settings': 'settings',
 };

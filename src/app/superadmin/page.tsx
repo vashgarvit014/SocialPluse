@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { countUsersByStatus, listRecentSignups } from '@/lib/auth/users';
 import { listAuthEvents } from '@/lib/auth/audit';
 import { getSystemHealth } from '@/lib/auth/system-health';
+import { getOpsSummary, listSystemLogs } from '@/lib/system-log-reader';
 import { avatarColor, initials, relTime, badge } from './ui';
 
 function StatTile({ label, value, sub, dot, href }: { label: string; value: string | number; sub: string; dot: string; href: string }) {
@@ -29,11 +30,13 @@ function Card({ title, action, children }: { title: string; action?: { label: st
 }
 
 export default async function SuperadminOverviewPage() {
-  const [counts, recentSignups, recentActivity, health] = await Promise.all([
+  const [counts, recentSignups, recentActivity, health, ops, recentOps] = await Promise.all([
     countUsersByStatus(),
     listRecentSignups(6),
     listAuthEvents(6),
     getSystemHealth(),
+    getOpsSummary(),
+    listSystemLogs({ limit: 8, offset: 0 }),
   ]);
 
   const healthIssues = health.filter(h => h.status !== 'OK').length;
@@ -81,6 +84,40 @@ export default async function SuperadminOverviewPage() {
                   <div style={{ fontSize: 12, color: 'var(--mu)' }}>{e.channel || '—'} · {relTime(e.createdAt)}</div>
                 </div>
                 <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: res.bg, color: res.fg }}>Event</span>
+              </div>
+            );
+          })}
+        </Card>
+
+        <Card title="Operations today" action={{ label: 'View all logs', href: '/superadmin/logs' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
+            {[
+              { label: 'Errors', value: ops.errorsToday, bad: ops.errorsToday > 0 },
+              { label: 'Failed logins', value: ops.failedLoginsToday, bad: ops.failedLoginsToday > 0 },
+              { label: 'Failed OTPs', value: ops.failedOtpsToday, bad: ops.failedOtpsToday > 0 },
+              { label: 'Failed AI', value: ops.failedAiToday, bad: ops.failedAiToday > 0 },
+              { label: 'Failed publishes', value: ops.failedPublicationsToday, bad: ops.failedPublicationsToday > 0 },
+            ].map(s => (
+              <div key={s.label} style={{ borderRadius: 9, background: 'var(--sf2)', padding: '9px 10px' }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: s.bad ? 'var(--bad)' : 'var(--ok)' }}>{s.value}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--mu)', fontWeight: 600 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card title="Recent activity" action={{ label: 'View all logs', href: '/superadmin/logs' }}>
+          {recentOps.rows.length === 0 && <div style={{ padding: '20px 0', color: 'var(--mu)' }}>No activity yet — events appear here as the app runs.</div>}
+          {recentOps.rows.slice(0, 8).map(e => {
+            const tone = e.level === 'ERROR' ? badge('ERROR') : e.level === 'SUCCESS' ? badge('ACTIVE') : e.level === 'WARN' ? badge('PENDING') : badge('x');
+            return (
+              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderTop: '1px solid var(--bd)' }}>
+                <span style={{ width: 30, height: 30, borderRadius: '50%', background: avatarColor(e.event), color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{initials(e.event.replace(/_/g, ' '))}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.event.replace(/_/g, ' ')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--mu)' }}>{e.category}{e.platform ? ` · ${e.platform}` : ''}{e.userEmail ? ` · ${e.userEmail}` : ''} · {relTime(e.createdAt)}</div>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: tone.bg, color: tone.fg }}>{e.level}</span>
               </div>
             );
           })}

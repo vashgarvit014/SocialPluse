@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import { requireSuperadmin } from '@/lib/auth/roles';
 import { countUsersByStatus } from '@/lib/auth/users';
@@ -15,6 +16,17 @@ const mono = JetBrains_Mono({ subsets: ['latin'], weight: ['500'], variable: '--
 // only an optimistic pre-filter — this is what actually enforces the
 // boundary, same split documented in proxy.ts's header comment.
 export default async function SuperadminLayout({ children }: { children: React.ReactNode }) {
+  // The two separate-auth pages render bare (no gate, no sidebar shell) —
+  // the pathname arrives via the x-pathname header proxy.ts sets, never
+  // from client input. Everything else still hits requireSuperadmin().
+  const pathname = (await headers()).get('x-pathname') || '';
+  if (pathname === '/superadmin/login' || pathname === '/superadmin/signup') {
+    return (
+      <div className={`${sans.variable} ${mono.variable}`} style={{ fontFamily: 'var(--font-sa-sans), system-ui, sans-serif', background: '#0d0f2b', color: '#aeb0d4', minHeight: '100vh' }}>
+        {children}
+      </div>
+    );
+  }
   const { user } = await requireSuperadmin();
 
   // Nav badge counts — cheap (a COUNT query, the already-cheap health check,

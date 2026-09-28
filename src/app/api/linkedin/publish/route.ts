@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLinkedInToken } from '../vault';
 import { requireApiSession } from '@/lib/auth/api';
+import { logSystem } from '@/lib/system-log';
 
 // In-memory publish-attempt registry: one attempt ID = one LinkedIn request.
 // Guards against double-clicks / rapid resubmits racing each other.
@@ -278,6 +279,7 @@ export async function POST(request: NextRequest) {
   }
 
   console.log(`[linkedin/publish] success (attempt ${attempt}, user ${userId}, media ${mediaUrns.length})`);
+  logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'linkedin', resourceId: postId || undefined, message: 'LinkedIn post published', requestId: attempt });
   return NextResponse.json({
     success: true,
     postId,

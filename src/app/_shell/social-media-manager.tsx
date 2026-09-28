@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import StudioWorkspace from './studio-workspace';
 import SchedulerCalendar from './scheduler-calendar';
 import ConnectPlatforms from './connect-platforms';
+import AssetLibrary from './asset-library';
 import { newestDrafts, postMedia, type PostRecord } from '@/lib/posts';
 import { returnStore } from '@/lib/editor-return';
 
@@ -2092,6 +2093,17 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     setTopicMediaItems(prev => prev.filter(m => m.id !== id));
   };
 
+  // Asset Gallery "Use": drops a persistent asset into the SAME session
+  // media pipeline as uploads (data URL, first-item drives generated
+  // image/video) and jumps to the studio — no second pipeline invented.
+  const useGalleryAsset = (item: { url: string; type: 'image' | 'video'; name: string }) => {
+    const m: MediaItem = { id: `gal_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, url: item.url, type: item.type, name: item.name, source: 'gallery' };
+    setMediaItems(prev => [...prev, m]);
+    if (item.type === 'video') { setGeneratedVideo(item.url); setGeneratedImage(''); setMediaType('video'); }
+    else { setGeneratedImage(item.url); setGeneratedVideo(''); setMediaType('image'); }
+    goToTab('studio');
+  };
+
   const clearTopicMedia = () => setTopicMediaItems([]);
   const clearAllMedia = () => {
     originalMediaRef.current = {};
@@ -3008,12 +3020,13 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           />
         )}
 
-        {/* Asset Gallery (UI-only view over existing mediaItems + post media) */}
+        {/* Asset Gallery (persistent uploads via AssetLibrary + legacy session view) */}
         {activeTab === 'media' && (
           <div style={{ padding: 24, flex: 1, display: 'flex', flexDirection: 'column', gap: 16, backgroundColor: '#F7F8FC' }}>
+            <AssetLibrary sessionItems={mediaItems} onUseAsset={useGalleryAsset} />
             <div style={{ backgroundColor: '#fff', borderRadius: 14, border: '1px solid #E8EAF1', padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🖼️</div>
-              <div><div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>Asset Gallery</div><div style={{ fontSize: 11, color: '#64748B' }}>{mediaItems.length} session files • {allPosts.filter(p => getPostMedia(p as never).count! > 0).length} posts with media</div></div>
+              <div><div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>This Session</div><div style={{ fontSize: 11, color: '#64748B' }}>{mediaItems.length} session files • {allPosts.filter(p => getPostMedia(p as never).count! > 0).length} posts with media</div></div>
               <button onClick={() => { goToTab('studio'); }} style={{ marginLeft: 'auto', padding: '9px 14px', borderRadius: 9, fontSize: 12, fontWeight: 700, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', cursor: 'pointer' }}>Open Studio →</button>
             </div>
             <div style={{ backgroundColor: '#fff', borderRadius: 14, border: '1px solid #E8EAF1', padding: 18 }}>

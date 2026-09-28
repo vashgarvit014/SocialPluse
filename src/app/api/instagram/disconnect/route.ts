@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireApiSession } from '@/lib/auth/api';
+import { logSystem } from '@/lib/system-log';
 
 // Instagram has no credentials of its own to revoke here - it's derived
 // live from the connected Facebook Page's linked Instagram Business account
@@ -11,5 +12,6 @@ import { requireApiSession } from '@/lib/auth/api';
 export async function POST() {
   const session = await requireApiSession();
   if (session instanceof NextResponse) return session;
+  logSystem({ level: 'INFO', category: 'PLATFORM', event: 'INSTAGRAM_DISCONNECTED', userId: session.userId, platform: 'instagram', message: 'Instagram deselected as publish target (Facebook connection untouched)' });
   return NextResponse.json({ success: true });
 }

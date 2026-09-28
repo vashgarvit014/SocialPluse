@@ -1,6 +1,7 @@
 import { finishReturn, invalidReturnState } from '@/lib/oauth-return';
 import { NextRequest } from 'next/server';
 import { storeLinkedInToken } from '../vault';
+import { logSystem } from '@/lib/system-log';
 
 const LINKEDIN_CLIENT_ID = process.env.LINKEDIN_CLIENT_ID || '';
 const LINKEDIN_CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET || '';
@@ -61,6 +62,7 @@ export async function GET(request: NextRequest) {
     // Store the token server-side only. The browser receives the user id
     // (no access token in URL, storage, or API responses).
     storeLinkedInToken(userId, accessToken);
+    logSystem({ level: 'SUCCESS', category: 'PLATFORM', event: 'LINKEDIN_CONNECTED', platform: 'linkedin', message: 'LinkedIn account connected' });
 
     const params = new URLSearchParams({
       platform: 'linkedin',

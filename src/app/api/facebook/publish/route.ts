@@ -2,6 +2,7 @@ import { altPayload, mediaAlt } from '@/lib/alt-capabilities';
 import { NextRequest, NextResponse } from 'next/server';
 import { getFacebookPageToken } from '../vault';
 import { requireApiSession } from '@/lib/auth/api';
+import { logSystem } from '@/lib/system-log';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 
@@ -155,6 +156,7 @@ export async function POST(request: NextRequest) {
         return err(code, message, res.status === 429 ? 429 : 502, attempt);
       }
       const data = await res.json();
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'facebook', resourceId: data.id, message: 'Facebook post published', requestId: attempt });
       return NextResponse.json({ success: true, postId: data.id, attemptId: attempt });
     }
 
@@ -200,6 +202,7 @@ export async function POST(request: NextRequest) {
         return err(code, message, postRes.status === 429 ? 429 : 502, attempt);
       }
       const postData = await postRes.json();
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'facebook', resourceId: postData.id, message: 'Facebook post published', requestId: attempt });
       return NextResponse.json({ success: true, postId: postData.id, attemptId: attempt });
     }
 
@@ -230,6 +233,7 @@ export async function POST(request: NextRequest) {
         return err(finalCode, `${message} The post was NOT published (no text-only fallback).`, photoRes.status === 429 ? 429 : 502, attempt);
       }
       const photoData = await photoRes.json();
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'facebook', resourceId: photoData.post_id || photoData.id, message: 'Facebook post published', requestId: attempt });
       return NextResponse.json({ success: true, postId: photoData.post_id || photoData.id, attemptId: attempt });
     }
 
@@ -244,9 +248,11 @@ export async function POST(request: NextRequest) {
       return err(code, message, textRes.status === 429 ? 429 : 502, attempt);
     }
     const textData = await textRes.json();
+    logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'facebook', resourceId: textData.id, message: 'Facebook post published', requestId: attempt });
     return NextResponse.json({ success: true, postId: textData.id, attemptId: attempt });
   } catch (e) {
     console.error(`[facebook/publish] network failure (attempt ${attempt}):`, e instanceof Error ? e.message : e);
+    logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', userId: typeof userId === 'string' ? userId : undefined, platform: 'facebook', message: e instanceof Error ? e.message : 'Facebook publishing failed; no retry was attempted.', requestId: attempt });
     return err('FACEBOOK_PUBLISH_FAILED', 'Network error publishing to Facebook — no retry was attempted.', 502, attempt);
   }
 }
