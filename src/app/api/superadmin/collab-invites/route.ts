@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiSuperadmin } from '@/lib/auth/roles';
-import { listUsers, findUserByEmail, findUserByMobile, createAdminManagedUser } from '@/lib/auth/users';
+import { listUsers, findUserByEmail, createAdminManagedUser, type UserListItem } from '@/lib/auth/users';
 import { logAuthEvent, clientIp } from '@/lib/auth/audit';
-import { z } from 'zod';
-
-const searchSchema = z.object({ query: z.string().min(1).max(100) });
 
 export async function GET(request: NextRequest) {
   const session = await requireApiSuperadmin();
@@ -13,7 +10,7 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const query = params.get('query') || '';
 
-  let users: any[] = [];
+  let users: UserListItem[] = [];
   let total = 0;
 
   if (query) {
@@ -30,7 +27,7 @@ function err(code: string, message: string, status: number) {
   return NextResponse.json({ success: false, code, message }, { status });
 }
 
-function successResponse(data: any) {
+function successResponse(data: Record<string, unknown>) {
   return NextResponse.json({ success: true, ...data });
 }
 

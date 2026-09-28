@@ -1,13 +1,19 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { listUsers } from '@/lib/auth/users';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { avatarColor, initials, absDate } from '@/app/superadmin/ui';
 
 type FieldErrors = Partial<Record<'email' | 'name', string>>;
+
+interface CollabUser {
+  id: string;
+  name: string;
+  email: string;
+  mobile: string | null;
+  status: string;
+  createdAt: string;
+}
 
 function validateEmail(email: string): FieldErrors {
   const errors: FieldErrors = {};
@@ -100,8 +106,8 @@ function CollabInviteForm({ targetEmail, targetName, setTargetEmail, setTargetNa
 export default function CollabInvitesPage() {
   const [targetEmail, setTargetEmail] = useState('');
   const [targetName, setTargetName] = useState('');
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [users, setUsers] = useState<CollabUser[]>([]);
+  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -110,10 +116,10 @@ export default function CollabInvitesPage() {
   const savedQuery = searchParams.get('q') || '';
   const [banner, setBanner] = useState('');
 
-  // Fetch users for search when query changes
+  // Fetch users for search when query changes (loading starts true for the
+  // initial fetch and is re-armed in handleSearch — never set inside here).
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     const fetchUsers = async () => {
       try {
         const q = savedQuery || searchQuery;
@@ -137,10 +143,11 @@ export default function CollabInvitesPage() {
     const value = e.target.value;
     setSearchQuery(value);
     setPage(1);
+    setLoading(true);
     router.push(`/superadmin/collab-invites?q=${encodeURIComponent(value)}`);
   };
 
-  const handleInvite = (user: any) => {
+  const handleInvite = (user: CollabUser) => {
     setTargetEmail(user.email);
     setTargetName(user.name);
   };
@@ -148,8 +155,7 @@ export default function CollabInvitesPage() {
   const handleSubmitSuccess = (message: string) => {
     setBanner(message);
     // Auto-clear banner after 5 seconds
-    const timer = setTimeout(() => setBanner(''), 5000);
-    // Banner is cleared automatically after timeout
+    setTimeout(() => setBanner(''), 5000);
   };
 
   return (
