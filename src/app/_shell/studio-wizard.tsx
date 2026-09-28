@@ -276,6 +276,9 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   // Step 7 post-preview modal (transient overlay state only — all content
   // state lives in page.tsx and is untouched by open/close).
   const [showPostPreview, setShowPostPreview] = useState(false);
+  // Step 2: remembers a blocked Generate click so the reason is shown as an
+  // unmissable error instead of a dead click (a disabled button fires nothing).
+  const [genBlockerFlash, setGenBlockerFlash] = useState(false);
   const previewBtnRef = useRef<HTMLButtonElement | null>(null);
   const previewCloseRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
@@ -741,10 +744,19 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 26, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
                 <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
                 <div style={{ flex: 1 }} />
-                <button onClick={() => { if (hasContent && !p.isGeneratingContent) { goNext(); return; } p.generateContent(); }} disabled={!canGenContent && !hasContent} title={!canGenContent && !hasContent ? genContentBlocker : hasContent ? 'Content ready — continue to Content' : 'Generate content'} style={{ minHeight: 50, padding: '14px 24px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, cursor: (canGenContent || hasContent) ? 'pointer' : 'not-allowed', fontFamily: 'inherit', border: `1.5px solid ${(canGenContent || hasContent) ? C.primary : '#E8EAF1'}`, background: hasContent ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#fff', color: hasContent ? '#fff' : canGenContent ? C.primaryDark : '#B6BDCC', boxShadow: hasContent ? '0 6px 22px rgba(124,58,237,0.42)' : canGenContent ? '0 3px 12px rgba(124,58,237,0.14)' : 'none' }}>{hasContent ? 'Next →' : '✨ Generate Content →'}</button>
+                <button onClick={() => {
+                  if (p.isGeneratingContent) return;
+                  if (hasContent) { setGenBlockerFlash(false); goNext(); return; }
+                  if (!canGenContent) { setGenBlockerFlash(true); return; }
+                  setGenBlockerFlash(false);
+                  p.generateContent();
+                }} disabled={p.isGeneratingContent} title={p.isGeneratingContent ? 'Generating — please wait' : !canGenContent && !hasContent ? genContentBlocker : hasContent ? 'Content ready — continue to Content' : 'Generate content'} style={{ minHeight: 50, padding: '14px 24px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, cursor: p.isGeneratingContent ? 'wait' : 'pointer', fontFamily: 'inherit', border: `1.5px solid ${(canGenContent || hasContent) ? C.primary : '#E8EAF1'}`, background: hasContent ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#fff', color: hasContent ? '#fff' : canGenContent ? C.primaryDark : '#B6BDCC', boxShadow: hasContent ? '0 6px 22px rgba(124,58,237,0.42)' : canGenContent ? '0 3px 12px rgba(124,58,237,0.14)' : 'none' }}>{hasContent ? 'Next →' : p.isGeneratingContent ? '⏳ Generating…' : '✨ Generate Content →'}</button>
               </div>
               {!hasSettings && <div style={{ fontSize: 12, color: '#92400E', marginTop: 10, fontWeight: 600 }}>Aspect ratio required before the image flow — pick one above.</div>}
-              {!canGenContent && !p.isGeneratingContent && (
+              {genBlockerFlash && !canGenContent && !hasContent && !p.isGeneratingContent && (
+                <div style={{ fontSize: 12.5, color: '#B91C1C', backgroundColor: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: 12, padding: '10px 14px', marginTop: 10, fontWeight: 700 }}>⚠️ {genContentBlocker}</div>
+              )}
+              {!genBlockerFlash && !canGenContent && !p.isGeneratingContent && (
                 <div style={{ fontSize: 12, color: '#92400E', marginTop: 6 }}>
                   To enable Generate Content: {[!hasTopic ? 'add a topic (Step 1)' : null, !genPlatformSelected ? 'select a platform above' : null].filter(Boolean).join(' and ')}.
                 </div>
