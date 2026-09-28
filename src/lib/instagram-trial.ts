@@ -48,8 +48,11 @@ function normalizeCollaborators(input?: string[]): string[] | undefined {
 
 function metaDetail(body: string): string {
   try {
-    const parsed = JSON.parse(body) as { error?: { message?: string } };
-    return parsed.error?.message || '';
+    // Prefer error_user_msg: Meta's top-level message is often a generic
+    // "Application does not have permission for this action" while the real
+    // reason (e.g. trial-reel follower requirement, subcode 2207081) sits here.
+    const parsed = JSON.parse(body) as { error?: { message?: string; error_user_msg?: string } };
+    return parsed.error?.error_user_msg || parsed.error?.message || '';
   } catch {
     return '';
   }
