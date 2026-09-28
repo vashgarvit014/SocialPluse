@@ -36,7 +36,11 @@ function graphError(status: number, body: string, context: string): { code: stri
   try {
     const parsed = JSON.parse(body) as { error?: { message?: string; code?: number; type?: string } };
     detail = parsed.error?.message || '';
-    if (parsed.error?.type === 'OAuthException' && /expired|invalid|session/i.test(detail)) {
+    // Narrow on purpose: the old /expired|invalid|session/ regex also matched
+    // media errors like "Invalid video_url", mislabeling them as session
+    // expiry. Only real token failures (Meta code 190 or token/session
+    // wording) map here; everything else keeps Meta's own detail below.
+    if (parsed.error?.code === 190 || (parsed.error?.type === 'OAuthException' && /(session|access.?token|oauth).*(expired|invalid)|invalid.*(access.?token|session|oauth)|password changed|not authorized/i.test(detail))) {
       return { code: 'INSTAGRAM_AUTH_EXPIRED', message: `Instagram session expired during ${context}. Please reconnect (via Facebook) and try again.` };
     }
     if (parsed.error?.code === 200 || parsed.error?.code === 10) {
