@@ -148,6 +148,19 @@ async function migrate(client: PoolClient) {
     );
   `);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage_log(created_at)`);
+
+  // Server-side workspace draft — one row per user, full pixels included.
+  // localStorage caps at ~5MB so the client autosave strips images past 4MB
+  // (mediaSkipped); this table has no such limit, so "Keep my content" can
+  // restore the previous image instead of dropping it. See
+  // src/lib/editor-draft.ts.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS editor_drafts (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      draft JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+  `);
 }
 
 // Runs once per process (not once per request) — every route module import

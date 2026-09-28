@@ -371,17 +371,34 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has('editor_return')) return;
     if (new URLSearchParams(window.location.search).has('correlation_jwt')) return;
+    let local: SavedDraft | null = null;
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
-      if (!raw) return;
-      const d = JSON.parse(raw) as SavedDraft;
-      if (d && draftIsMeaningful(d)) {
-        setSavedDraft(d);
-        setRestorePromptOpen(true);
-      } else {
-        localStorage.removeItem(DRAFT_KEY);
+      if (raw) {
+        const d = JSON.parse(raw) as SavedDraft;
+        if (d && draftIsMeaningful(d)) local = d;
+        else localStorage.removeItem(DRAFT_KEY);
       }
     } catch { /* corrupt draft - start clean */ }
+    // Server copy keeps full images (localStorage strips them past ~4MB):
+    // offer whichever draft is newer.
+    let cancelled = false;
+    fetch('/api/editor-draft').then(r => r.json()).then((data: { draft?: SavedDraft }) => {
+      if (cancelled) return;
+      const s = data?.draft;
+      const server = s && draftIsMeaningful(s) ? s : null;
+      const pick = server && (!local || (server.savedAt || 0) >= (local.savedAt || 0)) ? server : local;
+      if (pick) {
+        setSavedDraft(pick);
+        setRestorePromptOpen(true);
+      }
+    }).catch(() => {
+      if (!cancelled && local) {
+        setSavedDraft(local);
+        setRestorePromptOpen(true);
+      }
+    });
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -411,6 +428,19 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             ...draft, mediaItems: [], topicMediaItems: [], generatedImage: '', generatedVideo: '', logoImage: '', mediaSkipped: true,
           }));
         } catch { /* storage unavailable - session simply won't restore */ }
+      }
+      // Mirror the FULL draft (images included — `full` was captured before
+      // stripping) to the server, so a later "Keep my content" restores the
+      // previous image instead of dropping it. Fire-and-forget: the local
+      // copy still applies if the server is unreachable.
+      if (draftIsMeaningful(draft) && full.length <= 25_000_000) {
+        fetch('/api/editor-draft', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          // `full` is already valid JSON of the pre-strip draft — wrap it
+          // without a wasteful re-parse/restringify round-trip.
+          body: `{"draft":${full}}`,
+        }).catch(() => { /* offline/server down - local copy still applies */ });
       }
     }, 800);
     return () => clearTimeout(t);
@@ -453,6 +483,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
 
   const discardSavedDraft = () => {
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    fetch('/api/editor-draft', { method: 'DELETE' }).catch(() => {});
     setSavedDraft(null);
     setRestorePromptOpen(false);
   };
