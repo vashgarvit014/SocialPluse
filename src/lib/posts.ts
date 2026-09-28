@@ -10,6 +10,10 @@ export interface PostRecord {
   // badge, and routed to the trial seam at publish time (never silently
   // posted as a normal Reel).
   trialReel?: boolean;
+  // Instagram collaborator username (without @): set in the studio alongside
+  // trialReel, saved with drafts/scheduled posts, forwarded to
+  // instagram/publish at publish time (normal + trial Reels).
+  collaborator?: string;
   // Last time this post was scheduled for, preserved through cancellation so
   // the Drafts view can still show/sort by "was going out at 5:00 AM" etc.
   previousScheduledAt?: string | null;

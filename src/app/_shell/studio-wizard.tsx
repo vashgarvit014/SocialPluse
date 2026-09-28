@@ -2554,7 +2554,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       p.aspectRatio || 'No ratio',
                       p.imageStyle,
                       ...(p.trialReel && p.instagramReelReady ? ['Trial Reel'] : []),
-                      ...(p.collaborator ? [`@${p.collaborator}`] : []),
+                      ...(p.collaborator && p.selectedPlatforms.includes('instagram') ? [`@${p.collaborator}`] : []),
                     ].map(chip => (
                       <span key={chip} style={{ fontSize: 10.5, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '4px 11px', borderRadius: 999 }}>{chip}</span>
                     ))}
@@ -2573,6 +2573,20 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       {p.trialReel && (
                         <div style={{ marginTop: 7, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>Trial Reels are shown to non-followers first (single video only, never a normal Reel to followers).</div>
                       )}
+                    </div>
+                  )}
+                  {p.selectedPlatforms.includes('instagram') && (
+                    <div style={{ marginTop: 10 }}>
+                      <label htmlFor="sp-collab" style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: C.ink, marginBottom: 6 }}>Instagram collaborator (optional)</label>
+                      <input
+                        id="sp-collab"
+                        value={p.collaborator}
+                        onChange={e => p.setCollaborator(e.target.value.replace(/^@+/, '').slice(0, 30))}
+                        placeholder="username (without @)"
+                        autoComplete="off"
+                        style={{ width: '100%', padding: '10px 13px', borderRadius: 11, border: `1.5px solid ${p.collaborator ? C.primary : C.border}`, backgroundColor: '#fff', color: C.ink, fontSize: 12.5, outline: 'none', fontFamily: 'inherit' }}
+                      />
+                      <div style={{ marginTop: 6, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>They get an invite inside Instagram and must accept before the collab shows on the post.</div>
                     </div>
                   )}
                 </div>

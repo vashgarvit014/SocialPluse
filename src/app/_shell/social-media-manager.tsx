@@ -1183,6 +1183,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           mediaList: publishMediaList,
           isCarousel: isCarousel && carouselValidation.valid ? true : undefined,
           trialReel: trialReel && instagramReelReady ? true : undefined,
+          collaborator: collaborator.trim() ? collaborator.trim() : undefined,
           platforms: connectedSelected,
           accounts: accountsData,
           scheduledAt,
@@ -1278,6 +1279,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         imageUrl: generatedImage, videoUrl: generatedVideo, mediaList: publishMediaList,
         mediaUrls: publishMediaList.map(m => m.url), isCarousel, platformContent,
         trialReel: trialReel && instagramReelReady ? true : undefined,
+        collaborator: collaborator.trim() ? collaborator.trim() : undefined,
         source: mediaItems.some(m => m.name === 'generated') ? 'AI Generated' : 'Manual Draft',
         editorState: captureEditor(),
       }) });
@@ -1301,6 +1303,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       generatedImage: post.imageUrl || '', generatedVideo: post.videoUrl || '',
       isCarousel: !!post.isCarousel, carouselSlideIds: (post.editorState?.carouselSlideIds as string[]) || media.map(m => m.id),
       trialReel: (post as PostRecord).trialReel === true,
+      collaborator: (post as PostRecord).collaborator || (post.editorState?.collaborator as string) || '',
       draftId: post.id.startsWith('legacy:') ? undefined : post.id,
             activeTab: 'studio', wizardState: { ...((post.editorState?.wizardState as Record<string, unknown>) || {}), currentStep: schedule ? 8 : 3 },
       scheduleDate: post.scheduledAt ? localDateKey(new Date(post.scheduledAt)) : '',
@@ -2666,6 +2669,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             mediaList: publishMediaList,
             isCarousel: isCarousel && carouselValidation.valid ? true : undefined,
             trialReel: platform === 'instagram' && trialReel && instagramReelReady ? true : undefined,
+            collaborator: platform === 'instagram' && collaborator.trim() ? collaborator.trim() : undefined,
             userId: account.userId,
             pageId: account.pageId || undefined,
             attemptId,
@@ -3762,6 +3766,20 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
                   <input type="checkbox" checked={trialReel} onChange={e => setTrialReel(e.target.checked)} style={{ width: '16px', height: '16px', accentColor: '#6366f1', cursor: 'pointer' }} />
                   <span style={{ fontSize: '13px', fontWeight: 700, color: trialReel ? '#4338ca' : '#0f172a' }}>Post as Trial Reel</span>
                 </label>
+              )}
+
+              {selectedPlatforms.includes('instagram') && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label htmlFor="sp-collab-sched" style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>Instagram collaborator (optional)</label>
+                  <input
+                    id="sp-collab-sched"
+                    value={collaborator}
+                    onChange={e => setCollaborator(e.target.value.replace(/^@+/, '').slice(0, 30))}
+                    placeholder="username (without @)"
+                    autoComplete="off"
+                    style={{ width: '100%', padding: '11px 13px', borderRadius: '10px', border: `1.5px solid ${collaborator ? '#6366f1' : '#e2e8f0'}`, backgroundColor: '#fff', color: '#0f172a', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }}
+                  />
+                </div>
               )}
 
               <button

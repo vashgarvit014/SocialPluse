@@ -29,6 +29,9 @@ async function publishPost(post: ScheduledPost, platform: string, account: { acc
       mediaList,
       isCarousel: (post as unknown as { isCarousel?: boolean }).isCarousel === true || undefined,
       trialReel: (post as unknown as { trialReel?: boolean }).trialReel === true ? true : undefined,
+      collaborator: (post as unknown as { collaborator?: string }).collaborator
+        || (post.editorState as unknown as { collaborator?: string } | undefined)?.collaborator
+        || undefined,
       accessToken: account.accessToken,
       userId: account.userId,
       pageId: account.pageId,
