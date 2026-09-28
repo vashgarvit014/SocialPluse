@@ -48,5 +48,19 @@ export async function prepareInstagramMedia(url: string, video = false): Promise
   }
   const id = `${randomBytes(24).toString('hex')}.${video ? 'mp4' : 'jpg'}`;
   await writeFile(join(directory, id), bytes, { flag: 'wx', mode: 0o600 });
+  // Localhost-dev mirror: NEXT_PUBLIC_APP_URL points at the public domain,
+  // which is served by the Docker app (different folder), NOT this dev
+  // server — so Meta would 404 freshly staged bytes and the container lands
+  // in ERROR ("could not process this media"). Best-effort copy the staged
+  // file into the sibling Docker folder when present (override with
+  // INSTAGRAM_MEDIA_MIRROR_DIR, empty to disable). Never throws.
+  const mirrorDir = process.env.INSTAGRAM_MEDIA_MIRROR_DIR
+    ?? join(process.cwd(), '..', 'social-media-manager', '.instagram-media');
+  if (mirrorDir) {
+    try {
+      await mkdir(mirrorDir, { recursive: true });
+      await writeFile(join(mirrorDir, id), bytes, { flag: 'wx', mode: 0o600 });
+    } catch { /* mirror unavailable — production/single-folder setups don't need it */ }
+  }
   return new URL(`/api/instagram/media/${id}`, origin).href;
 }
