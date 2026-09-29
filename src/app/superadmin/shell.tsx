@@ -114,7 +114,7 @@ export default function SuperadminShell({ name, email, pendingUsers, healthIssue
   async function handleLogout() {
     setLoggingOut(true);
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login-signup');
+    router.push('/superadmin/login');
     router.refresh();
   }
 

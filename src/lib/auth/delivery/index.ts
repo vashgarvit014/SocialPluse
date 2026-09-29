@@ -13,9 +13,19 @@ export async function deliverOtp(params: {
   destination: string;
   otp: string;
   purpose: OtpPurpose;
+  // Roles the copy apart: a Superadmin's verification mail must identify the
+  // privileged account immediately, otherwise a high-privilege code looks
+  // like an ordinary one.
+  isSuperadmin?: boolean;
 }): Promise<DeliveryResult> {
   if (params.channel === 'EMAIL') {
-    return sendOtpEmail({ to: params.destination, otp: params.otp, purpose: params.purpose, expiresInMinutes: OTP_TTL_MINUTES });
+    return sendOtpEmail({
+      to: params.destination,
+      otp: params.otp,
+      purpose: params.purpose,
+      expiresInMinutes: OTP_TTL_MINUTES,
+      isSuperadmin: params.isSuperadmin,
+    });
   }
   return sendWhatsAppOtp({ to: params.destination, otp: params.otp });
 }

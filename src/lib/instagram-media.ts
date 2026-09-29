@@ -54,12 +54,16 @@ export async function prepareInstagramMedia(url: string, video = false): Promise
   // in ERROR ("could not process this media"). Best-effort copy the staged
   // file into the sibling Docker folder when present (override with
   // INSTAGRAM_MEDIA_MIRROR_DIR, empty to disable). Never throws.
+  // Dev-only: skipped in production (the Docker image serves its own
+  // .instagram-media). The /*turbopackIgnore: true*/ hints keep this dynamic,
+  // parent-traversing path out of standalone output tracing — without them
+  // Turbopack traces the whole project into .next/standalone.
   const mirrorDir = process.env.INSTAGRAM_MEDIA_MIRROR_DIR
-    ?? join(process.cwd(), '..', 'social-media-manager', '.instagram-media');
-  if (mirrorDir) {
+    ?? join(/*turbopackIgnore: true*/ process.cwd(), '..', 'social-media-manager', '.instagram-media');
+  if (mirrorDir && process.env.NODE_ENV !== 'production') {
     try {
-      await mkdir(mirrorDir, { recursive: true });
-      await writeFile(join(mirrorDir, id), bytes, { flag: 'wx', mode: 0o600 });
+      await mkdir(/*turbopackIgnore: true*/ mirrorDir, { recursive: true });
+      await writeFile(join(/*turbopackIgnore: true*/ mirrorDir, id), bytes, { flag: 'wx', mode: 0o600 });
     } catch { /* mirror unavailable — production/single-folder setups don't need it */ }
   }
   return new URL(`/api/instagram/media/${id}`, origin).href;

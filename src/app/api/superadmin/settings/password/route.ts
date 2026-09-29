@@ -4,6 +4,7 @@ import { findUserByEmail, updatePassword, findUserById } from '@/lib/auth/users'
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
 import { createSession } from '@/lib/auth/session';
 import { logAuthEvent, clientIp } from '@/lib/auth/audit';
+import { sendPasswordChangedEmail } from '@/lib/auth/delivery/email';
 import { passwordSchema } from '@/lib/auth/schemas';
 import { validationErrorResponse } from '@/lib/auth/validation-response';
 import { z } from 'zod';
@@ -55,7 +56,23 @@ export async function POST(request: NextRequest) {
       ip,
     });
   }
-  logAuthEvent('SUPERADMIN_PASSWORD_CHANGED', { userId: session.userId, ip });
 
-  return NextResponse.json({ success: true });
+  // Confirmation notice to the account's own address. Best-effort and fired
+  // only after the new password is live, so a mail failure can never roll back
+  // (or block) the change itself — it just gets logged.
+  const notification = await sendPasswordChangedEmail({
+    to: full.email,
+    changedAt: new Date(),
+    ip,
+    userAgent: request.headers.get('user-agent'),
+  });
+  if (!notification.ok) console.error('[superadmin/settings/password] change notice not delivered:', notification.error);
+
+  logAuthEvent('SUPERADMIN_PASSWORD_CHANGED', {
+    userId: session.userId,
+    ip,
+    meta: { notified: notification.ok },
+  });
+
+  return NextResponse.json({ success: true, notified: notification.ok });
 }

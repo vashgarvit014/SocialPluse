@@ -1,28 +1,116 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import SuperadminOtpPanel from '../otp-panel';
+import Mascot, { type MascotState } from './mascot';
 import { loginIdentifierSchema, passwordSchema } from '@/lib/auth/schemas';
 import { PASSWORD_REQUIREMENTS } from '@/lib/auth/password-rules';
 
 type Step = 'credentials' | 'forgot-identifier' | 'channel-select' | 'otp-entry' | 'reset-password' | 'reset-done';
 type Channel = 'EMAIL' | 'WHATSAPP';
+// Animation phases. React owns this and every visual class is derived from it
+// in the JSX below — no imperative classList writes, which get silently wiped
+// on the next re-render.
+type Phase = 'idle' | 'doorOpen' | 'walking' | 'happy';
 
-const card: React.CSSProperties = {
-  width: '100%', maxWidth: 420, backgroundColor: '#15173a', borderRadius: 18,
-  borderWidth: 1, borderStyle: 'solid', borderColor: '#2a2d63',
-  boxShadow: '0 24px 64px rgba(0,0,0,0.45)', padding: '30px 28px',
-};
+const DOOR_MS = 380;
+const WALK_MS = 680;
+const HAPPY_MS = 700;
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '12px 14px', borderRadius: 10,
-  borderWidth: 1, borderStyle: 'solid', borderColor: '#2a2d63',
-  fontSize: 14, color: '#fff', backgroundColor: '#0d0f2b', outline: 'none', fontFamily: 'inherit',
-};
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const labelStyle: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: '#aeb0d4', marginBottom: 6, display: 'block' };
+function EyeIcon({ off }: { off: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {off ? (
+        <>
+          <path d="M3 3l18 18" />
+          <path d="M10.6 6.2A9.9 9.9 0 0 1 12 6c5 0 9 4.5 9 6 0 .7-.6 1.7-1.7 2.7" />
+          <path d="M6.3 8.3C4 9.8 3 11.6 3 12c0 1.5 4 6 9 6 1 0 1.9-.2 2.7-.5" />
+          <path d="M9.9 10a3 3 0 0 0 4.2 4.2" />
+        </>
+      ) : (
+        <>
+          <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" />
+          <circle cx="12" cy="12" r="3" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
+// Each password field owns its reveal state: hidden by default, revealed only
+// if that specific field is asked for. Focus + visibility are reported upward
+// so the mascot state machine has one source of truth.
+function PasswordField({
+  id, value, onChange, autoComplete, placeholder, show, onToggle, onFocus, onBlur, children,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  autoComplete: string;
+  placeholder?: string;
+  show: boolean;
+  onToggle: () => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="sa-field">
+      <input
+        id={id}
+        className="sa-input is-password"
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        onFocus={onFocus}
+        onBlur={onBlur}
+      />
+      <button
+        className="sa-eye"
+        type="button"
+        // Without this, mousedown on the button blurs the input and the
+        // mascot would drop straight back to neutral the moment you reveal
+        // the password — defeating the whole "mascot peeks" behaviour.
+        onMouseDown={e => e.preventDefault()}
+        onClick={onToggle}
+        aria-label={show ? 'Hide password' : 'Show password'}
+        aria-pressed={show}
+        tabIndex={-1}
+      >
+        <EyeIcon off={!show} />
+      </button>
+      {children}
+    </div>
+  );
+}
+
+function DoorScene() {
+  return (
+    <span className="sa-door">
+      <span className="sa-door__frame" />
+      <span className="sa-door__panel" />
+      <span className="sa-person">
+        <span className="sa-person__head" />
+        <span className="sa-person__body" />
+        <span className="sa-person__legs" />
+      </span>
+    </span>
+  );
+}
 
 async function postJson(path: string, body: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
   const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -32,44 +120,146 @@ async function postJson(path: string, body: unknown): Promise<{ ok: boolean; dat
 
 export default function SuperadminLoginClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Local-only: ?animationDebug=1 replays the CSS sequence with no auth call.
+  // Never shown otherwise, gated to non-production, and grants nothing.
+  const debug = searchParams.get('animationDebug') === '1' && process.env.NODE_ENV !== 'production';
+
   const [step, setStep] = useState<Step>('credentials');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [forgotIdentifier, setForgotIdentifier] = useState('');
   const [channels, setChannels] = useState<{ email?: string | null; whatsapp?: string | null }>({});
   const [challengeId, setChallengeId] = useState('');
+  const [resendAvailableAt, setResendAvailableAt] = useState('');
+  const [codeExpiresAt, setCodeExpiresAt] = useState('');
+  // Where the OTP screen's Back should go — the form the code actually came
+  // from, never a screen the user never used.
+  const [otpBackStep, setOtpBackStep] = useState<Step>('channel-select');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<Phase>('idle');
+
+  // ---- mascot state machine ----
+  // Single source of truth for what the mascot is doing. Priority order:
+  // transient auth outcomes > focus/visibility of the fields > neutral.
+  const [focusedField, setFocusedField] = useState<'email' | 'sa-password' | 'sa-newpw' | 'sa-confirmpw' | null>(null);
+  const [passwordShown, setPasswordShown] = useState(false);
+  const [newPwShown, setNewPwShown] = useState(false);
+  const [confirmPwShown, setConfirmPwShown] = useState(false);
+  // The mascot reads whichever password field is actually focused. If the
+  // form changes while a field still has DOM focus, the step transitions
+  // below clear this explicitly.
+  const passwordShownNow =
+    focusedField === 'sa-password' ? passwordShown
+    : focusedField === 'sa-newpw' ? newPwShown
+    : focusedField === 'sa-confirmpw' ? confirmPwShown
+    : step === 'reset-password' ? newPwShown || confirmPwShown
+    : passwordShown;
+  const [mascotOverride, setMascotOverride] = useState<MascotState | null>(null);
+  const [errorPulse, setErrorPulse] = useState(false);
+  const [successPulse, setSuccessPulse] = useState(false);
+  const pulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const mascotState: MascotState =
+    mascotOverride ??
+    (successPulse ? 'success' : errorPulse ? 'error'
+      : focusedField === 'sa-password' || focusedField === 'sa-newpw' || focusedField === 'sa-confirmpw'
+        ? (passwordShownNow ? 'passwordVisible' : 'passwordHidden')
+      : focusedField === 'email' ? 'emailFocus'
+      : 'neutral');
+
+  // Brief, self-clearing reaction so the mascot returns to its form-driven
+  // state on its own instead of latching after a failed or successful attempt.
+  function pulse(kind: 'error' | 'success') {
+    if (pulseTimer.current) clearTimeout(pulseTimer.current);
+    if (kind === 'error') setErrorPulse(true); else setSuccessPulse(true);
+    pulseTimer.current = setTimeout(() => {
+      setErrorPulse(false);
+      setSuccessPulse(false);
+    }, kind === 'error' ? 900 : 700);
+  }
+
+  useEffect(() => () => { if (pulseTimer.current) clearTimeout(pulseTimer.current); }, []);
+
+  // Reset to true *inside* the effect: StrictMode's dev double-mount runs the
+  // cleanup, so setting it only at useRef() time leaves it false forever and
+  // kills the sequence right after the first await.
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; };
+  }, []);
+
+  // Door opens -> person walks through -> mascot reacts. Every step is awaited
+  // so navigation can never cut the animation short. The mascot's happy
+  // reaction is the LAST beat, not the whole sequence.
+  async function playSequence() {
+    setPhase('doorOpen');
+    await wait(DOOR_MS);
+    if (!aliveRef.current) return;
+    setPhase('walking');
+    await wait(WALK_MS);
+    if (!aliveRef.current) return;
+    setPhase('happy');
+    setSuccessPulse(true);
+    await wait(HAPPY_MS);
+    if (!aliveRef.current) return;
+    setPhase('idle');
+    setSuccessPulse(false);
+  }
 
   async function confirmRoleAndEnter() {
     const res = await fetch('/api/superadmin/auth/check');
-    if (res.ok) router.replace('/superadmin');
-    else {
+    if (!res.ok) {
       await fetch('/api/auth/logout', { method: 'POST' });
       setError('This account is not a Superadmin.');
+      pulse('error');
+      setFocusedField(null);
       setStep('credentials');
+      return;
     }
+    // The session already exists; hold the screen until the animation lands.
+    await playSequence();
+    if (!aliveRef.current) return;
+    router.replace('/superadmin');
+    router.refresh();
   }
 
   async function submitCredentials(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
     setError('');
-    if (!loginIdentifierSchema.safeParse(identifier).success) { setError('Enter a valid email or mobile number.'); return; }
-    if (!password) { setError('Enter your password.'); return; }
+    if (!loginIdentifierSchema.safeParse(identifier).success) { setError('Enter a valid email or mobile number.'); pulse('error'); return; }
+    if (!password) { setError('Enter your password.'); pulse('error'); return; }
     setBusy(true);
+
+    let ok = false;
     try {
-      const { ok, data } = await postJson('/api/superadmin/auth/login', { identifier, password });
-      if (!ok) { setError(typeof data.error === 'string' ? data.error : 'Login failed.'); return; }
+      // Validate FIRST. A bad password returns here with no door animation.
+      const { ok: good, data } = await postJson('/api/superadmin/auth/login', { identifier, password });
+      if (!good) {
+        setError(typeof data.error === 'string' ? data.error : 'Login failed.');
+        pulse('error');
+        return;
+      }
       setChannels((data.channels as { email?: string; whatsapp?: string | null }) || {});
-      setStep('channel-select');
+      ok = true;
     } catch {
       setError('Network error. Please try again.');
+      pulse('error');
+      return;
     } finally {
       setBusy(false);
     }
+
+    if (!ok) return;
+    // Credentials accepted — celebrate, then ask where to send the code.
+    await playSequence();
+    if (!aliveRef.current) return;
+    setStep('channel-select');
   }
 
   async function startForgot(e: FormEvent) {
@@ -83,6 +273,9 @@ export default function SuperadminLoginClient() {
       if (!ok) { setError(typeof data.error === 'string' ? data.error : 'Could not start password reset.'); return; }
       setChannels((data.channels as { email?: string; whatsapp?: string | null }) || {});
       setChallengeId(typeof data.challengeId === 'string' ? data.challengeId : '');
+      setResendAvailableAt(typeof data.resendAvailableAt === 'string' ? data.resendAvailableAt : '');
+      setCodeExpiresAt(typeof data.expiresAt === 'string' ? data.expiresAt : '');
+      setOtpBackStep('forgot-identifier');
       setStep(data.challengeId ? 'otp-entry' : 'channel-select');
     } catch {
       setError('Network error. Please try again.');
@@ -99,6 +292,9 @@ export default function SuperadminLoginClient() {
       const { ok, data } = await postJson('/api/auth/otp/request', { channel: ch });
       if (!ok) { setError(typeof data.error === 'string' ? data.error : 'Could not send the code.'); return; }
       setChallengeId(typeof data.challengeId === 'string' ? data.challengeId : '');
+      setResendAvailableAt(typeof data.resendAvailableAt === 'string' ? data.resendAvailableAt : '');
+      setCodeExpiresAt(typeof data.expiresAt === 'string' ? data.expiresAt : '');
+      setOtpBackStep('channel-select');
       setStep('otp-entry');
     } catch {
       setError('Network error. Please try again.');
@@ -126,116 +322,214 @@ export default function SuperadminLoginClient() {
     }
   }
 
+  const animating = phase === 'doorOpen' || phase === 'walking' || phase === 'happy';
+  const doorClass = phase === 'doorOpen' || phase === 'walking' ? 'dooropen' : '';
+  const walkingClass = phase === 'walking' ? 'walking' : '';
+  const locked = busy || animating;
+
+  const onSignInButton = step === 'credentials' || step === 'reset-password';
+
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: 'radial-gradient(1200px 600px at 50% -10%, #1b1d42 0%, #0d0f2b 60%)' }}>
-      <div style={card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 4 }}>
-          <span style={{ width: 36, height: 36, borderRadius: 10, background: '#6b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="2,12 7,12 10,5 14,19 17,12 22,12" /></svg>
-          </span>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 15, color: '#fff', letterSpacing: '0.02em' }}>SOCIALPULSE</div>
-            <div style={{ fontSize: 10, fontWeight: 800, color: '#a99fff', letterSpacing: '0.16em' }}>SUPERADMIN</div>
-          </div>
-        </div>
-        <h1 style={{ margin: '14px 0 2px', fontSize: 20, fontWeight: 800, color: '#fff' }}>Superadmin Access</h1>
-        <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#8b8eb8' }}>Restricted area. All access attempts are logged.</p>
+    <div className="sa-page">
+      <div className="sa-glow" />
+      <div className="sa-wrap">
+        <Mascot state={mascotState} />
 
-        {error && <div role="alert" style={{ fontSize: 13, color: '#fca5a5', backgroundColor: 'rgba(220,38,38,0.12)', border: '1px solid rgba(248,113,113,0.4)', borderRadius: 10, padding: '10px 12px', marginBottom: 14 }}>{error}</div>}
+        <div className="sa-card">
+          <h1 className="sa-title">SocialPulse</h1>
+          <p className="sa-sub"><strong>Secure Superadmin Access.</strong> All access attempts are logged.</p>
 
-        {step === 'credentials' && (
-          <form onSubmit={submitCredentials} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div>
-              <label htmlFor="sa-email" style={labelStyle}>Email</label>
-              <input id="sa-email" value={identifier} onChange={e => setIdentifier(e.target.value)} autoComplete="username" placeholder="admin@example.com" style={inputStyle} />
-            </div>
-            <div>
-              <label htmlFor="sa-password" style={labelStyle}>Password</label>
-              <input id="sa-password" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" placeholder="••••••••" style={inputStyle} />
-            </div>
-            <button type="submit" disabled={busy} style={{ padding: '12px 0', borderRadius: 10, border: 'none', background: busy ? '#3b3f7a' : 'linear-gradient(135deg,#6b5cf6,#8b5cf6)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', width: '100%' }}>
-              {busy ? 'Checking…' : 'Login as Superadmin'}
-            </button>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <button type="button" onClick={() => { setStep('forgot-identifier'); setError(''); }} style={{ border: 'none', background: 'none', color: '#a99fff', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0 }}>Forgot Password</button>
-              <span style={{ color: '#6f72a0', fontSize: 11.5 }}>Seeded accounts only</span>
-            </div>
-          </form>
-        )}
+          <div className="sa-error" role="alert">{error}</div>
 
-        {step === 'forgot-identifier' && (
-          <form onSubmit={startForgot} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ fontSize: 13, color: '#aeb0d4' }}>Enter your Superadmin email or mobile to receive a reset code.</div>
-            <div>
-              <label htmlFor="sa-forgot" style={labelStyle}>Email or mobile</label>
-              <input id="sa-forgot" value={forgotIdentifier} onChange={e => setForgotIdentifier(e.target.value)} autoComplete="username" style={inputStyle} />
-            </div>
-            <button type="submit" disabled={busy} style={{ padding: '12px 0', borderRadius: 10, border: 'none', background: busy ? '#3b3f7a' : 'linear-gradient(135deg,#6b5cf6,#8b5cf6)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', width: '100%' }}>
-              {busy ? 'Sending…' : 'Send Reset Code'}
-            </button>
-            <button type="button" onClick={() => { setStep('credentials'); setError(''); }} style={{ border: 'none', background: 'none', color: '#8b8eb8', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, alignSelf: 'flex-start' }}>← Back to login</button>
-          </form>
-        )}
+          {step === 'credentials' && (
+            <form onSubmit={submitCredentials} noValidate>
+              <div className="sa-field">
+                <label htmlFor="sa-email">Email</label>
+                <input
+                  id="sa-email"
+                  className="sa-input"
+                  type="email"
+                  value={identifier}
+                  onChange={e => setIdentifier(e.target.value)}
+                  autoComplete="username"
+                  disabled={locked}
+                  onFocus={() => setFocusedField('email')}
+                  onBlur={() => setFocusedField(f => (f === 'email' ? null : f))}
+                  required
+                />
+              </div>
 
-        {step === 'channel-select' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 13, color: '#aeb0d4' }}>Choose where to receive the verification code.</div>
-            {(['EMAIL', 'WHATSAPP'] as const).map(ch => {
-              const dest = ch === 'EMAIL' ? channels.email : channels.whatsapp;
-              if (!dest) return null;
-              return (
-                <button key={ch} type="button" onClick={() => requestOtp(ch)} disabled={busy} style={{ padding: '12px 14px', borderRadius: 10, borderWidth: 1, borderStyle: 'solid', borderColor: '#2a2d63', background: '#0d0f2b', color: '#fff', fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-                  {ch === 'EMAIL' ? '✉️ Email' : '💬 WhatsApp'} <span style={{ fontWeight: 400, color: '#8b8eb8' }}>{dest}</span>
+              <PasswordField
+                id="sa-password"
+                value={password}
+                onChange={setPassword}
+                autoComplete="current-password"
+                placeholder="Password"
+                show={passwordShown}
+                onToggle={() => setPasswordShown(v => !v)}
+                onFocus={() => setFocusedField('sa-password')}
+                onBlur={() => setFocusedField(f => (f === 'sa-password' ? null : f))}
+              />
+
+              <div className="sa-options">
+                <span style={{ fontSize: 12, color: '#6b7688' }}>Seeded accounts only</span>
+                <button type="button" className="sa-link" onClick={() => { setStep('forgot-identifier'); setError(''); }} disabled={locked}>
+                  Forgot password?
                 </button>
-              );
-            })}
-            <button type="button" onClick={() => { setStep('credentials'); setError(''); }} style={{ border: 'none', background: 'none', color: '#8b8eb8', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, alignSelf: 'flex-start' }}>← Back</button>
-          </div>
-        )}
+              </div>
 
-        {step === 'otp-entry' && (
-          <SuperadminOtpPanel
-            challengeId={challengeId}
-            onBack={() => setStep('channel-select')}
-            onVerified={data => {
-              if (data.canResetPassword) setStep('reset-password');
-              else confirmRoleAndEnter();
-            }}
-          />
-        )}
+              <button className={`sa-btn ${doorClass} ${walkingClass}`} type="submit" disabled={locked}>
+                <span className="sa-btn__label">{busy ? 'Checking…' : animating ? 'Welcome' : 'Sign in'}</span>
+                <DoorScene />
+              </button>
 
-        {step === 'reset-password' && (
-          <form onSubmit={resetPassword} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ fontSize: 13, color: '#aeb0d4' }}>Code verified. Set a new password.</div>
+              {debug && (
+                <>
+                  <button className="sa-test" type="button" onClick={() => { if (!locked) void playSequence(); }}>
+                    Test Animation
+                  </button>
+                  <div className="sa-debug">
+                    {(['neutral', 'emailFocus', 'passwordHidden', 'passwordVisible', 'error', 'success'] as MascotState[]).map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        className="sa-debug__btn"
+                        data-active={mascotOverride === s}
+                        onClick={() => setMascotOverride(cur => (cur === s ? null : s))}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </form>
+          )}
+
+          {step === 'forgot-identifier' && (
+            <form onSubmit={startForgot} noValidate>
+              <p className="sa-hint">Enter your Superadmin email or mobile to receive a reset code.</p>
+              <div className="sa-field">
+                <label htmlFor="sa-forgot">Email or mobile</label>
+                <input
+                  id="sa-forgot"
+                  className="sa-input"
+                  type="text"
+                  value={forgotIdentifier}
+                  onChange={e => setForgotIdentifier(e.target.value)}
+                  autoComplete="username"
+                  disabled={busy}
+                  onFocus={() => setFocusedField('email')}
+                  onBlur={() => setFocusedField(f => (f === 'email' ? null : f))}
+                  required
+                />
+              </div>
+              <button className="sa-btn" type="submit" disabled={busy} style={{ background: busy ? '#1d3a63' : undefined }}>
+                <span className="sa-btn__label">{busy ? 'Sending…' : 'Send Reset Code'}</span>
+              </button>
+              <div className="sa-foot sa-foot-alt">
+                <button type="button" className="sa-link muted" onClick={() => { setStep('credentials'); setError(''); }} disabled={busy}>
+                  ← Back to login
+                </button>
+              </div>
+            </form>
+          )}
+
+          {step === 'channel-select' && (
             <div>
-              <label htmlFor="sa-newpw" style={labelStyle}>New password</label>
-              <input id="sa-newpw" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" style={inputStyle} />
-              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {PASSWORD_REQUIREMENTS.map(r => (
-                  <span key={r.key} style={{ fontSize: 11.5, color: '#8b8eb8' }}>• {r.label}</span>
-                ))}
+              <p className="sa-hint">Choose where to receive the verification code.</p>
+              <div className="sa-channels">
+                {(['EMAIL', 'WHATSAPP'] as const).map(ch => {
+                  const dest = ch === 'EMAIL' ? channels.email : channels.whatsapp;
+                  if (!dest) return null;
+                  return (
+                    <button key={ch} type="button" className="sa-channel" onClick={() => requestOtp(ch)} disabled={busy}>
+                      {ch === 'EMAIL' ? '✉️ Email' : '💬 WhatsApp'} <span>{dest}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="sa-foot sa-foot-alt">
+                <button type="button" className="sa-link muted" onClick={() => { setStep('credentials'); setError(''); }} disabled={busy}>
+                  ← Back
+                </button>
               </div>
             </div>
+          )}
+
+          {step === 'otp-entry' && (
+            <>
+              <p className="sa-hint">Verify your identity</p>
+              {channels.email && <p className="sa-notice">We sent a code to {channels.email}</p>}
+              <SuperadminOtpPanel
+                challengeId={challengeId}
+                resendAvailableAt={resendAvailableAt}
+                expiresAt={codeExpiresAt}
+                onResent={setCodeExpiresAt}
+                onBack={() => { setError(''); setResendAvailableAt(''); setStep(otpBackStep); }}
+                onVerified={async data => {
+                  if (data.canResetPassword) setStep('reset-password');
+                  else await confirmRoleAndEnter();
+                }}
+              />
+            </>
+          )}
+
+          {step === 'reset-password' && (
+            <form onSubmit={resetPassword} noValidate>
+              <p className="sa-hint">Code verified. Set a new password.</p>
+              <PasswordField
+                id="sa-newpw"
+                value={newPassword}
+                onChange={setNewPassword}
+                autoComplete="new-password"
+                show={newPwShown}
+                onToggle={() => setNewPwShown(v => !v)}
+                onFocus={() => setFocusedField('sa-newpw')}
+                onBlur={() => setFocusedField(f => (f === 'sa-newpw' ? null : f))}
+              >
+                <div className="sa-rules">
+                  {PASSWORD_REQUIREMENTS.map(r => (
+                    <span key={r.key} style={{ color: r.test(newPassword) ? '#6ee7b7' : '#8a93a4' }}>
+                      {r.test(newPassword) ? '✓' : '•'} {r.label}
+                    </span>
+                  ))}
+                </div>
+              </PasswordField>
+              <PasswordField
+                id="sa-confirmpw"
+                value={confirmNewPassword}
+                onChange={setConfirmNewPassword}
+                autoComplete="new-password"
+                show={confirmPwShown}
+                onToggle={() => setConfirmPwShown(v => !v)}
+                onFocus={() => setFocusedField('sa-confirmpw')}
+                onBlur={() => setFocusedField(f => (f === 'sa-confirmpw' ? null : f))}
+              />
+              <button className={`sa-btn ${doorClass} ${walkingClass}`} type="submit" disabled={locked}>
+                <span className="sa-btn__label">{busy ? 'Saving…' : 'Set New Password'}</span>
+                <DoorScene />
+              </button>
+            </form>
+          )}
+
+          {step === 'reset-done' && (
             <div>
-              <label htmlFor="sa-confirmpw" style={labelStyle}>Confirm password</label>
-              <input id="sa-confirmpw" type="password" value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)} autoComplete="new-password" style={inputStyle} />
+              <p className="sa-hint" style={{ color: '#6ee7b7', fontWeight: 700 }}>Password updated. Please sign in with the new password.</p>
+              <button
+                className="sa-btn"
+                type="button"
+                onClick={() => { setStep('credentials'); setPassword(''); setNewPassword(''); setConfirmNewPassword(''); setError(''); }}
+              >
+                <span className="sa-btn__label">Back to Sign in</span>
+              </button>
             </div>
-            <button type="submit" disabled={busy} style={{ padding: '12px 0', borderRadius: 10, border: 'none', background: busy ? '#3b3f7a' : 'linear-gradient(135deg,#6b5cf6,#8b5cf6)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', width: '100%' }}>
-              {busy ? 'Saving…' : 'Set New Password'}
-            </button>
-          </form>
-        )}
+          )}
 
-        {step === 'reset-done' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'stretch', textAlign: 'center' }}>
-            <div style={{ fontSize: 14, color: '#6ee7b7', fontWeight: 700 }}>Password updated. Please log in with the new password.</div>
-            <button type="button" onClick={() => { setStep('credentials'); setPassword(''); setNewPassword(''); setConfirmNewPassword(''); setError(''); }} style={{ padding: '12px 0', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#6b5cf6,#8b5cf6)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>Back to Login</button>
-          </div>
-        )}
-
-        <div style={{ marginTop: 22, paddingTop: 14, borderTop: '1px solid #2a2d63', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: '#6f72a0' }}>🔒 Superadmin access is monitored</span>
-          <Link href="/login-signup" style={{ fontSize: 11.5, color: '#8b8eb8', textDecoration: 'none' }}>Normal user login →</Link>
+          <p className="sa-foot">
+            <LockIcon />
+            Protected SocialPulse administrative portal
+          </p>
         </div>
       </div>
     </div>

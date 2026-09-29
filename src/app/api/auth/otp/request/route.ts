@@ -47,7 +47,13 @@ export async function POST(request: NextRequest) {
   }
 
   const { challenge, otp } = await createChallenge({ userId: user.id, channel, destination, purpose: pending.purpose });
-  const delivery = await deliverOtp({ channel, destination, otp, purpose: pending.purpose });
+  const delivery = await deliverOtp({
+    channel,
+    destination,
+    otp,
+    purpose: pending.purpose,
+    isSuperadmin: user.role === 'SUPERADMIN',
+  });
 
   if (!delivery.ok) {
     logAuthEvent('OTP_DELIVERY_FAILED', { userId: user.id, channel, purpose: pending.purpose, ip });

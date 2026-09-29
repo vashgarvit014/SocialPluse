@@ -26,3 +26,15 @@ export async function checkRateLimit(key: string, limit: number, windowSeconds: 
   await query('UPDATE rate_limit_counters SET count = count + 1 WHERE key = $1', [key]);
   return true;
 }
+
+// How long until this key's window resets — 0 when the caller is not
+// currently limited. Lets a 429 tell the client *when* it may try again
+// instead of a dead "too many requests, please wait" with no way forward.
+export async function rateLimitRetryMs(key: string, windowSeconds: number): Promise<number> {
+  const row = await queryOne<{ count: number; window_start: string }>(
+    'SELECT count, window_start FROM rate_limit_counters WHERE key = $1', [key],
+  );
+  if (!row) return 0;
+  const resetsInMs = new Date(row.window_start).getTime() + windowSeconds * 1000 - Date.now();
+  return resetsInMs > 0 ? resetsInMs : 0;
+}

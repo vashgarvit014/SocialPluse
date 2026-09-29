@@ -62,7 +62,12 @@ export default function SettingsClient({ name, email }: { name: string; email: s
         setPwMsg({ ok: false, text: typeof data.error === 'string' ? data.error : 'Could not change the password.' });
         return;
       }
-      setPwMsg({ ok: true, text: 'Password changed. Other sessions were signed out.' });
+      setPwMsg({
+        ok: true,
+        text: data.notified === false
+          ? 'Superadmin password changed. Other sessions were signed out. (Confirmation email could not be sent.)'
+          : 'Superadmin password changed. Other sessions were signed out, and a confirmation email was sent to this address.',
+      });
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -189,7 +194,8 @@ export default function SettingsClient({ name, email }: { name: string; email: s
       </div>
 
       <div style={{ background: 'var(--sf)', border: '1px solid var(--bd)', borderRadius: 14, padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.08em', color: 'var(--mu)', marginBottom: 14 }}>SECURITY</div>
+        <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.08em', color: 'var(--mu)', marginBottom: 4 }}>SECURITY</div>
+        <div style={{ fontSize: 12, color: 'var(--mu)', marginBottom: 14 }}>Changing the Superadmin password signs out every other session and emails a confirmation to {maskEmail(currentEmail)}.</div>
         <form onSubmit={submitPassword} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
             <label htmlFor="sa-current-pw" style={labelStyle}>Current Password</label>

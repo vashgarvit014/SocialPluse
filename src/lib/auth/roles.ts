@@ -17,7 +17,12 @@ import type { User } from './users';
 // null/throwing, matching dal.ts#requireSession's existing convention.
 export const requireSuperadmin = cache(async (): Promise<{ userId: string; user: User }> => {
   const session = await verifySession();
-  if (!session) redirect('/login-signup');
+  // /superadmin/login, not /login-signup: a signed-out visitor to a
+  // Superadmin URL must land on the Superadmin form. The normal-user login
+  // can never pass the role check below, so sending them there dead-ends
+  // the flow. (An authenticated non-Superadmin still goes to their own
+  // dashboard, not a login page — they are simply not an admin.)
+  if (!session) redirect('/superadmin/login');
   if (session.user.role !== 'SUPERADMIN') redirect('/dashboard');
   return session;
 });

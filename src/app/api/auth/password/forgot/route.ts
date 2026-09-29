@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   if (!destination) return dummy(); // e.g. account has no mobile on file
 
   const { challenge, otp } = await createChallenge({ userId: user.id, channel, destination, purpose: 'PASSWORD_RESET' });
-  const delivery = await deliverOtp({ channel, destination, otp, purpose: 'PASSWORD_RESET' });
+  const delivery = await deliverOtp({ channel, destination, otp, purpose: 'PASSWORD_RESET', isSuperadmin: user.role === 'SUPERADMIN' });
   if (!delivery.ok) {
     logAuthEvent('OTP_DELIVERY_FAILED', { userId: user.id, channel, purpose: 'PASSWORD_RESET', ip });
     return dummy(); // still generic — don't reveal that delivery specifically failed for a real account
@@ -79,5 +79,6 @@ export async function POST(request: NextRequest) {
     challengeId: challenge.challengeId,
     maskedDestination: isEmail ? maskEmail(destination) : maskMobile(destination),
     resendAvailableAt: challenge.resendAvailableAt,
+    expiresAt: challenge.expiresAt,
   });
 }

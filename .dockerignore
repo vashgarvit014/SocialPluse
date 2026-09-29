@@ -40,6 +40,7 @@ canva-sessions.json
 whatsapp-events.log
 whapi-events.log
 .instagram-media
+.media-assets
 
 # Temp / cache
 tmp

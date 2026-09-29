@@ -25,9 +25,28 @@ const PROTECTED_PREFIXES = [
 ];
 
 const AUTH_PAGE = '/login-signup';
+const SUPERADMIN_AUTH_PAGE = '/superadmin/login';
+
+// Hostname serving the Superadmin interface as a dedicated entry point. On that
+// host "/" is the Superadmin login, never the normal SocialPulse landing page.
+// Compared case-insensitively and on the Host header only — the Host header is
+// set by Cloudflare to the hostname the user actually requested, so this is not
+// a value a client can forge by sending a different origin. localhost (3000/3001)
+// is deliberately NOT in this list, so local development is unaffected.
+const SUPERADMIN_HOSTNAMES = new Set([
+  'supersocialpulse.dotstark.tech',
+]);
 
 export default async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  const host = (request.headers.get('host') || '').split(':')[0].toLowerCase();
+  const isSuperadminHost = SUPERADMIN_HOSTNAMES.has(host);
+
+  // Superadmin host, root path -> the Superadmin login. Everything else on
+  // that host (including /_next/*, favicon, API calls) passes through below.
+  if (isSuperadminHost && (pathname === '/' || pathname === '')) {
+    return NextResponse.redirect(new URL(SUPERADMIN_AUTH_PAGE, request.url));
+  }
 
   // Canva's Return URL is registered (externally, in Canva's developer
   // portal) as /content-studio — it lands here as a same-tab or popup GET
@@ -63,7 +82,12 @@ export default async function proxy(request: NextRequest) {
       return NextResponse.next({ request: { headers } });
     }
     if (!session) {
-      const target = new URL(AUTH_PAGE, request.url);
+      // Send Superadmin paths to the SUPERADMIN login, not the normal-user
+      // one. A normal user can never pass the role check, so bouncing a
+      // Superadmin URL to /login-signup lands them on a form that can only
+      // ever fail — the callbackUrl is preserved so they return to the page
+      // they wanted after signing in.
+      const target = new URL(SUPERADMIN_AUTH_PAGE, request.url);
       target.searchParams.set('callbackUrl', pathname + search);
       return NextResponse.redirect(target);
     }

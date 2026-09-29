@@ -1,27 +1,82 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import OtpInput from '@/app/login-signup/otp-input';
 
-// Shared OTP step for the separate Superadmin login UI. Talks only to the
-// existing shared OTP endpoints — no second OTP implementation. Styling
-// matches the Superadmin theme.
+// OTP step for the separate Superadmin login UI. Talks only to the existing
+// shared OTP endpoints — no second OTP implementation. Styled to match the
+// rest of the login card (mascot, glass panel and door button live in the
+// parent screen).
 export default function SuperadminOtpPanel({
   challengeId,
+  resendAvailableAt,
+  expiresAt,
+  onResent,
   onVerified,
   onBack,
+  frozen = false,
+  phase = 'idle',
 }: {
   challengeId: string;
-  onVerified: (data: { redirect?: string; canResetPassword?: boolean }) => void;
+  resendAvailableAt?: string;
+  expiresAt?: string;
+  onResent: (expiresAt: string) => void;
+  // May be async: the parent plays the success animation before navigating,
+  // so this must be awaited or the redirect would cut it short.
+  onVerified: (data: { redirect?: string; canResetPassword?: boolean }) => void | Promise<void>;
   onBack: () => void;
+  // While the parent runs the post-verification animation the challenge is
+  // already consumed, so every control here must be inert — not merely the
+  // verify button.
+  frozen?: boolean;
+  phase?: 'idle' | 'doorOpen' | 'walking' | 'happy';
 }) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  // Server enforces a 60s resend cooldown and a longer hourly cap; counting
+  // both down here means the button is honestly disabled instead of failing
+  // with a 429 on every click.
+  const [cooldownSecs, setCooldownSecs] = useState(0);
+  // Once a code is expired (or out of resends) it can never be revived —
+  // resending would only ever 400. Track that so the UI offers the one action
+  // that does work: a brand-new request.
+  const [dead, setDead] = useState(false);
+  const [expired, setExpired] = useState(false);
+
+  useEffect(() => {
+    if (!resendAvailableAt) return;
+    const tick = () => {
+      const remaining = new Date(resendAvailableAt).getTime() - Date.now();
+      setCooldownSecs(remaining > 0 ? Math.ceil(remaining / 1000) : 0);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [resendAvailableAt]);
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const tick = () => setExpired(new Date(expiresAt).getTime() <= Date.now());
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  const blocked = dead || expired;
+  const inert = busy || blocked || frozen;
+  const doorClass = phase === 'doorOpen' || phase === 'walking' ? 'dooropen' : '';
+  const walkingClass = phase === 'walking' ? 'walking' : '';
+
+  function waitLabel(secs: number): string {
+    if (secs >= 3600) return `${Math.ceil(secs / 3600)}h`;
+    if (secs >= 120) return `${Math.ceil(secs / 60)}m`;
+    return `${secs}s`;
+  }
 
   async function verify() {
-    if (code.trim().length !== 6 || busy) return;
+    if (code.trim().length !== 6 || inert) return;
     setBusy(true);
     setError('');
     try {
@@ -35,7 +90,7 @@ export default function SuperadminOtpPanel({
         setError(data.error || 'Verification failed. Please try again.');
         return;
       }
-      onVerified(data);
+      await onVerified(data);
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -44,7 +99,7 @@ export default function SuperadminOtpPanel({
   }
 
   async function resend() {
-    if (busy) return;
+    if (inert || cooldownSecs > 0) return;
     setBusy(true);
     setError('');
     setInfo('');
@@ -55,8 +110,27 @@ export default function SuperadminOtpPanel({
         body: JSON.stringify({ challengeId }),
       });
       const data = await res.json();
-      if (!res.ok) setError(data.error || 'Could not resend the code.');
-      else setInfo('A new code was sent.');
+      if (!res.ok) {
+        // An expired or resend-exhausted code is terminal — a new request is
+        // the only way forward, so say that instead of leaving a Resend button
+        // that can never work again.
+        if (/maximum resend attempts|invalid or has expired/i.test(String(data.error || ''))) {
+          setDead(true);
+          setError('This code can no longer be used. Request a new code to continue.');
+          return;
+        }
+        setError(data.error || 'Could not resend the code.');
+        // Cooldown and rate-limit rejections carry the exact remaining time.
+        if (typeof data.retryAfterMs === 'number') setCooldownSecs(Math.ceil(data.retryAfterMs / 1000));
+        return;
+      }
+      setCode('');
+      setInfo('A new code was sent.');
+      setDead(false);
+      setExpired(false);
+      const next = typeof data.resendAvailableAt === 'string' ? data.resendAvailableAt : null;
+      setCooldownSecs(next ? Math.max(0, Math.ceil((new Date(next).getTime() - Date.now()) / 1000)) : 60);
+      onResent(typeof data.expiresAt === 'string' ? data.expiresAt : '');
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -65,24 +139,45 @@ export default function SuperadminOtpPanel({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ fontSize: 13, color: '#aeb0d4', lineHeight: 1.6 }}>Enter the 6-digit verification code we just sent.</div>
-      {error && <div role="alert" style={{ fontSize: 13, color: '#fca5a5', backgroundColor: 'rgba(220,38,38,0.12)', border: '1px solid rgba(248,113,113,0.4)', borderRadius: 10, padding: '10px 12px' }}>{error}</div>}
-      {info && <div style={{ fontSize: 13, color: '#6ee7b7', backgroundColor: 'rgba(16,185,129,0.1)', border: '1px solid rgba(52,211,153,0.35)', borderRadius: 10, padding: '10px 12px' }}>{info}</div>}
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <OtpInput value={code} onChange={setCode} disabled={busy} />
+    <div>
+      {error && <div className="sa-error" role="alert">{error}</div>}
+      {info && <p className="sa-notice">{info}</p>}
+      {blocked && !error && (
+        <p className="sa-notice" style={{ color: '#fcd34d' }}>
+          {expired ? 'This code has expired. Request a new one to continue.' : 'You have used all the resends for this code. Request a new one to continue.'}
+        </p>
+      )}
+
+      <div className="sa-otp">
+        <OtpInput value={code} onChange={setCode} disabled={inert} />
       </div>
-      <button
-        type="button"
-        onClick={verify}
-        disabled={busy || code.trim().length !== 6}
-        style={{ padding: '12px 0', borderRadius: 10, border: 'none', background: busy || code.trim().length !== 6 ? '#3b3f7a' : 'linear-gradient(135deg,#6b5cf6,#8b5cf6)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: busy || code.trim().length !== 6 ? 'default' : 'pointer', fontFamily: 'inherit', width: '100%' }}
-      >
-        {busy ? 'Verifying…' : 'Verify Code'}
+
+      <button className={`sa-btn ${doorClass} ${walkingClass}`} type="button" onClick={verify} disabled={inert || code.trim().length !== 6}>
+        <span className="sa-btn__label">
+          {busy ? 'Verifying…' : frozen ? 'Welcome' : blocked ? 'Code expired' : 'Verify & Continue'}
+        </span>
+        <span className="sa-door">
+          <span className="sa-door__frame" />
+          <span className="sa-door__panel" />
+          <span className="sa-person">
+            <span className="sa-person__head" />
+            <span className="sa-person__body" />
+            <span className="sa-person__legs" />
+          </span>
+        </span>
       </button>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button type="button" onClick={onBack} style={{ border: 'none', background: 'none', color: '#8b8eb8', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0 }}>← Back</button>
-        <button type="button" onClick={resend} disabled={busy} style={{ border: 'none', background: 'none', color: '#a99fff', fontWeight: 700, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0 }}>Resend code</button>
+
+      <div className="sa-foot sa-foot-alt" style={{ justifyContent: 'space-between' }}>
+        <button type="button" className="sa-link muted" onClick={onBack} disabled={inert}>
+          {blocked ? '← Request a new code' : '← Back'}
+        </button>
+        {blocked ? (
+          <span className="sa-wait">Cannot resend</span>
+        ) : cooldownSecs > 0 ? (
+          <span className="sa-wait">Resend available in {waitLabel(cooldownSecs)}</span>
+        ) : (
+          <button type="button" className="sa-link" onClick={resend} disabled={inert}>Resend code</button>
+        )}
       </div>
     </div>
   );

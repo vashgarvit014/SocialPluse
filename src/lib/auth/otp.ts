@@ -98,7 +98,7 @@ export async function verifyChallenge(challengeId: string, otp: string): Promise
 }
 
 export type ResendResult =
-  | { ok: true; otp: string; channel: OtpChannel; destination: string; purpose: OtpPurpose; resendAvailableAt: string }
+  | { ok: true; otp: string; channel: OtpChannel; destination: string; purpose: OtpPurpose; resendAvailableAt: string; expiresAt: string }
   | { ok: false; reason: 'not_found' | 'invalid' | 'cooldown' | 'limit'; retryAfterMs?: number };
 
 // Rotates in place: same challengeId, brand-new code, attempts reset, old
@@ -135,6 +135,7 @@ export async function resendChallenge(challengeId: string): Promise<ResendResult
     destination: row.destination,
     purpose: row.purpose as OtpPurpose,
     resendAvailableAt: new Date(now.getTime() + RESEND_COOLDOWN_MS).toISOString(),
+    expiresAt: expiresAt.toISOString(),
   };
 }
 

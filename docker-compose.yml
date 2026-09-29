@@ -110,6 +110,23 @@ services:
       socialpulse:
         condition: service_healthy
 
+  # Second, independent tunnel for the Superadmin interface only
+  # (supersocialpulse.dotstark.tech). Deliberately separate from the
+  # `cloudflared` service above: separate tunnel credentials, separate ingress
+  # config file, separate container — so the main SocialPulse tunnel is never
+  # modified, repointed, or restarted by anything done for Superadmin.
+  cloudflared-superadmin:
+    image: cloudflare/cloudflared:latest
+    container_name: supersocialpulse-tunnel
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/supersocialpulse-config.yml run supersocialpulse
+    volumes:
+      # Read-only, and it reads ONLY its own config/credentials from here.
+      - ${HOME}/.cloudflared:/etc/cloudflared:ro
+    depends_on:
+      socialpulse:
+        condition: service_healthy
+
 # Named volume: survives `docker compose down` (without -v), container
 # recreation, image rebuilds, and host reboots. Only `docker compose down -v`
 # or `docker volume rm` deletes it — see the warning in the deliverables
