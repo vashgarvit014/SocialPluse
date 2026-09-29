@@ -28,7 +28,8 @@ const AUTH_PAGE = '/login-signup';
 const SUPERADMIN_AUTH_PAGE = '/superadmin/login';
 
 // Hostname serving the Superadmin interface as a dedicated entry point. On that
-// host "/" is the Superadmin login, never the normal SocialPulse landing page.
+// host "/" IS the Superadmin login — the page is rendered there directly, not
+// bounced with a redirect, so the address bar shows only the clean domain.
 // Compared case-insensitively and on the Host header only — the Host header is
 // set by Cloudflare to the hostname the user actually requested, so this is not
 // a value a client can forge by sending a different origin. localhost (3000/3001)
@@ -42,10 +43,38 @@ export default async function proxy(request: NextRequest) {
   const host = (request.headers.get('host') || '').split(':')[0].toLowerCase();
   const isSuperadminHost = SUPERADMIN_HOSTNAMES.has(host);
 
-  // Superadmin host, root path -> the Superadmin login. Everything else on
-  // that host (including /_next/*, favicon, API calls) passes through below.
+  // On the Superadmin host, "/" serves the Superadmin login as a REWRITE, so
+  // the browser stays on https://supersocialpulse.dotstark.tech and gets a
+  // 200 — no redirect hop, no /superadmin/login ever appearing in the URL bar.
+  // Next.js keeps this same-host rewrite internal: assets, hydration and
+  // client-side navigation are unaffected, and the request below still runs so
+  // a signed-in Superadmin reaching "/" lands on the dashboard instead.
   if (isSuperadminHost && (pathname === '/' || pathname === '')) {
-    return NextResponse.redirect(new URL(SUPERADMIN_AUTH_PAGE, request.url));
+    const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
+    if (await readSessionFromCookieValue(sessionCookie)) {
+      const dash = new URL('/superadmin', request.url);
+      return NextResponse.redirect(dash);
+    }
+    return NextResponse.rewrite(new URL(SUPERADMIN_AUTH_PAGE, request.url));
+  }
+
+  // Keep the Superadmin host free of the normal SocialPulse site. Only the
+  // admin surface, the APIs it calls, and Next's own assets are reachable;
+  // every other user-facing page 404s on this domain instead of becoming a
+  // second public entrance. Deliberately permissive about /api — the admin
+  // dashboard reads logs, publishing, AI usage and auth history, so blocking
+  // it would break those screens. The existing role check, not this list, is
+  // what actually protects the data.
+  if (isSuperadminHost) {
+    const isSuperadminPath = pathname === '/superadmin' || pathname.startsWith('/superadmin/');
+    const isPlatformPath =
+      pathname === '/_next' || pathname.startsWith('/_next/') ||
+      pathname === '/api' || pathname.startsWith('/api/');
+    const isStaticAsset =
+      /\.(?:svg|png|jpe?g|webp|gif|ico|css|js|map|woff2?|ttf|txt|xml|webmanifest|json)$/i.test(pathname);
+    if (!isSuperadminPath && !isPlatformPath && !isStaticAsset) {
+      return new NextResponse('Not found', { status: 404 });
+    }
   }
 
   // Canva's Return URL is registered (externally, in Canva's developer
