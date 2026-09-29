@@ -30,7 +30,6 @@ function buildGroups(pendingUsers: number, healthIssues: number, failedPublishin
     { label: 'OVERVIEW', items: [{ id: 'dashboard', href: '/superadmin', label: 'Dashboard', icon: 'dashboard' }] },
     { label: 'MANAGE', items: [
       { id: 'users', href: '/superadmin/users', label: 'Users', icon: 'users', badge: pendingUsers || undefined, badgeColor: '#b7791f' },
-      { id: 'collab-invites', href: '/superadmin/collab-invites', label: 'Collab Invites', icon: 'users' },
       { id: 'sessions', href: '/superadmin/sessions', label: 'Active Sessions', icon: 'sessions' },
     ] },
     { label: 'PLATFORM', items: [
@@ -51,7 +50,6 @@ function buildGroups(pendingUsers: number, healthIssues: number, failedPublishin
 const TITLES: Record<string, string> = {
   '/superadmin': 'Dashboard',
   '/superadmin/users': 'Users',
-  '/superadmin/collab-invites': 'Collab Invites',
   '/superadmin/sessions': 'Active Sessions',
   '/superadmin/connections': 'Connections',
   '/superadmin/system-health': 'System Health',
@@ -66,7 +64,6 @@ const TITLES: Record<string, string> = {
 const PATH_TO_ID: Record<string, string> = {
   '/superadmin': 'dashboard',
   '/superadmin/sessions': 'sessions',
-  '/superadmin/collab-invites': 'collab-invites',
   '/superadmin/connections': 'connections',
   '/superadmin/system-health': 'health',
   '/superadmin/publishing': 'publishing',

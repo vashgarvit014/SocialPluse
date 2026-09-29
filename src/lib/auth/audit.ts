@@ -8,7 +8,14 @@ export type AuditEvent =
   | 'PASSWORD_RESET' | 'LOGOUT'
   // Superadmin-initiated account-management events (src/app/api/superadmin/*).
   | 'ACCOUNT_SUSPENDED' | 'ACCOUNT_REACTIVATED' | 'USER_CREATED_BY_ADMIN' | 'RESET_ACCESS_TRIGGERED'
-  | 'SESSION_TERMINATED' | 'PUBLISH_RETRIED' | 'PUBLISH_MOVED_TO_DRAFT' | 'COLLAB_INVITE_SENT';
+  | 'SESSION_TERMINATED' | 'PUBLISH_RETRIED' | 'PUBLISH_MOVED_TO_DRAFT' | 'COLLAB_INVITE_SENT'
+  // Seeded-Superadmin self-service (src/app/api/superadmin/settings/*).
+  // SUPERADMIN_LOGIN_SUCCESS/FAILED are intentionally NOT separate events —
+  // the superadmin login route logs the standard LOGIN_SUCCESS/LOGIN_FAILED
+  // with meta.interface='superadmin', so counts stay single-source.
+  | 'SUPERADMIN_PASSWORD_CHANGED'
+  | 'SUPERADMIN_EMAIL_CHANGE_REQUESTED' | 'SUPERADMIN_EMAIL_CHANGE_OTP_SENT'
+  | 'SUPERADMIN_EMAIL_CHANGED' | 'SUPERADMIN_EMAIL_CHANGE_FAILED';
 
 // Safe fields only — never pass otp, password, password hash, session
 // secret, or any provider credential into `meta`. Fire-and-forget from

@@ -20,7 +20,7 @@ export default async function SuperadminLayout({ children }: { children: React.R
   // the pathname arrives via the x-pathname header proxy.ts sets, never
   // from client input. Everything else still hits requireSuperadmin().
   const pathname = (await headers()).get('x-pathname') || '';
-  if (pathname === '/superadmin/login' || pathname === '/superadmin/signup') {
+  if (pathname === '/superadmin/login') {
     return (
       <div className={`${sans.variable} ${mono.variable}`} style={{ fontFamily: 'var(--font-sa-sans), system-ui, sans-serif', background: '#0d0f2b', color: '#aeb0d4', minHeight: '100vh' }}>
         {children}

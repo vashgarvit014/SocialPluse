@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import OtpInput from '@/app/login-signup/otp-input';
 
-// Shared OTP step for the separate Superadmin auth UI (/superadmin/login,
-// /superadmin/signup). Talks only to the existing shared OTP endpoints —
-// no second OTP implementation. Styling matches the Superadmin theme.
+// Shared OTP step for the separate Superadmin login UI. Talks only to the
+// existing shared OTP endpoints — no second OTP implementation. Styling
+// matches the Superadmin theme.
 export default function SuperadminOtpPanel({
   challengeId,
   onVerified,

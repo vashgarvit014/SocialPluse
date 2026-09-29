@@ -83,11 +83,16 @@ export async function sendOtpEmail(params: {
     const digits = params.otp.split('');
     const digitChips = digits.map(d => `<td style="padding:0 4px;"><div class="sp-otp-chip" style="width:40px;height:52px;line-height:52px;text-align:center;font-size:26px;font-weight:800;color:#0f1020;background:#fff;border:1.5px solid #E0DFFB;border-radius:10px;font-family:'SF Mono',Consolas,Menlo,monospace;">${d}</div></td>`).join('');
 
+    // Email-change codes get their own subject/body so the recipient knows
+    // exactly what the code is for — never "Welcome"/activation wording.
+    const isEmailChange = params.purpose === 'EMAIL_CHANGE';
     await getTransport(config).sendMail({
       from: config.from,
       to: params.to,
-      subject: 'Your SocialPulse verification code',
-      text: `Use the verification code below to continue with SocialPulse.\n\nOTP:\n${params.otp}\n\nCode expires in ${params.expiresInMinutes} minutes.\n\nIf you did not request this code, you can ignore this email.`,
+      subject: isEmailChange ? 'SocialPulse Email Change Verification Code' : 'Your SocialPulse verification code',
+      text: isEmailChange
+        ? `Hello,\n\nA request was made to change the email address associated with your SocialPulse Superadmin account.\n\nHere is the OTP for your email change:\n\nOTP:\n${params.otp}\n\nThis code will expire in ${params.expiresInMinutes} minutes.\n\nIf you did not request this email change, you can ignore this email.\n\nRegards,\nSocialPulse`
+        : `Use the verification code below to continue with SocialPulse.\n\nOTP:\n${params.otp}\n\nCode expires in ${params.expiresInMinutes} minutes.\n\nIf you did not request this code, you can ignore this email.`,
       html: `
         <html>
         <head>
@@ -105,12 +110,12 @@ export async function sendOtpEmail(params: {
             <span style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#5b6cff,#9b5cf6);display:inline-block;color:#fff;font-weight:800;font-size:13px;line-height:32px;text-align:center;">SP</span>
             <span style="font-weight:800;font-size:16px;color:#0f1020;">SocialPulse</span>
           </div>
-          <p style="font-size:14px;color:#334155;margin:0 0 18px;">${PURPOSE_COPY[params.purpose]}</p>
+          <p style="font-size:14px;color:#334155;margin:0 0 18px;">${isEmailChange ? 'A request was made to change the email address associated with your SocialPulse Superadmin account. Here is the OTP for your email change:' : PURPOSE_COPY[params.purpose]}</p>
           <div style="background:#F7F8FC;border-radius:12px;padding:16px 12px;text-align:center;margin:0 0 10px;">
             <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;"><tr>${digitChips}</tr></table>
           </div>
           <p style="font-size:11.5px;color:#94a3b8;text-align:center;margin:0 0 18px;">👆 Tap and hold the code to copy</p>
-          <p style="font-size:12.5px;color:#94a3b8;margin:0;">Code expires in ${params.expiresInMinutes} minutes. If you did not request this code, you can ignore this email.</p>
+          <p style="font-size:12.5px;color:#94a3b8;margin:0;">${isEmailChange ? `This code will expire in ${params.expiresInMinutes} minutes. If you did not request this email change, you can ignore this email. Regards, SocialPulse` : `Code expires in ${params.expiresInMinutes} minutes. If you did not request this code, you can ignore this email.`}</p>
         </div>
         </body>
         </html>

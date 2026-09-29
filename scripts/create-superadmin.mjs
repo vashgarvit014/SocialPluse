@@ -173,8 +173,10 @@ async function main() {
 
     const existing = await client.query('SELECT id, role FROM users WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
-      console.error(`An account with this email already exists (role: ${existing.rows[0].role}). This script only creates new accounts.`);
-      process.exit(1);
+      // Idempotent: re-running the seed never duplicates — safe message,
+      // no password/hash involved. Exit 0 so scripted setups don't fail.
+      console.log('Superadmin already exists.');
+      return;
     }
 
     const id = randomUUID();
@@ -193,7 +195,7 @@ async function main() {
     `, [id, name.trim(), email, mobile, hashPassword(password), now, mobile ? now : null]);
 
     console.log(`\nSuperadmin account created: ${email}${mobile ? ` / ${mobile}` : ''}`);
-    console.log('They can now log in at /login-signup — OTP verification is still required on every login, same as any account.');
+    console.log('They can now log in at /superadmin/login — OTP verification is still required on every login, same as any account.');
   } finally {
     client.release();
     await pool.end();

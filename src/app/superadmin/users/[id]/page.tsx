@@ -8,8 +8,13 @@ import UserActions from './user-actions';
 // Never fetches or displays password_hash/otp/session token/SMTP/Meta
 // credentials — findUserById()'s User type has no such fields to begin
 // with (see users.ts#toUser), so there is nothing to accidentally render.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function SuperadminUserDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Non-UUID segments (e.g. a removed static route like /users/new now
+  // falling through to [id]) are a clean 404, never a Postgres 500.
+  if (!UUID_RE.test(id)) notFound();
   const user = await findUserById(id);
   if (!user) notFound();
 

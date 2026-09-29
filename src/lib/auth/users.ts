@@ -84,25 +84,6 @@ export async function createPendingUser(name: string, email: string, mobile: str
   };
 }
 
-// Protected superadmin self-signup path (see
-// /api/superadmin/auth/signup) — identical to createPendingUser except the
-// role. Only callable behind a valid server-side SUPERADMIN_SETUP_SECRET;
-// the normal /api/auth/signup route can never reach this (its schema has no
-// role field and it calls createPendingUser directly).
-export async function createPendingSuperadmin(name: string, email: string, mobile: string, passwordHash: string): Promise<User> {
-  const id = randomUUID();
-  const now = new Date().toISOString();
-  await query(`
-    INSERT INTO users (id, name, email, mobile, password_hash, status, role, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, 'PENDING', 'SUPERADMIN', $6, $6)
-  `, [id, name.trim(), normalizeEmail(email), normalizeMobile(mobile), passwordHash, now]);
-  return {
-    id, name: name.trim(), email: normalizeEmail(email), mobile: normalizeMobile(mobile),
-    emailVerifiedAt: null, mobileVerifiedAt: null, status: 'PENDING', role: 'SUPERADMIN', sessionVersion: 0,
-    lastLoginAt: null, mustSetPassword: false, createdAt: now, updatedAt: now,
-  };
-}
-
 // Superadmin-only path (see /api/superadmin/users POST) — spec explicitly
 // forbids the admin ever setting or seeing a real password, so this row
 // gets a cryptographically random, never-surfaced password_hash and
@@ -159,6 +140,19 @@ export async function updatePassword(userId: string, passwordHash: string): Prom
 
 export async function recordLogin(userId: string): Promise<void> {
   await query('UPDATE users SET last_login_at = $1 WHERE id = $2', [new Date().toISOString(), userId]);
+}
+
+// Email-change completion (Superadmin settings): swaps the address only
+// after OTP success, stamps the new address verified. The users.email UNIQUE
+// constraint is the race backstop — a concurrent duplicate surfaces as 23505
+// for the caller to translate, so no separate lock is needed.
+export async function updateUserEmail(userId: string, email: string): Promise<void> {
+  const now = new Date().toISOString();
+  await query('UPDATE users SET email = $1, email_verified_at = $2, updated_at = $2 WHERE id = $3', [
+    normalizeEmail(email),
+    now,
+    userId,
+  ]);
 }
 
 export interface UserListItem {

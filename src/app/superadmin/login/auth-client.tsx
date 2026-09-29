@@ -158,7 +158,7 @@ export default function SuperadminLoginClient() {
             </button>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <button type="button" onClick={() => { setStep('forgot-identifier'); setError(''); }} style={{ border: 'none', background: 'none', color: '#a99fff', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0 }}>Forgot Password</button>
-              <Link href="/superadmin/signup" style={{ color: '#8b8eb8', fontWeight: 600, fontSize: 12.5, textDecoration: 'none' }}>First-time setup →</Link>
+              <span style={{ color: '#6f72a0', fontSize: 11.5 }}>Seeded accounts only</span>
             </div>
           </form>
         )}

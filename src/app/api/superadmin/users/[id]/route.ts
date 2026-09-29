@@ -10,6 +10,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+  }
   const user = await findUserById(id);
   if (!user) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
 

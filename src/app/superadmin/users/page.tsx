@@ -49,9 +49,7 @@ export default async function SuperadminUsersPage({ searchParams }: { searchPara
             );
           })}
         </div>
-        <Link href="/superadmin/users/new" style={{ padding: '10px 16px', borderRadius: 9, fontSize: 13, fontWeight: 700, color: '#fff', textDecoration: 'none', background: 'linear-gradient(135deg, var(--ac), var(--act))' }}>
-          + Create User
-        </Link>
+        <span style={{ fontSize: 12, color: 'var(--mu)' }}>View-only — accounts come from public signup, never from here.</span>
       </div>
 
       <form method="GET" style={{ display: 'flex' }}>

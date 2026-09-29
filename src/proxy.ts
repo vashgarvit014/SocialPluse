@@ -44,12 +44,12 @@ export default async function proxy(request: NextRequest) {
 
   if (!isProtected && !isAuthPage) return NextResponse.next();
 
-  // Separate Superadmin auth pages are PUBLIC (unauthenticated users must
-  // reach them) and carry their own role enforcement server-side
-  // (/api/superadmin/auth/* + the layout gate below). Authenticated users
-  // (either role) may also open them — e.g. to switch accounts.
+  // The separate Superadmin login page is PUBLIC (unauthenticated users must
+  // reach it) and carries its own role enforcement server-side
+  // (/api/superadmin/auth/* + the layout gate below). There is no public
+  // Superadmin signup — accounts come only from seeding.
   const normPath = pathname.endsWith('/') && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
-  const isSuperadminAuthPage = normPath === '/superadmin/login' || normPath === '/superadmin/signup';
+  const isSuperadminAuthPage = normPath === '/superadmin/login';
 
   const session = await readSessionFromCookieValue(request.cookies.get(SESSION_COOKIE)?.value);
 

@@ -12,6 +12,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (session instanceof NextResponse) return session;
 
   const { id } = await params;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return NextResponse.json({ error: 'Session not found.' }, { status: 404 });
+  }
   await revokeSession(id);
   logAuthEvent('SESSION_TERMINATED', { meta: { terminatedBy: session.userId, sessionId: id } });
   return NextResponse.json({ success: true });
