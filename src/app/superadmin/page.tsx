@@ -43,9 +43,14 @@ export default async function SuperadminOverviewPage() {
 
   return (
     <>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: '-0.01em' }}>Superadmin Overview</div>
+        <div style={{ fontSize: 12.5, color: 'var(--mu)' }}>Monitor SocialPulse activity and platform health.</div>
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '0.12em', color: 'var(--mu)' }}>ACCOUNTS</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(136px, 1fr))', gap: 10 }}>
+        <div className="sa-dash-tiles">
           <StatTile label="Total Users" value={counts.total} sub="All accounts" dot="var(--ac)" href="/superadmin/users" />
           <StatTile label="Active" value={counts.active} sub="Can sign in" dot="var(--ok)" href="/superadmin/users" />
           <StatTile label="Pending" value={counts.pending} sub="Awaiting verification" dot="var(--warn)" href="/superadmin/users" />
@@ -53,8 +58,9 @@ export default async function SuperadminOverviewPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: 12 }}>
-        <Card title="Recent signups" action={{ label: 'All users', href: '/superadmin/users' }}>
+      <div className="sa-dash-grid">
+        <div className="sa-dash-col">
+          <Card title="Recent signups" action={{ label: 'All users', href: '/superadmin/users' }}>
           {recentSignups.length === 0 && <div style={{ padding: '20px 0', color: 'var(--mu)' }}>No users yet.</div>}
           {recentSignups.map(u => {
             const st = badge(u.status);
@@ -89,23 +95,6 @@ export default async function SuperadminOverviewPage() {
           })}
         </Card>
 
-        <Card title="Operations today" action={{ label: 'View all logs', href: '/superadmin/logs' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
-            {[
-              { label: 'Errors', value: ops.errorsToday, bad: ops.errorsToday > 0 },
-              { label: 'Failed logins', value: ops.failedLoginsToday, bad: ops.failedLoginsToday > 0 },
-              { label: 'Failed OTPs', value: ops.failedOtpsToday, bad: ops.failedOtpsToday > 0 },
-              { label: 'Failed AI', value: ops.failedAiToday, bad: ops.failedAiToday > 0 },
-              { label: 'Failed publishes', value: ops.failedPublicationsToday, bad: ops.failedPublicationsToday > 0 },
-            ].map(s => (
-              <div key={s.label} style={{ borderRadius: 9, background: 'var(--sf2)', padding: '9px 10px' }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: s.bad ? 'var(--bad)' : 'var(--ok)' }}>{s.value}</div>
-                <div style={{ fontSize: 11.5, color: 'var(--mu)', fontWeight: 600 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-
         <Card title="Recent activity" action={{ label: 'View all logs', href: '/superadmin/logs' }}>
           {recentOps.rows.length === 0 && <div style={{ padding: '20px 0', color: 'var(--mu)' }}>No activity yet — events appear here as the app runs.</div>}
           {recentOps.rows.slice(0, 8).map(e => {
@@ -123,11 +112,30 @@ export default async function SuperadminOverviewPage() {
           })}
         </Card>
 
+        </div>
+        <div className="sa-dash-col">
+        <Card title="Operations today" action={{ label: 'View all logs', href: '/superadmin/logs' }}>
+          <div className="sa-ops-grid">
+            {[
+              { label: 'Errors', value: ops.errorsToday, bad: ops.errorsToday > 0 },
+              { label: 'Failed logins', value: ops.failedLoginsToday, bad: ops.failedLoginsToday > 0 },
+              { label: 'Failed OTPs', value: ops.failedOtpsToday, bad: ops.failedOtpsToday > 0 },
+              { label: 'Failed AI', value: ops.failedAiToday, bad: ops.failedAiToday > 0 },
+              { label: 'Failed publishes', value: ops.failedPublicationsToday, bad: ops.failedPublicationsToday > 0 },
+            ].map(s => (
+              <div key={s.label} style={{ borderRadius: 9, background: 'var(--sf2)', padding: '9px 10px' }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: s.bad ? 'var(--bad)' : 'var(--ok)' }}>{s.value}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--mu)', fontWeight: 600 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
         <Card title="System health" action={{ label: 'Details', href: '/superadmin/system-health' }}>
           <div style={{ fontSize: 13, color: healthIssues === 0 ? 'var(--ok)' : 'var(--warn)', fontWeight: 700, marginBottom: 10 }}>
             {healthIssues === 0 ? 'All systems configured' : `${healthIssues} item(s) need attention`}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 6 }}>
+          <div className="sa-health-grid">
             {health.map(h => {
               const st = badge(h.status);
               return (
@@ -140,6 +148,7 @@ export default async function SuperadminOverviewPage() {
             })}
           </div>
         </Card>
+        </div>
       </div>
     </>
   );
