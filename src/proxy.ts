@@ -55,7 +55,15 @@ export default async function proxy(request: NextRequest) {
       const dash = new URL('/superadmin', request.url);
       return NextResponse.redirect(dash);
     }
-    return NextResponse.rewrite(new URL(SUPERADMIN_AUTH_PAGE, request.url));
+    // The rewrite must carry x-pathname: the /superadmin layout reads that
+    // header to decide whether to render bare (login) or to run the SUPERADMIN
+    // role gate. Without it the layout treats the rewritten page as a
+    // protected screen and redirects — turning this rewrite back into a 307.
+    const rewriteHeaders = new Headers(request.headers);
+    rewriteHeaders.set('x-pathname', SUPERADMIN_AUTH_PAGE);
+    return NextResponse.rewrite(new URL(SUPERADMIN_AUTH_PAGE, request.url), {
+      request: { headers: rewriteHeaders },
+    });
   }
 
   // Keep the Superadmin host free of the normal SocialPulse site. Only the

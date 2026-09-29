@@ -44,6 +44,11 @@ yarn-error.log*
 # WhatsApp webhook event log - local inspection log, not project source.
 /whatsapp-events.log
 
+# Local dev-server output and long-running helper event logs. Runtime noise:
+# they are machine-specific, grow without bound, and carry no project state.
+/dev-server.log
+/whapi-events.log
+
 # Auth database — legacy SQLite-era files, no longer created (PostgreSQL now,
 # see docker-compose.yml's "db" service + src/lib/db.ts), left ignored in
 # case an old one still exists on a host from before this migration.
