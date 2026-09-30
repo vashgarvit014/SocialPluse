@@ -49,22 +49,35 @@ function mediaFields(url: string, fallbackMime: string): { media: string; mime_t
   return { media: parts.raw, mime_type: parts.mime || fallbackMime };
 }
 
-// Helper: fetch groups list to validate groupId exists (prevents arbitrary chat IDs)
+// Helper: confirm groupId exists in the connected channel (prevents arbitrary
+// chat IDs). MUST paginate: Whapi's /groups is paged, and a large channel has
+// far more than one page. Reading only the first 100 made every group beyond
+// that page fail as "not found" even though it exists and is listed in the
+// picker. Stops as soon as the id is found, and gives up (allowing the send,
+// so a transient fetch problem never blocks a legitimate post) after a bounded
+// number of pages.
 async function validateGroupExists(groupId: string, baseUrl: string, token: string): Promise<{ valid: boolean; error?: string }> {
+  const PAGE = 100;
+  const MAX_PAGES = 20; // 2000 groups — far beyond any realistic channel
   try {
-    const res = await whapiFetch(`/groups?count=100&offset=0`, token, { method: 'GET' }, baseUrl);
-    if (!res.ok) {
-      // If groups fetch fails, we still allow publish but log — don't block legit retries during transient failures
-      // Instead we do strict validation: only reject if we can prove group not found
-      // For now, if fetch fails, return valid=true and let the send attempt surface the real error
-      console.warn(`[whapi/publish] groups validation fetch failed ${res.status}, skipping strict check for ${groupId.slice(0, 8)}...`);
-      return { valid: true };
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const offset = page * PAGE;
+      const res = await whapiFetch(`/groups?count=${PAGE}&offset=${offset}`, token, { method: 'GET' }, baseUrl);
+      if (!res.ok) {
+        // If groups fetch fails, we still allow publish but log — don't block legit retries during transient failures
+        // Instead we do strict validation: only reject if we can prove group not found
+        // For now, if fetch fails, return valid=true and let the send attempt surface the real error
+        console.warn(`[whapi/publish] groups validation fetch failed ${res.status}, skipping strict check for ${groupId.slice(0, 8)}...`);
+        return { valid: true };
+      }
+      const data = (await res.json().catch(() => ({}))) as { groups?: Array<{ id?: string }>; total?: number };
+      const groups = Array.isArray(data.groups) ? data.groups : [];
+      if (groups.some(g => g.id === groupId)) return { valid: true };
+      // Short page (or a known total we've now passed) means it is genuinely absent.
+      if (groups.length < PAGE) break;
+      if (typeof data.total === 'number' && offset + groups.length >= data.total) break;
     }
-    const data = (await res.json().catch(() => ({}))) as { groups?: Array<{ id?: string }> };
-    const groups = Array.isArray(data.groups) ? data.groups : [];
-    const found = groups.some(g => g.id === groupId);
-    if (!found) return { valid: false, error: `Group ${groupId} not found in connected Whapi channel groups.` };
-    return { valid: true };
+    return { valid: false, error: `Group ${groupId} not found in connected Whapi channel groups.` };
   } catch (e) {
     console.warn('[whapi/publish] groups validation network error:', e instanceof Error ? e.message : e);
     return { valid: true };
