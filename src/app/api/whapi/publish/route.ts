@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getWhapiConfig, whapiFetch, whapiError, sanitizeForLog } from '../client';
 import { requireApiSession } from '@/lib/auth/api';
 import { logSystem } from '@/lib/system-log';
+import { prepareWhapiMedia } from '@/lib/whapi-media';
 
 // In-memory publish-attempt registry — same pattern as linkedin/publish, facebook/publish
 const seenAttempts = new Map<string, number>();
@@ -174,16 +175,16 @@ export async function POST(request: NextRequest) {
     const isVideo = type === 'video';
     const isDocument = firstMedia.type === 'document' || (!isVideo && !url.startsWith('data:image/') && !url.startsWith('data:video/') && !!firstMedia.name);
 
-    // For data: URLs we need to send as base64 or upload
-    // Whapi docs: POST /messages/image with { to, media: "https://..." or "base64...", caption: "..." }
-    // We support: if url is data: URL, use it directly as media (Whapi accepts base64 data URL or raw base64)
-    // If url is https://, use as-is
-    // For SocialPulse generated/uploaded media which are data: URLs, this works.
-
-    let mediaValue: string = url;
-    // Whapi also accepts raw base64 without prefix, but data URL is safer
-    // If it's a data URL, keep it; if it's already https, keep it
-    // For very large base64 (>~5MB) we may hit 413, but that's Whapi's limit
+    // Whapi fetches `media` as a URL — it does not accept base64 or data:
+    // URLs (raw base64 => 404 "media with specified id not found", data: URL
+    // => 500 bad-request). Stage data: URLs on disk and hand Whapi a public
+    // https URL instead. Absolute https URLs pass through untouched.
+    let mediaValue: string;
+    try {
+      mediaValue = await prepareWhapiMedia(url);
+    } catch (e) {
+      return err('WHAPI_UNSUPPORTED_MEDIA', e instanceof Error ? e.message : 'This media cannot be published to WhatsApp.', 400, attempt);
+    }
 
     if (isDocument) {
       // Document: requires media + filename + caption
