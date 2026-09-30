@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export type DestinationType = 'community' | 'group' | 'chat';
 
@@ -126,16 +126,57 @@ export default function WhatsAppDestinationPicker({
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<DestinationType | 'all'>('all');
   const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState<{ top: number; left: number; width: number; maxHeight: number; dropUp: boolean } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listScrollRef = useRef<HTMLDivElement>(null);
+
+  // The surrounding publish card is `overflow: hidden`, so an absolutely
+  // positioned panel is clipped at the card edge (this is why the list used to
+  // appear cut off). Float the panel with position: fixed off the trigger's
+  // viewport rect instead — the same trick the slide overflow menu uses — and
+  // flip it above the trigger when there isn't room below.
+  const placePanel = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = Math.max(r.width, 320);
+    const margin = 12;
+    const spaceBelow = window.innerHeight - r.bottom - margin;
+    const spaceAbove = r.top - margin;
+    const dropUp = spaceBelow < 320 && spaceAbove > spaceBelow;
+    const available = Math.max(180, Math.min(360, dropUp ? spaceAbove : spaceBelow));
+    const left = Math.min(Math.max(margin, r.left), window.innerWidth - width - margin);
+    setPanel({
+      top: dropUp ? Math.max(margin, r.top - 6 - Math.min(available, available)) : r.bottom + 6,
+      left,
+      width,
+      maxHeight: available,
+      dropUp,
+    });
+  }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setPanel(null); return; }
+    placePanel();
     const onDocClick = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+      if (boxRef.current?.contains(e.target as Node)) return;
+      if (listScrollRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const onReflow = () => placePanel();
     document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onReflow);
+    window.addEventListener('scroll', onReflow, true);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onReflow);
+      window.removeEventListener('scroll', onReflow, true);
+    };
+  }, [open, placePanel]);
 
   const counts = useMemo(() => ({
     community: destinations.filter((d) => d.type === 'community').length,
@@ -175,6 +216,7 @@ export default function WhatsAppDestinationPicker({
       {/* summary + trigger */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setOpen((v) => !v)}
           style={{ flex: 1, textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: `1px solid ${open ? '#7C3AED' : '#E2E8F0'}`, backgroundColor: '#fff', cursor: 'pointer', fontFamily: 'inherit', minHeight: 34 }}
@@ -213,12 +255,19 @@ export default function WhatsAppDestinationPicker({
         </div>
       )}
 
-      {open && (
+      {open && panel && (
         <div
           style={{
-            position: 'absolute', zIndex: 40, top: 'calc(100% + 6px)', left: 0, right: 0,
-            backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
-            boxShadow: '0 12px 32px rgba(15,23,42,0.16)', padding: 10, maxWidth: 460,
+            position: 'fixed',
+            zIndex: 80,
+            top: panel.top,
+            left: panel.left,
+            width: panel.width,
+            backgroundColor: '#fff',
+            border: '1px solid #E2E8F0',
+            borderRadius: 12,
+            boxShadow: '0 16px 44px rgba(15,23,42,0.22)',
+            padding: 10,
           }}
         >
           <input
@@ -260,7 +309,7 @@ export default function WhatsAppDestinationPicker({
             )}
           </div>
 
-          <div style={{ maxHeight: 260, overflowY: 'auto', paddingRight: 2 }}>
+          <div ref={listScrollRef} style={{ maxHeight: panel.maxHeight - 74, overflowY: 'auto', paddingRight: 2 }}>
             {visible.length === 0 ? (
               <div style={{ padding: '14px 4px', fontSize: 12, color: '#94A3B8', textAlign: 'center' }}>
                 {loading ? 'Loading…' : q ? `No matches for “${query}”` : 'No chats, groups or communities found.'}
