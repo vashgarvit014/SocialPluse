@@ -249,6 +249,10 @@ export async function POST(request: NextRequest) {
     if (!res.ok) {
       const errBody = await res.text().catch(() => '');
       const mapped = whapiError(res.status, errBody, 'sending image');
+      // Log the provider's own status + body. Without this a failed send left
+      // only an "attempt" line and no reason anywhere, which is what made the
+      // original "Failed to publish to WhatsApp group." untraceable.
+      console.error(`[whapi/publish] image FAILED status=${res.status} code=${mapped.code} to=${cleanGroupId.slice(0, 20)}... body=${errBody.slice(0, 400)}`);
       if (mapped.code === 'WHAPI_COMMUNITY_PARENT' || mapped.code === 'WHAPI_PERMISSION_DENIED') {
         return err(mapped.code, mapped.message, res.status === 403 ? 403 : 400, attempt);
       }

@@ -913,6 +913,29 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     return () => { stopped = true; clearInterval(id); };
   }, [whatsappConnectOpen, whapiConnected, whatsappConnecting]);
 
+  // Publish responses occasionally arrive as a non-JSON body (proxy error page,
+  // empty 502, truncated response). `res.json()` then throws and a bare
+  // `.catch(() => ({}))` silently degrades the failure into a useless generic
+  // string like "Failed to publish to WhatsApp group." — no code, no status, no
+  // reason. Read the text first and keep whatever detail is really there,
+  // falling back to the HTTP status so the cause is never fully lost.
+  const readPublishResponse = async (res: Response): Promise<Record<string, unknown>> => {
+    const raw = await res.text().catch(() => '');
+    if (!raw) return { message: `Request failed (HTTP ${res.status}).` };
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return { message: raw.slice(0, 200) };
+    }
+  };
+
+  const publishReason = (data: Record<string, unknown>, res: Response, fallback: string): string => {
+    const message = typeof data.message === 'string' ? data.message.trim() : '';
+    if (message) return message;
+    const code = typeof data.code === 'string' ? data.code : '';
+    return code ? `${code} (HTTP ${res.status})` : `${fallback} (HTTP ${res.status})`;
+  };
+
   const publishToWhapi = async () => {
     if (whapiPublishing || isPublishing || publishCooldown > 0) return;
     if (!whapiConnected) {
@@ -969,11 +992,11 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               attemptId: `${attemptId}_${t.id}`,
             }),
           });
-          const data = await res.json().catch(() => ({}));
+          const data = await readPublishResponse(res);
           if (res.ok && data.success) {
             succeeded.push(t.name);
           } else {
-            failed.push({ name: t.name, reason: data.message || data.code || 'Failed to publish.' });
+            failed.push({ name: t.name, reason: publishReason(data, res, 'Publish failed') });
           }
         } catch {
           failed.push({ name: t.name, reason: 'Network error.' });
@@ -2740,8 +2763,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           if (res.ok) {
             results.push('whatsapp: Success');
           } else {
-            const err = await res.json().catch(() => ({}));
-            results.push(`whatsapp: ${err.message || 'WhatsApp publish failed'}`);
+            const err = await readPublishResponse(res);
+            results.push(`whatsapp: ${publishReason(err, res, 'WhatsApp publish failed')}`);
             hasError = true;
           }
         } catch {
@@ -2804,8 +2827,9 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           if (res.ok) {
             results.push(`${label}: Success`);
           } else {
-            const err = await res.json().catch(() => ({}));
-            results.push(`${label}: ${publishErrorText(err.code, err.message)}`);
+            const err = await readPublishResponse(res);
+            const reason = publishErrorText(typeof err.code === 'string' ? err.code : undefined, typeof err.message === 'string' ? err.message : undefined);
+            results.push(`${label}: ${reason === 'Publish failed. Please try again.' ? publishReason(err, res, 'Publish failed') : reason}`);
             hasError = true;
           }
         } catch {
