@@ -121,7 +121,7 @@ export default function WhatsAppDestinationPicker({
   error: string;
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
-  onRefresh: () => void;
+  onRefresh: (force?: boolean) => void;
 }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<DestinationType | 'all'>('all');
@@ -240,7 +240,7 @@ export default function WhatsAppDestinationPicker({
         </button>
         <button
           type="button"
-          onClick={onRefresh}
+          onClick={() => onRefresh(true)}
           disabled={loading}
           title="Refresh WhatsApp destinations"
           style={{ padding: '8px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, border: '1px solid #E2E8F0', backgroundColor: '#fff', color: loading ? '#94A3B8' : '#1E293B', cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit' }}

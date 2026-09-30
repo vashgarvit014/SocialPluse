@@ -23,6 +23,63 @@ type Raw = {
 
 const CHAT_PAGE = 500;
 const CHAT_MAX = 2000;
+// /groups?count=500 is intermittently reset by Whapi (ECONNRESET), which used
+// to silently yield an empty group list. 100 is reliable and only costs one
+// extra sequential page on a large account.
+const GROUP_PAGE = 100;
+const GROUP_MAX = 2000;
+// Announcement-group lookups are independent reads, but Whapi rate-limits, so
+// they run 4 at a time rather than all at once.
+const SUBGROUP_CONCURRENCY = 4;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+let cache: { at: number; body: unknown } | null = null;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Whapi answers a single read in 8-16s and intermittently drops large pages, so
+// every read gets a bounded retry with backoff on 429/5xx/network errors.
+async function getJson<T>(
+  path: string,
+  config: { token: string; baseUrl: string },
+  attempts = 3,
+): Promise<{ ok: boolean; data: T | null }> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await whapiFetch(path, config.token, { method: 'GET' }, config.baseUrl);
+      if (res.status === 429 || res.status >= 500) {
+        if (i < attempts - 1) { await sleep(700 * Math.pow(2, i)); continue; }
+        return { ok: false, data: null };
+      }
+      if (!res.ok) return { ok: false, data: null };
+      return { ok: true, data: (await res.json().catch(() => null)) as T };
+    } catch {
+      if (i < attempts - 1) { await sleep(500 * Math.pow(2, i)); continue; }
+      return { ok: false, data: null };
+    }
+  }
+  return { ok: false, data: null };
+}
+
+// Bounded-concurrency map. Collapses what were sequential round-trips without
+// firing everything at a rate-limited provider at once.
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  return out;
+}
 
 function label(r: Raw, fallback: string): string {
   return String(r.name || r.pushname || r.title || '').trim() || fallback;
@@ -40,71 +97,74 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const auth = { Authorization: `Bearer ${config.token}` };
-  const getJson = async <T,>(path: string): Promise<{ ok: boolean; data: T | null }> => {
-    try {
-      const res = await whapiFetch(path, config.token, { method: 'GET' }, config.baseUrl);
-      if (!res.ok) return { ok: false, data: null };
-      return { ok: true, data: (await res.json().catch(() => null)) as T };
-    } catch {
-      return { ok: false, data: null };
-    }
-  };
+  const force = request.nextUrl.searchParams.get('refresh') === '1';
+  if (!force && cache && Date.now() - cache.at < CACHE_TTL_MS) {
+    return NextResponse.json(cache.body);
+  }
 
   try {
-    // Groups + communities in parallel; chats paginated after, because a big
-    // account has thousands and the extra round-trips are the slow part.
-    const [groupsRes, commRes] = await Promise.all([
-      getJson<{ groups?: Raw[]; total?: number }>(`/groups?count=500&offset=0`),
-      getJson<{ communities?: Raw[] }>('/communities'),
-    ]);
-
-    // ---- groups (paginate past the first 500 if needed) ----
-    const groupRows: Raw[] = [...(groupsRes.data?.groups ?? [])];
-    const groupTotal = typeof groupsRes.data?.total === 'number' ? groupsRes.data.total : groupRows.length;
-    for (let offset = groupRows.length; offset < Math.min(groupTotal, CHAT_MAX); offset += 500) {
-      const page = await getJson<{ groups?: Raw[] }>(`/groups?count=500&offset=${offset}`);
-      const rows = page.data?.groups;
-      if (!page.ok || !rows || rows.length === 0) break;
-      groupRows.push(...rows);
-      if (rows.length < 500) break;
-    }
-
-    // ---- communities -> sendable announce group ----
-    // Resolve parent -> announce group per community. Sequential-ish with a
-    // small cap so a large account cannot stall the whole request.
-    const communities: Array<Raw & { announcementGroupId?: string; announcementGroupName?: string }> = [];
-    for (const c of (commRes.data?.communities ?? []).slice(0, 100)) {
-      if (!c.id) continue;
-      let announceId = String(c.id);
-      let announceName = '';
-      try {
-        const sub = await whapiFetch(
-          `/communities/${encodeURIComponent(String(c.id))}/subgroups`,
-          config.token, { method: 'GET' }, config.baseUrl,
+    const loadGroups = async (): Promise<Raw[]> => {
+      const rows: Raw[] = [];
+      let total = 0;
+      for (let offset = 0; offset < GROUP_MAX; offset += GROUP_PAGE) {
+        const page = await getJson<{ groups?: Raw[]; total?: number }>(
+          `/groups?count=${GROUP_PAGE}&offset=${offset}`, config,
         );
-        if (sub.ok) {
-          const s = await sub.json().catch(() => ({})) as { announceGroupInfo?: { id?: string; title?: string } };
-          if (s.announceGroupInfo?.id) {
-            announceId = String(s.announceGroupInfo.id);
-            announceName = String(s.announceGroupInfo.title || '');
-          }
-        }
-      } catch { /* fall back to parent id; publish surfaces Whapi's own error */ }
-      communities.push({ ...c, announcementGroupId: announceId, announcementGroupName: announceName });
-    }
+        const got = page.data?.groups;
+        if (!page.ok || !got || got.length === 0) break;
+        rows.push(...got);
+        total = typeof page.data?.total === 'number' ? page.data.total : rows.length;
+        if (got.length < GROUP_PAGE) break;
+      }
+      return rows;
+    };
 
-    // ---- chats (1:1 contacts + any group chats not already in /groups) ----
-    const chatRows: Raw[] = [];
-    let chatTotal = 0;
-    for (let offset = 0; offset < CHAT_MAX; offset += CHAT_PAGE) {
-      const page = await getJson<{ chats?: Raw[]; total?: number }>(`/chats?count=${CHAT_PAGE}&offset=${offset}`);
-      const rows = page.data?.chats;
-      if (!page.ok || !rows || rows.length === 0) break;
-      chatRows.push(...rows);
-      chatTotal = typeof page.data?.total === 'number' ? page.data.total : chatRows.length;
-      if (rows.length < CHAT_PAGE) break;
-    }
+    const loadChats = async (): Promise<{ rows: Raw[]; total: number }> => {
+      const rows: Raw[] = [];
+      let total = 0;
+      for (let offset = 0; offset < CHAT_MAX; offset += CHAT_PAGE) {
+        const page = await getJson<{ chats?: Raw[]; total?: number }>(
+          `/chats?count=${CHAT_PAGE}&offset=${offset}`, config,
+        );
+        const got = page.data?.chats;
+        if (!page.ok || !got || got.length === 0) break;
+        rows.push(...got);
+        total = typeof page.data?.total === 'number' ? page.data.total : rows.length;
+        if (got.length < CHAT_PAGE) break;
+      }
+      return { rows, total };
+    };
+
+    // Groups, communities and chats are independent, so they all start now.
+    // Previously chats waited behind every community's subgroup lookup, adding
+    // its ~15s to the end of an already long request.
+    const groupsPromise = loadGroups();
+    const commPromise = getJson<{ communities?: Raw[] }>('/communities', config);
+    const chatsPromise = loadChats();
+
+    // Communities are needed before announcement groups can be resolved, but
+    // that resolution no longer blocks the chat pagination.
+    const commRes = await commPromise;
+    const communitiesPromise = mapLimit<Raw & { announcementGroupId?: string; announcementGroupName?: string }, void>(
+      (commRes.data?.communities ?? []).slice(0, 100),
+      SUBGROUP_CONCURRENCY,
+      async (c) => {
+        if (!c.id) return;
+        const sub = await getJson<{ announceGroupInfo?: { id?: string; title?: string } }>(
+          `/communities/${encodeURIComponent(String(c.id))}/subgroups`, config, 2,
+        );
+        const info = sub.data?.announceGroupInfo;
+        c.announcementGroupId = info?.id ? String(info.id) : String(c.id);
+        c.announcementGroupName = info?.title ? String(info.title) : '';
+      },
+    );
+
+    const [groupRows, chats, communitiesRaw] = await Promise.all([
+      groupsPromise, chatsPromise, communitiesPromise.then(() => (commRes.data?.communities ?? [])),
+    ]);
+    const communities = (communitiesRaw as Array<Raw & { announcementGroupId?: string; announcementGroupName?: string }>).slice(0, 100);
+    const chatRows = chats.rows;
+    const chatTotal = chats.total;
 
     // ---- merge + dedupe by id, communities win the label ----
     const byId = new Map<string, {
@@ -160,7 +220,7 @@ export async function GET(request: NextRequest) {
 
     const destinations = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 
-    return NextResponse.json({
+    const body = {
       success: true,
       destinations,
       counts: {
@@ -170,7 +230,13 @@ export async function GET(request: NextRequest) {
         total: destinations.length,
         chatsTotalAtProvider: chatTotal,
       },
-    });
+    };
+    // Re-opening the picker should not re-pay ~1min of provider round-trips.
+    // Only cache a complete result: a partial one (e.g. /groups dropped) would
+    // otherwise be served for the whole TTL.
+    const complete = groupRows.length > 0 && chats.rows.length > 0;
+    if (complete) cache = { at: Date.now(), body };
+    return NextResponse.json(body);
   } catch (e) {
     console.error('[whapi/destinations] failure:', e instanceof Error ? e.message : e);
     return NextResponse.json(

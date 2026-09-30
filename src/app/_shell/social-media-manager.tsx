@@ -745,12 +745,12 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   // Unified destination loader — communities + groups + chats in one list.
   // Replaces the older groups-only loader, which could not represent 1:1 chats
   // and force-disabled communities.
-  const loadWhapiDestinations = async () => {
+  const loadWhapiDestinations = async (force = false) => {
     if (whapiGroupsLoading) return [];
     setWhapiGroupsLoading(true);
     setWhapiGroupsError('');
     try {
-      const res = await fetch('/api/whapi/destinations');
+      const res = await fetch(`/api/whapi/destinations${force ? '?refresh=1' : ''}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) {
         const msg = typeof data.message === 'string' ? data.message : 'WhatsApp destinations could not be loaded.';
