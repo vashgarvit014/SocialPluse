@@ -2496,6 +2496,17 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                             : '• No destination selected'}
                         </div>
 
+                        {/* Whapi's sendMessage takes a single media attachment and has
+                            no album/carousel call, so extra media is silently dropped by
+                            the client (.slice(0, 1)) and the server. Say so up front
+                            instead of letting the post look like it lost an image. */}
+                        {postPublishMedia.length > 1 && (
+                          <div style={{ fontSize: 11, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '7px 10px', borderRadius: 8, marginBottom: 10 }}>
+                            ⚠️ WhatsApp sends <strong>1 image per message</strong> &mdash; {postPublishMedia.length} are attached, so only{' '}
+                            <strong>{postPublishMedia[0].name || 'the first one'}</strong> will be sent. Remove the others in Media (step 4) to change which one goes out.
+                          </div>
+                        )}
+
                         {(() => {
                           const hasDestinations = p.whapiSelectedDestinations.size > 0;
                           return (

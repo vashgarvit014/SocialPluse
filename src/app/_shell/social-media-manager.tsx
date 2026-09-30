@@ -2051,18 +2051,32 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       }
       const designId = canvaSession?.designId || '';
       const now = Date.now();
-      const sourceMediaId = canvaSession?.sourceMediaId ?? undefined;
-      const existing = designId ? mediaItems.find(m => m.canvaDesignId === designId) : undefined;
-      if (existing) {
-        setMediaItems(prev => prev.map(m => m.id === existing.id
-          ? { ...m, url: data.image, name: 'canva-edit', source: 'canva', canvaDesignId: designId, sourceMediaId: sourceMediaId ?? m.sourceMediaId, importedAt: now }
-          : m));
-        notify('Canva design updated in your gallery (same item, no duplicate).', false);
-      } else {
-        const item: MediaItem = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 4), url: data.image, type: 'image', name: 'canva-edit', source: 'canva', canvaDesignId: designId || undefined, sourceMediaId, importedAt: now };
-        setMediaItems(prev => [...prev, item]);
-        notify('Edited image imported from Canva ✓', false);
-      }
+      // An edit ADDS a new gallery item instead of overwriting the item it was
+      // derived from. Overwriting meant the generated original silently ceased
+      // to exist, so the user had no choice about what got published. Keeping
+      // both lets them compare and pick. Re-importing the *same* export is
+      // already blocked above by canvaLastImportedReadyId, so this cannot stack
+      // duplicates from a repeated click.
+      const derivedFrom = designId ? mediaItems.find(m => m.canvaDesignId === designId) : undefined;
+      const item: MediaItem = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 4),
+        url: data.image,
+        type: 'image',
+        name: 'canva-edit',
+        source: 'canva',
+        canvaDesignId: designId || undefined,
+        // Carry lineage from the item this was edited from, so the gallery can
+        // still show which original an edit descends from.
+        sourceMediaId: canvaSession?.sourceMediaId ?? derivedFrom?.sourceMediaId,
+        importedAt: now,
+      };
+      // Prepended, not appended: WhatsApp sends only the first media item, so
+      // putting the edit first keeps "the edited version is what gets posted"
+      // as the default while the original stays available to fall back to.
+      setMediaItems(prev => [item, ...prev]);
+      notify(derivedFrom
+        ? 'Edited image added to your gallery \u2014 the original is still there, pick which to publish.'
+        : 'Edited image imported from Canva \u2713', false);
       setCanvaLastImportedReadyId(canvaReadyId);
       setCanvaReadyId('');
       setCanvaSession(prev => prev ? { ...prev, importedAt: now } : prev);
