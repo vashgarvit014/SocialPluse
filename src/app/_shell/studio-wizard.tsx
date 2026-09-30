@@ -711,7 +711,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   const selected = p.selectedPlatforms.includes(cfg.id);
                   const brand = p.platformColors[cfg.id] || C.primary;
                   return (
-                    <div key={cfg.id} style={{ display: 'flex', gap: 10, alignItems: 'stretch', opacity: standby ? 0.6 : 1 }}>
+                    <div key={cfg.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', opacity: standby ? 0.6 : 1 }}>
                       <button onClick={() => { if (!standby) p.togglePlatform(cfg.id); }} disabled={standby} className="sp-s2-opt" style={{
                         flex: 1, padding: '12px 14px', borderRadius: 14, cursor: standby ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
                         border: selected && !standby ? `2px solid ${brand}` : `1.5px solid ${C.border}`,
@@ -735,8 +736,56 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         <button onClick={() => p.disconnectPlatform(cfg.id)} style={{ padding: '10px 20px', borderRadius: 11, fontSize: 12, fontWeight: 800, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'center', fontFamily: 'inherit' }}>Disconnect</button>
                       )}
                       {connected && !standby && isWhapi && (
-                        <button onClick={() => p.disconnectWhatsApp()} disabled={p.whatsappDisconnecting || p.whapiLoading} style={{ padding: '10px 20px', borderRadius: 11, fontSize: 12, fontWeight: 800, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: (p.whatsappDisconnecting || p.whapiLoading) ? 'wait' : 'pointer', whiteSpace: 'nowrap', alignSelf: 'center', opacity: (p.whatsappDisconnecting || p.whapiLoading) ? 0.6 : 1, fontFamily: 'inherit' }}>{p.whatsappDisconnecting ? 'Disconnecting…' : 'Disconnect'}</button>
+                        <button onClick={() => p.disconnectWhatsApp()} disabled={p.whatsappDisconnecting || p.whapiLoading} style={{ padding: '10px 20px', borderRadius: 11, fontSize: 12, fontWeight: 800, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: (p.whatsappDisconnecting || p.whapiLoading) ? 'wait' : 'pointer', whiteSpace: 'nowrap', alignSelf: 'center', fontFamily: 'inherit', opacity: (p.whatsappDisconnecting || p.whapiLoading) ? 0.6 : 1 }}>{p.whatsappDisconnecting ? 'Disconnecting…' : 'Disconnect'}</button>
                       )}
+                      </div>
+
+                      {/* Per-account targets. Only meaningful once the platform is
+                          selected — it fans the publish out to every checked
+                          account instead of just the first connected one. */}
+                      {selected && !standby && !isWhapi && p.accounts.filter(a => a.platform === cfg.id && a.connected).length > 0 && (() => {
+                        const accs = p.accounts.filter(a => a.platform === cfg.id && a.connected);
+                        const keys = accs.map(a => `${a.platform}:${a.userId}:${a.pageId || ''}`);
+                        const chosenCount = keys.filter(k => p.selectedAccountKeys.includes(k)).length;
+                        return (
+                          <div style={{ marginLeft: 10, padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 12, backgroundColor: '#FCFCFE' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                              <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: C.faint }}>
+                                Post to {chosenCount}/{accs.length} account{accs.length === 1 ? '' : 's'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => (chosenCount === keys.length ? p.clearAccountsFor(cfg.id) : p.selectAllAccountsFor(cfg.id))}
+                                style={{ border: 'none', background: 'none', color: C.primaryDark, fontSize: 10.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+                              >
+                                {chosenCount === keys.length ? 'Clear all' : 'Select all'}
+                              </button>
+                            </div>
+                            {accs.map((a) => {
+                              const key = `${a.platform}:${a.userId}:${a.pageId || ''}`;
+                              const on = p.selectedAccountKeys.includes(key);
+                              return (
+                                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', cursor: 'pointer', borderRadius: 8, backgroundColor: on ? '#F5F3FF' : 'transparent' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={on}
+                                    onChange={() => p.toggleAccount(key)}
+                                    style={{ width: 14, height: 14, accentColor: C.primary, cursor: 'pointer', flexShrink: 0 }}
+                                  />
+                                  <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {a.name || a.email || a.userId.slice(0, 10)}
+                                  </span>
+                                  {a.pageId && a.pages?.length ? (
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: C.faint, flexShrink: 0 }}>
+                                      {a.pages.find(pg => pg.id === a.pageId)?.name || 'Page'}
+                                    </span>
+                                  ) : null}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}

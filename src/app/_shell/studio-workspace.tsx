@@ -191,6 +191,12 @@ export interface StudioWorkspaceProps {
   whapiSelectedDestinations: Set<string>;
   setWhapiSelectedDestinations: (v: Set<string>) => void;
   loadWhapiDestinations: () => void;
+  // Per-account multi-select so a platform with several connected logins can
+  // target any subset of them.
+  selectedAccountKeys: string[];
+  toggleAccount: (key: string) => void;
+  selectAllAccountsFor: (platform: string) => void;
+  clearAccountsFor: (platform: string) => void;
   disconnectWhatsApp: () => void; whatsappDisconnecting: boolean;
   publishToWhapi: () => void; whapiPublishing: boolean; refreshWhapiStatus: () => void; whapiLoading: boolean;
 }

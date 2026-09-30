@@ -219,6 +219,11 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const [publishResult, setPublishResult] = useState('');
   const [publishResultType, setPublishResultType] = useState<'success' | 'error'>('success');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  // Per-account multi-select. A platform can have several connected accounts
+  // (e.g. two LinkedIn logins); previously publish used
+  // `accounts.find(...)` which silently picked only the FIRST match, so extra
+  // accounts could never be targeted. Keys are `${platform}:${userId}:${pageId}`.
+  const [selectedAccountKeys, setSelectedAccountKeys] = useState<string[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [canvaConnected, setCanvaConnected] = useState(false);
   const [canvaName, setCanvaName] = useState('');
@@ -1224,11 +1229,19 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     setIsScheduling(true);
     try {
       const scheduledAt = scheduledTime.toISOString();
-      // Server resolves the OAuth token from userId at publish time — no tokens stored here.
-      const accountsData = connectedSelected.map(p => {
-        if (p === 'whatsapp') return { platform: p, userId: 'socialpulse-whatsapp', pageId: whapiSelectedGroupId || undefined };
-        const acc = accounts.find(a => a.platform === p && a.connected)!;
-        return { platform: p, userId: acc.userId, pageId: acc.pageId || undefined };
+      // Server resolves the OAuth token from userId at publish time — no tokens
+      // stored here. Emit ONE entry per selected connected account so a
+      // platform with several linked logins schedules to all of them, not just
+      // the first one `accounts.find()` happened to return.
+      const accountsData = connectedSelected.flatMap(p => {
+        if (p === 'whatsapp') return [{ platform: p, userId: 'socialpulse-whatsapp', pageId: whapiSelectedGroupId || undefined }];
+        const all = accounts.filter(a => a.platform === p && a.connected);
+        const chosen = all.filter(a => {
+          const key = accountKey(a);
+          return selectedAccountKeys.length === 0 || selectedAccountKeys.includes(key);
+        });
+        const targets = chosen.length > 0 ? chosen : all;
+        return targets.map(acc => ({ platform: p, userId: acc.userId, pageId: acc.pageId || undefined }));
       });
 
       const currentMediaUrl = publishMediaList[0]?.url || generatedVideo || generatedImage;
@@ -1526,11 +1539,35 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     setSelectedPlatforms(prev => prev.filter(p => p !== platform));
   };
 
+  // Stable identity for one connected account. Facebook accounts can publish
+  // to a specific Page, so the page id is part of the key.
+  const accountKey = (a: { platform: string; userId: string; pageId?: string }) =>
+    `${a.platform}:${a.userId}:${a.pageId || ''}`;
+
+  const toggleAccount = (key: string) => {
+    setSelectedAccountKeys(prev =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+  };
+
+  const selectAllAccountsFor = (platform: string) => {
+    const keys = accounts.filter((a) => a.platform === platform && a.connected).map(accountKey);
+    setSelectedAccountKeys(prev => [...new Set([...prev, ...keys])]);
+  };
+
+  const clearAccountsFor = (platform: string) => {
+    setSelectedAccountKeys(prev => prev.filter((k) => !k.startsWith(`${platform}:`)));
+  };
+
   const togglePlatform = (platform: string) => {
     const next = selectedPlatforms.includes(platform)
       ? selectedPlatforms.filter(p => p !== platform)
       : [...selectedPlatforms, platform];
     setSelectedPlatforms(next);
+    // Turning a platform on selects all of its connected accounts; turning it
+    // off drops them, so a deselected platform can never keep a target.
+    if (next.includes(platform)) selectAllAccountsFor(platform);
+    else clearAccountsFor(platform);
     // Keep the active preview platform inside the selection so Preview,
     // caption editor and publish never show an unselected platform.
     // LinkedIn is the default preview whenever it is selected.
@@ -2713,8 +2750,16 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         }
         continue;
       }
-      const account = accounts.find(a => a.platform === platform && a.connected);
-      if (!account?.userId) {
+      // Fan out over every SELECTED connected account for this platform, not
+      // just the first one. Accounts with no explicit selection still default
+      // to all of them, so existing single-account behaviour is unchanged.
+      const platformAccounts = accounts.filter(a => a.platform === platform && a.connected);
+      const chosen = platformAccounts.filter(a => {
+        const key = accountKey(a);
+        return selectedAccountKeys.length === 0 || selectedAccountKeys.includes(key);
+      });
+      const targets = chosen.length > 0 ? chosen : platformAccounts;
+      if (targets.length === 0) {
         results.push(`${platform}: Not connected — reconnect through OAuth`);
         hasError = true;
         continue;
@@ -2725,43 +2770,48 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       const publishContent = platformData
         ? `${stripTrailingHashtags(platformData.caption)}\n\n${formatHashtags(platformData.hashtags || [])}`.trim()
         : stripTrailingHashtags(content);
-      // Unique id per user action + platform. Logged server-side, never a secret.
-      const attemptId = `ui_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}_${platform}`;
-      console.log(`[publish] attempt ${attemptId} → ${platform}`);
-      try {
-        const allUrls = publishMediaList.length ? publishMediaList.map(m => m.url) : (generatedVideo || generatedImage ? [generatedVideo || generatedImage] : []);
-        const firstType = publishMediaList[0]?.type || (generatedVideo ? 'video' : generatedImage ? 'image' : undefined);
-        // No access token leaves the browser — the server vault resolves it from userId.
-        const res = await fetch(`/api/${platform}/publish`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content: publishContent,
-            imageUrl: generatedImage || undefined,
-            videoUrl: generatedVideo || undefined,
-            mediaUrl: generatedVideo || generatedImage || undefined,
-            mediaType: firstType,
-            mediaUrls: allUrls,
-            mediaList: publishMediaList,
-            isCarousel: isCarousel && carouselValidation.valid ? true : undefined,
-            trialReel: platform === 'instagram' && trialReel && instagramReelReady ? true : undefined,
-            collaborator: platform === 'instagram' && collaborator.trim() ? collaborator.trim() : undefined,
-            userId: account.userId,
-            pageId: account.pageId || undefined,
-            attemptId,
-          }),
-        });
-        // No automatic retry on any failure — the user decides.
-        if (res.ok) {
-          results.push(`${platform}: Success`);
-        } else {
-          const err = await res.json().catch(() => ({}));
-          results.push(`${platform}: ${publishErrorText(err.code, err.message)}`);
+
+      for (const account of targets) {
+        // Unique id per user action + platform + account. Logged server-side,
+        // never a secret.
+        const attemptId = `ui_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}_${platform}_${(account.userId || '').slice(0, 8)}`;
+        const label = targets.length > 1 ? `${platform} (${account.name || account.email || account.userId.slice(0, 8)})` : platform;
+        console.log(`[publish] attempt ${attemptId} → ${label}`);
+        try {
+          const allUrls = publishMediaList.length ? publishMediaList.map(m => m.url) : (generatedVideo || generatedImage ? [generatedVideo || generatedImage] : []);
+          const firstType = publishMediaList[0]?.type || (generatedVideo ? 'video' : generatedImage ? 'image' : undefined);
+          // No access token leaves the browser — the server vault resolves it from userId.
+          const res = await fetch(`/api/${platform}/publish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content: publishContent,
+              imageUrl: generatedImage || undefined,
+              videoUrl: generatedVideo || undefined,
+              mediaUrl: generatedVideo || generatedImage || undefined,
+              mediaType: firstType,
+              mediaUrls: allUrls,
+              mediaList: publishMediaList,
+              isCarousel: isCarousel && carouselValidation.valid ? true : undefined,
+              trialReel: platform === 'instagram' && trialReel && instagramReelReady ? true : undefined,
+              collaborator: platform === 'instagram' && collaborator.trim() ? collaborator.trim() : undefined,
+              userId: account.userId,
+              pageId: account.pageId || undefined,
+              attemptId,
+            }),
+          });
+          // No automatic retry on any failure — the user decides.
+          if (res.ok) {
+            results.push(`${label}: Success`);
+          } else {
+            const err = await res.json().catch(() => ({}));
+            results.push(`${label}: ${publishErrorText(err.code, err.message)}`);
+            hasError = true;
+          }
+        } catch {
+          results.push(`${label}: Network error — no retry was attempted`);
           hasError = true;
         }
-      } catch {
-        results.push(`${platform}: Network error — no retry was attempted`);
-        hasError = true;
       }
     }
 
@@ -3048,7 +3098,9 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             logoTargetId={logoTargetId} setLogoTargetId={setLogoTargetId}
             burnedLogoIds={burnedLogoIds} clearLogo={clearLogo} restoreBurnedMedia={restoreBurnedMedia}
             applyLogoToAllMedia={applyLogoToAllMedia} isApplyingLogo={isApplyingLogo}
-            accounts={accounts} togglePlatform={togglePlatform} connectPlatform={connectPlatform} disconnectPlatform={disconnectPlatform}
+            accounts={accounts} togglePlatform={togglePlatform}
+
+            selectedAccountKeys={selectedAccountKeys} toggleAccount={toggleAccount} selectAllAccountsFor={selectAllAccountsFor} clearAccountsFor={clearAccountsFor} connectPlatform={connectPlatform} disconnectPlatform={disconnectPlatform}
             setAccountPageId={setAccountPageId}
             justConnectedPlatform={justConnectedPlatform}
             canvaConnected={canvaConnected} canvaName={canvaName} canvaSourceImage={canvaSourceImage}
