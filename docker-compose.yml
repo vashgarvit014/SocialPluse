@@ -1,5 +1,17 @@
 # SocialPulse — Docker Compose (app + PostgreSQL + Cloudflare Tunnel)
-# Run from this directory (social-media-manager) or from repo root with -f path.
+# Run from this directory: `docker compose up -d`. No -p flag needed.
+#
+# `name:` pins the Compose project name. Without it Docker derives one from the
+# directory name — here that is "plusing20" (the folder is "plusing 2.0"), which
+# is a *different* project from the running stack. The symptoms are confusing:
+# `down` reports nothing to remove, `up` fails with "the container name
+# /socialpulse-db is already in use", and it strands an orphan plusing20_default
+# network. Pinning it means the flag can never be forgotten, and the -p form
+# still works as long as it matches.
+name: social-media-manager
+
+# Cloudflare Tunnel runs as its own container on the compose network and forwards
+# straight to the app container by service name:
 # Cloudflare Tunnel runs as its own container on the compose network and forwards
 # straight to the app container by service name:
 #   Internet -> socialpulse.dotstark.tech -> cloudflared container -> http://socialpulse:3000
