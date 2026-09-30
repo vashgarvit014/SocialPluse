@@ -315,6 +315,11 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const [whapiLoading, setWhapiLoading] = useState(false);
   const [whapiGroups, setWhapiGroups] = useState<Array<{ id: string; name: string; participantsCount: number; type: string; source?: 'community' | 'group' }>>([]);
   const [whapiSelectedGroupId, setWhapiSelectedGroupId] = useState('');
+  // Multi-destination selection (communities + groups + chats). The picker
+  // resolves each entry to a `sendId` at publish time — for a community that
+  // is its announcement group, since Whapi rejects sends to a parent JID.
+  const [whapiDestinations, setWhapiDestinations] = useState<Array<{ id: string; name: string; type: 'community' | 'group' | 'chat'; participantsCount: number; sendId: string }>>([]);
+  const [whapiSelectedDestinations, setWhapiSelectedDestinations] = useState<Set<string>>(new Set());
   const [whapiGroupsLoading, setWhapiGroupsLoading] = useState(false);
   const [whapiGroupsError, setWhapiGroupsError] = useState('');
   const [whapiPublishing, setWhapiPublishing] = useState(false);
@@ -732,6 +737,44 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     }
   };
 
+  // Unified destination loader — communities + groups + chats in one list.
+  // Replaces the older groups-only loader, which could not represent 1:1 chats
+  // and force-disabled communities.
+  const loadWhapiDestinations = async () => {
+    if (whapiGroupsLoading) return [];
+    setWhapiGroupsLoading(true);
+    setWhapiGroupsError('');
+    try {
+      const res = await fetch('/api/whapi/destinations');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        const msg = typeof data.message === 'string' ? data.message : 'WhatsApp destinations could not be loaded.';
+        setWhapiGroupsError(msg);
+        return [];
+      }
+      const list: Array<{ id: string; name: string; type: 'community' | 'group' | 'chat'; participantsCount: number; sendId: string }> =
+        Array.isArray(data.destinations) ? data.destinations : [];
+      setWhapiDestinations(list);
+      // Drop selections that no longer exist so publish can't target a stale id.
+      setWhapiSelectedDestinations(prev => {
+        const valid = new Set(list.map((d) => d.id));
+        const next = new Set([...prev].filter((id) => valid.has(id)));
+        return next.size === prev.size ? prev : next;
+      });
+      // Keep the legacy single-select in sync for the scheduler path.
+      if (list.length && !whapiSelectedGroupId) {
+        const first = list.find((d) => d.type !== 'community') || list[0];
+        setWhapiSelectedGroupId(first.id);
+      }
+      return list;
+    } catch (e) {
+      setWhapiGroupsError(e instanceof Error ? e.message : 'Failed to load WhatsApp destinations');
+      return [];
+    } finally {
+      setWhapiGroupsLoading(false);
+    }
+  };
+
   const loadWhapiGroups = async () => {
     if (whapiGroupsLoading) return;
     setWhapiGroupsLoading(true);
@@ -871,21 +914,21 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       setPublishResult('WhatsApp is not connected.');
       setPublishResultType('error'); setShowToast(true); setTimeout(() => setShowToast(false), 4000); return;
     }
-    if (!whapiSelectedGroupId) {
-      setPublishResult('Select a WhatsApp group first.');
-      setPublishResultType('error'); setShowToast(true); setTimeout(() => setShowToast(false), 4000); return;
-    }
-    const _selGroup = whapiGroups.find(g => g.id === whapiSelectedGroupId);
-    // Only true community parents are unsendable (Whapi list returns count 0 for all groups).
-    if (_selGroup && _selGroup.type === 'community') {
-      setPublishResult('This chat cannot receive messages directly. Select its announcement group instead.');
+    // Resolve the multi-selection into concrete send targets. Each destination
+    // carries its own sendId — for a community that is the announcement group,
+    // because Whapi refuses sends to a community parent JID.
+    const targets = whapiDestinations
+      .filter((d) => whapiSelectedDestinations.has(d.id))
+      .map((d) => ({ id: d.id, name: d.name, sendId: d.sendId, type: d.type }));
+    if (targets.length === 0) {
+      setPublishResult('Select at least one chat, group or community.');
       setPublishResultType('error'); setShowToast(true); setTimeout(() => setShowToast(false), 4000); return;
     }
     if (!content.trim() && publishMediaList.length === 0 && !generatedImage && !generatedVideo) {
       setPublishResult('Add content or media before publishing to WhatsApp.');
       setPublishResultType('error'); setShowToast(true); setTimeout(() => setShowToast(false), 4000); return;
     }
-    // One click = one request, no hidden retries, reuse cooldown guard
+    // One click = one request per destination, no hidden retries, reuse cooldown guard
     const publishingRefLocal = publishingRef;
     if (publishingRefLocal.current) return;
     publishingRefLocal.current = true;
@@ -902,38 +945,59 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       const text = isWhapp
         ? stripAllHashtags(rawText)
         : (() => { const baseText = stripTrailingHashtags(rawText); const tags = platformContent[activePreviewPlatform]?.hashtags || []; return baseText ? (tags.length ? `${baseText}\n\n${formatHashtags(tags)}` : baseText) : rawText; })();
-      const res = await fetch('/api/whatsapp/publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          announcementGroupId: whapiSelectedGroupId,
-          text,
-          mediaList: effectiveMedia,
-          attemptId,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.success) {
-        setPublishResult(`WhatsApp message sent to ${whapiGroups.find(g => g.id === whapiSelectedGroupId)?.name || 'group'} ✓`);
-        setPublishResultType('success');
+
+      // Fan out sequentially: WhatsApp rate-limits, and a burst to N chats
+      // invites throttling. Per-target failures are collected, not fatal —
+      // one unsendable chat must not cancel the rest.
+      const succeeded: string[] = [];
+      const failed: Array<{ name: string; reason: string }> = [];
+
+      for (const t of targets) {
+        try {
+          const res = await fetch('/api/whatsapp/publish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              announcementGroupId: t.sendId,
+              text,
+              mediaList: effectiveMedia,
+              attemptId: `${attemptId}_${t.id}`,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.success) {
+            succeeded.push(t.name);
+          } else {
+            failed.push({ name: t.name, reason: data.message || data.code || 'Failed to publish.' });
+          }
+        } catch {
+          failed.push({ name: t.name, reason: 'Network error.' });
+        }
+      }
+
+      if (succeeded.length > 0) {
         setPublishSuccessFlash(true);
         setPublishCooldown(10);
         setTimeout(() => setPublishSuccessFlash(false), 2200);
+      }
+
+      if (failed.length === 0) {
+        setPublishResult(
+          `WhatsApp message sent to ${succeeded.length} destination${succeeded.length === 1 ? '' : 's'} ✓`,
+        );
+        setPublishResultType('success');
+      } else if (succeeded.length === 0) {
+        setPublishResult(`WhatsApp publish failed for all ${failed.length} destination${failed.length === 1 ? '' : 's'}: ${failed[0].reason}`);
+        setPublishResultType('error');
       } else {
-        const code = data.code || '';
-        let msg = data.message || 'Failed to publish to WhatsApp group.';
-        if (code === 'WHAPI_UNAUTHORIZED') msg = 'WhatsApp connection needs attention. Reconnect and try again.';
-        else if (code === 'WHAPI_GROUP_NOT_FOUND') msg = 'Selected WhatsApp chat was not found. Refresh and try again.';
-        else if (code === 'WHAPI_TRIAL_LIMIT') msg = 'This WhatsApp connection cannot publish to that chat yet. Please contact your SocialPulse admin.';
-        else if (code === 'WHAPI_PERMISSION_DENIED') msg = data.message || 'You are not an admin of this announcement group — only admins can post there. Choose a regular group from All groups, or make this number an admin in WhatsApp.';
-        else if (code === 'WHAPI_COMMUNITY_PARENT') msg = data.message || 'This chat cannot receive messages directly. Select its announcement group instead.';
-        else if (code === 'WHAPI_BAD_REQUEST') msg = data.message || 'WhatsApp could not publish this post. Check the chat and message.';
-        else if (code === 'WHAPI_UNSUPPORTED_MEDIA') msg = 'This media type is not supported for WhatsApp publishing yet.';
-        setPublishResult(msg);
+        // Partial success is still a success — say exactly what landed.
+        const detail = failed.slice(0, 3).map((f) => `${f.name}: ${f.reason}`).join(' • ');
+        const more = failed.length > 3 ? ` (+${failed.length - 3} more)` : '';
+        setPublishResult(`Sent to ${succeeded.length}/${targets.length}. Failed — ${detail}${more}`);
         setPublishResultType('error');
       }
     } catch {
-      setPublishResult('Network error sending to WhatsApp group.');
+      setPublishResult('Network error sending to WhatsApp.');
       setPublishResultType('error');
     }
     setShowToast(true);
@@ -960,8 +1024,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
 
   // Auto-load WhatsApp communities lazily when connected, but only once per session to avoid blocking page.
   useEffect(() => {
-    if (whapiConnected && whapiGroups.length === 0 && !whapiGroupsLoading && !whapiGroupsError) {
-      void loadWhapiGroups();
+    if (whapiConnected && whapiDestinations.length === 0 && !whapiGroupsLoading && !whapiGroupsError) {
+      void loadWhapiDestinations();
     }
   }, [whapiConnected]);
 
@@ -3003,6 +3067,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             platformColors={platformColors} PlatformIcon={PlatformIcon}
             whapiConnected={whapiConnected} whapiChannelStatus={whapiChannelStatus} whapiAccountName={whapiAccountName} whapiPhoneMasked={whapiPhoneMasked}
             whapiGroups={whapiGroups} whapiSelectedGroupId={whapiSelectedGroupId} setWhapiSelectedGroupId={setWhapiSelectedGroupId}
+
+            whapiDestinations={whapiDestinations} whapiSelectedDestinations={whapiSelectedDestinations} setWhapiSelectedDestinations={setWhapiSelectedDestinations} loadWhapiDestinations={loadWhapiDestinations}
             whapiGroupsLoading={whapiGroupsLoading} whapiGroupsError={whapiGroupsError} loadWhapiGroups={loadWhapiGroups} startWhatsAppConnect={startWhatsAppConnect}
             disconnectWhatsApp={disconnectWhatsApp} whatsappDisconnecting={whatsappDisconnecting}
             publishToWhapi={publishToWhapi} whapiPublishing={whapiPublishing} refreshWhapiStatus={refreshWhapiStatus} whapiLoading={whapiLoading}

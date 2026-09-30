@@ -186,6 +186,11 @@ export interface StudioWorkspaceProps {
   whapiConnected: boolean; whapiChannelStatus: string; whapiAccountName: string; whapiPhoneMasked: string;
   whapiGroups: Array<{ id: string; name: string; participantsCount: number; type: string; source?: 'community' | 'group' }>; whapiSelectedGroupId: string; setWhapiSelectedGroupId: (v: string) => void;
   whapiGroupsLoading: boolean; whapiGroupsError: string; loadWhapiGroups: () => void; startWhatsAppConnect: () => void;
+  // Unified multi-destination selection (communities + groups + chats).
+  whapiDestinations: Array<{ id: string; name: string; type: 'community' | 'group' | 'chat'; participantsCount: number; sendId: string }>;
+  whapiSelectedDestinations: Set<string>;
+  setWhapiSelectedDestinations: (v: Set<string>) => void;
+  loadWhapiDestinations: () => void;
   disconnectWhatsApp: () => void; whatsappDisconnecting: boolean;
   publishToWhapi: () => void; whapiPublishing: boolean; refreshWhapiStatus: () => void; whapiLoading: boolean;
 }
