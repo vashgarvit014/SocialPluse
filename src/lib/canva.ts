@@ -71,7 +71,10 @@ export function buildAuthorizeUrl(state: string, codeChallenge: string): string 
     scope: CANVA_SCOPES,
     state,
     code_challenge: codeChallenge,
-    code_challenge_method: 's256',
+    // RFC 7636: the method token is case-sensitive and must be 'S256'.
+    // 's256' was accepted leniently by some providers but is not the
+    // registered value, and it fails closed rather than open.
+    code_challenge_method: 'S256',
   });
   return `${AUTHORIZE_URL}?${params.toString()}`;
 }

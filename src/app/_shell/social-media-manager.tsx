@@ -1671,15 +1671,38 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       oauthPending.current.popup?.focus(); notify('Finish or close the current connection window first.'); return;
     }
     const id = crypto.randomUUID();
-    const popup = window.open('about:blank', 'socialpulse-connect', 'popup,width=640,height=780');
-    oauthPending.current = { id, popup };
+    const url = '/api/connect/' + encodeURIComponent(platform) + '?return_id=' + id;
+
+    // Snapshot the editor, but a storage failure must never BLOCK the
+    // connection. The previous single try/catch wrapped three unrelated steps —
+    // the IndexedDB write, popup navigation and the same-tab fallback — so a
+    // blocked popup or a navigation error was reported as "Could not save your
+    // editor state", which named the wrong cause entirely, and any of them
+    // aborted the OAuth the user had just asked for.
     try {
       await returnStore('put', id, captureEditor());
-      const url = '/api/connect/' + encodeURIComponent(platform) + '?return_id=' + id;
-      if (popup && !popup.closed) popup.location.href = url; else window.location.assign(url);
-    } catch {
-      popup?.close(); oauthPending.current = null;
-      notify('Could not save your editor state. Connection was not started; your work is still here.', true);
+    } catch (err) {
+      console.error('[connect] editor snapshot failed:', err);
+      notify('We could not snapshot your editor, so returning here may not restore it. Continuing with the connection.', true);
+    }
+
+    const popup = window.open('about:blank', 'socialpulse-connect', 'popup,width=640,height=780');
+    if (!popup) {
+      // Blocked by the browser. Say so plainly and fall back to this tab,
+      // rather than leaving the user with nothing that happened.
+      notify('Your browser blocked the sign-in popup — continuing in this tab.', true);
+      window.location.assign(url);
+      return;
+    }
+    oauthPending.current = { id, popup };
+    try {
+      popup.location.href = url;
+    } catch (err) {
+      console.error('[connect] popup navigation failed:', err);
+      oauthPending.current = null;
+      popup.close();
+      notify('Could not open the sign-in window — continuing in this tab.', true);
+      window.location.assign(url);
     }
   };
   useEffect(() => {

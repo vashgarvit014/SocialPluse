@@ -401,6 +401,18 @@ async function migrate(client: PoolClient) {
   // publish path both resolve "this user's channel" with a single lookup.
   await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_conn_user ON whatsapp_connections(user_id)`);
   // Webhook correlation: resolve an inbound provider event to exactly one user.
+  // One channel token may back AT MOST ONE connected account.
+  //
+  // Nothing enforced this before: two rows could both be CONNECTED on the same
+  // shared token, and getConnectedOwnerByToken() then resolved ownership to
+  // whichever had the later connected_at. That is precisely the failure the
+  // ownership gate exists to prevent — two accounts believing they own the same
+  // WhatsApp number — so it is enforced at the schema level, not only in code.
+  await client.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_conn_token_owner
+       ON whatsapp_connections(channel_token)
+     WHERE status = 'CONNECTED' AND channel_token IS NOT NULL`,
+  );
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wa_conn_channel ON whatsapp_connections(provider_channel_id) WHERE provider_channel_id IS NOT NULL`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wa_conn_session ON whatsapp_connections(provider_session_id) WHERE provider_session_id IS NOT NULL`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_wa_conn_status ON whatsapp_connections(status, qr_expires_at)`);

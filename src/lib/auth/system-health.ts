@@ -47,7 +47,19 @@ export async function getSystemHealth(): Promise<HealthCheck[]> {
     detail: 'Content publishing to WhatsApp groups — never used for OTP',
   });
 
-  checks.push({ name: 'Canva', status: envConfigured('CANVA_CLIENT_ID', 'CANVA_CLIENT_SECRET'), detail: 'Design import integration' });
+  // Only "are both vars present" is checkable here.
+  //
+  // An earlier version of this probe called Canva's authorize endpoint from the
+  // server to validate the client_id. That is WRONG and was removed: Canva sits
+  // behind a Cloudflare bot challenge, so a server-side fetch returns a 403
+  // interstitial ("Enable JavaScript and cookies to continue") no matter whether
+  // the client_id is valid. The check would have reported ERROR for a perfectly
+  // good credential and sent an admin chasing a non-existent problem.
+  checks.push({
+    name: 'Canva',
+    status: envConfigured('CANVA_CLIENT_ID', 'CANVA_CLIENT_SECRET'),
+    detail: 'Design import integration — validity can only be confirmed by completing Connect in a browser',
+  });
   checks.push({ name: 'LinkedIn', status: envConfigured('LINKEDIN_CLIENT_ID', 'LINKEDIN_CLIENT_SECRET'), detail: 'Publishing integration' });
   checks.push({ name: 'Facebook', status: envConfigured('FACEBOOK_APP_ID', 'FACEBOOK_APP_SECRET'), detail: 'Publishing integration' });
   checks.push({
