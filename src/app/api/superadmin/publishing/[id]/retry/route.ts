@@ -9,7 +9,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const { id } = await params;
   try {
-    const post = retryFailedPost(id);
+    const post = await retryFailedPost(id);
     logAuthEvent('PUBLISH_RETRIED', { meta: { postId: id, actorUserId: session.userId } });
     return NextResponse.json({ success: true, post: { id: post.id, status: post.status, scheduledAt: post.scheduledAt } });
   } catch (error) {

@@ -9,7 +9,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const { id } = await params;
   try {
-    const post = moveFailedPostToDraft(id);
+    const post = await moveFailedPostToDraft(id);
     logAuthEvent('PUBLISH_MOVED_TO_DRAFT', { meta: { postId: id, actorUserId: session.userId } });
     return NextResponse.json({ success: true, post: { id: post.id, status: post.status } });
   } catch (error) {

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiSession } from '@/lib/auth/api';
+import { getLinkedInAuth } from '@/app/api/linkedin/vault';
 
 export async function POST(request: NextRequest) {
   const session = await requireApiSession();
   if (session instanceof NextResponse) return session;
   try {
-    const { content, imageUrl, videoUrl, mediaUrl, mediaType, LinkedInCredentials } = await request.json();
+    const { content, imageUrl, videoUrl, mediaUrl, mediaType } = await request.json();
 
     if (!content) {
       return NextResponse.json(
@@ -14,15 +15,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const accessToken = LinkedInCredentials?.accessToken || process.env.LINKEDIN_ACCESS_TOKEN;
-    const personUrn = LinkedInCredentials?.personUrn || process.env.LINKEDIN_PERSON_URN;
-
-    if (!accessToken || !personUrn) {
+    // Credentials come from the SESSION USER's own stored connection.
+    //
+    // This route previously read LinkedInCredentials.accessToken and
+    // LinkedInCredentials.personUrn straight out of the JSON body (falling back
+    // to process.env), which made it an open publish proxy: any authenticated
+    // user could post to any LinkedIn account by pasting a token they held,
+    // with no relationship at all to the caller's own connection. The body
+    // fields are gone; the server resolves both values itself.
+    const auth = await getLinkedInAuth(session.userId);
+    if (!auth) {
       return NextResponse.json(
-        { error: 'LinkedIn credentials not configured' },
-        { status: 500 }
+        { error: 'LinkedIn is not connected. Reconnect through OAuth before publishing.' },
+        { status: 401 }
       );
     }
+    const { accessToken, providerUserId } = auth;
+    const personUrn = providerUserId;
 
     // First, upload the media if provided (image or video)
     let imageUrn: string | null = null;

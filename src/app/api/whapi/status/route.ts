@@ -31,15 +31,23 @@ export async function GET() {
 
     const data = await res.json().catch(() => ({})) as {
       status?: { text?: string; code?: number };
-      user?: { phone?: string; name?: string; pushname?: string; id?: string };
+      user?: { id?: string | number; phone?: string; name?: string; pushname?: string } | null;
       channel_id?: string;
       uptime?: number;
     };
 
     const statusText = data.status?.text || 'UNKNOWN';
-    // Whapi channel considered connected when status is not ERROR/QR-related.
-    // Actual connected states vary; we treat any 200 with user phone as connected.
-    const isConnected = !!data.user?.phone || statusText === 'AUTH' || statusText === 'LAUNCH' || statusText === 'INIT';
+    // Connected means a WhatsApp ACCOUNT is linked to this channel.
+    //
+    // LAUNCH and INIT are pre-login states: /health reports them together with
+    // user:null on a channel that is not paired yet. Counting them as
+    // "connected" made this endpoint report a usable number for a channel
+    // that could not send anything, to whichever user happened to call it.
+    // user.phone is only ever present once pairing has succeeded.
+    // See probeChannel in whatsapp-service.ts: this gateway returns
+    // user:{id:…} with NO phone field once a device is linked, and labels the
+    // paired state LAUNCH rather than AUTH. Object presence is the discriminator.
+    const isConnected = !!data.user?.id || !!data.user?.phone;
 
     if (!isConnected) {
       return NextResponse.json({

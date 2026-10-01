@@ -4,9 +4,9 @@ import {
   getValidAccessToken,
   setTokenCookies,
   createBlankDesign,
-  savePendingDesign,
   CanvaError,
 } from '@/lib/canva';
+import { savePendingDesign } from '@/lib/canva-handoffs';
 import { requireApiSession } from '@/lib/auth/api';
 
 const MIN_DIM = 40;
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const design = await createBlankDesign(accessToken, { width: w, height: h }, String(title || 'SocialPulse design').slice(0, 255));
 
     const correlationState = randomBytes(16).toString('hex');
-    savePendingDesign(correlationState, design.id);
+    await savePendingDesign(session.userId, correlationState, design.id);
 
     // Append as a proper query param (edit URLs may already carry their own
     // query string) so Canva echoes it back in the return JWT.

@@ -1,13 +1,18 @@
 import 'server-only';
-import { loadPosts, updatePost } from '@/lib/post-store';
+import { listAllPosts, updatePostById } from '@/lib/post-store';
 import type { PostRecord } from '@/lib/posts';
 
-// Global, not per-user: scheduled-posts.json has no userId field at all
-// (SocialPulse is single-tenant for content the same way it is for
-// platform connections — see connections.ts) — every post belongs to the
-// tool, not to a specific account. A "user" column here would be fabricated.
+// Cross-user BY DESIGN: this module backs the Superadmin publishing console,
+// which is the one surface allowed to see every user's post at once. Each
+// route that calls it is gated by requireApiSuperadmin(). Regular users never
+// reach this code — they go through listUserPosts() in post-store.ts, which
+// filters on their own user id.
 export interface PublishingItem {
   id: string;
+  // Null for rows imported from the pre-ownership scheduled-posts.json: those
+  // have no provable owner. Surfaced as "Legacy / unassigned" in the UI rather
+  // than being silently attributed to somebody.
+  userId: string | null;
   contentPreview: string;
   platforms: string[];
   failedPlatforms: string[] | null;
@@ -16,9 +21,10 @@ export interface PublishingItem {
   updatedAt: string | null;
 }
 
-function toItem(p: PostRecord): PublishingItem {
+function toItem(p: PostRecord & { userId: string | null }): PublishingItem {
   return {
     id: p.id,
+    userId: p.userId,
     contentPreview: (p.content || '').split('\n')[0].slice(0, 120),
     platforms: p.platforms || [],
     failedPlatforms: (p.failedPlatforms as string[] | undefined) || null,
@@ -35,8 +41,8 @@ export interface PublishingCounts {
   draft: number;
 }
 
-export function getPublishingCounts(): PublishingCounts {
-  const posts = loadPosts();
+export async function getPublishingCounts(): Promise<PublishingCounts> {
+  const posts = await listAllPosts();
   return {
     scheduled: posts.filter(p => p.status === 'pending' || p.status === 'scheduled').length,
     published: posts.filter(p => p.status === 'published').length,
@@ -45,8 +51,8 @@ export function getPublishingCounts(): PublishingCounts {
   };
 }
 
-export function listPublishing(params: { status?: 'scheduled' | 'published' | 'failed'; platform?: string; limit: number }): PublishingItem[] {
-  let posts = loadPosts();
+export async function listPublishing(params: { status?: 'scheduled' | 'published' | 'failed'; platform?: string; limit: number }): Promise<PublishingItem[]> {
+  let posts = (await listAllPosts()) as (PostRecord & { userId: string | null })[];
   if (params.status === 'scheduled') posts = posts.filter(p => p.status === 'pending' || p.status === 'scheduled');
   else if (params.status) posts = posts.filter(p => p.status === params.status);
   if (params.platform) posts = posts.filter(p => (p.platforms || []).includes(params.platform!));
@@ -61,16 +67,16 @@ export function listPublishing(params: { status?: 'scheduled' | 'published' | 'f
 // are deliberately scoped to the user-facing pending/scheduled flow and
 // reject a 'failed' status (see their own guards). These are narrow,
 // Superadmin-only transitions instead.
-export function retryFailedPost(id: string): PostRecord {
-  return updatePost(id, (post) => {
+export async function retryFailedPost(id: string): Promise<PostRecord & { userId: string | null }> {
+  return updatePostById(id, (post) => {
     if (post.status !== 'failed') throw new Error('Only a failed post can be retried.');
     const now = new Date().toISOString();
     return { ...post, status: 'pending', scheduledAt: new Date(Date.now() + 2 * 60 * 1000).toISOString(), failedPlatforms: undefined, updatedAt: now };
   });
 }
 
-export function moveFailedPostToDraft(id: string): PostRecord {
-  return updatePost(id, (post) => {
+export async function moveFailedPostToDraft(id: string): Promise<PostRecord & { userId: string | null }> {
+  return updatePostById(id, (post) => {
     if (post.status !== 'failed') throw new Error('Only a failed post can be moved to draft.');
     const now = new Date().toISOString();
     return { ...post, status: 'draft', scheduledAt: null, failedPlatforms: undefined, previousScheduledAt: post.scheduledAt || post.previousScheduledAt || null, updatedAt: now };

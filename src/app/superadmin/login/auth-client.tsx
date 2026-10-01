@@ -1,5 +1,6 @@
 'use client';
 
+import { clearAllUserState } from '@/lib/client-identity';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import SuperadminOtpPanel from '../otp-panel';
@@ -215,6 +216,9 @@ export default function SuperadminLoginClient() {
     const res = await fetch('/api/superadmin/auth/check');
     if (!res.ok) {
       await fetch('/api/auth/logout', { method: 'POST' });
+      // Rejecting a non-admin account must also drop whatever client state the
+      // previous session left behind, so the next attempt starts clean.
+      await clearAllUserState();
       setError('This account is not a Superadmin.');
       pulse('error');
       setFocusedField(null);

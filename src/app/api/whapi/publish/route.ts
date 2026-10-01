@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhapiConfig, whapiFetch, whapiError, sanitizeForLog } from '../client';
-import { requireApiSession } from '@/lib/auth/api';
+import { requireApiActor } from '@/lib/internal-auth';
 import { logSystem } from '@/lib/system-log';
 import { prepareWhapiMedia } from '@/lib/whapi-media';
 
@@ -23,14 +23,25 @@ function err(code: string, message: string, status: number, attemptId?: string) 
 }
 
 // Validate groupId shape: Whapi group IDs are like 120363...@g.us or similar
-function isValidGroupId(id: string): boolean {
+/**
+ * Whether this id is something WhatsApp can be sent to.
+ *
+ * Groups are `@g.us`, direct chats are `@s.whatsapp.net`, and newer accounts use
+ * `@lid`. This used to accept ONLY `@g.us`, while /api/whapi/destinations
+ * happily listed chats as selectable targets — so picking a chat could never
+ * succeed, and the 400 it produced was reported as "Community not found",
+ * naming something the user had not even selected.
+ */
+function isSendableTarget(id: string): boolean {
   if (!id || typeof id !== 'string') return false;
   const trimmed = id.trim();
   if (trimmed.length < 10 || trimmed.length > 40) return false;
-  // Must end with @g.us for groups, or @s.whatsapp.net for contacts — we only allow groups
-  if (!trimmed.includes('@')) return false;
-  // Basic pattern: digits/hyphen + @g.us
-  return /@g\.us$/.test(trimmed) || trimmed.includes('@g.us');
+  return /@(g\.us|s\.whatsapp\.net|lid)$/.test(trimmed);
+}
+
+/** True for a group id, which is the only kind the /groups listing can verify. */
+function isGroupTarget(id: string): boolean {
+  return /@g\.us$/.test(id.trim());
 }
 
 // Whapi media rules (per their docs): a data: URL must be split into RAW
@@ -86,8 +97,11 @@ async function validateGroupExists(groupId: string, baseUrl: string, token: stri
 }
 
 export async function POST(request: NextRequest) {
-  const session = await requireApiSession();
-  if (session instanceof NextResponse) return session;
+  // Accepts EITHER a signed-in browser or the publish worker's signed
+  // assertion; a session alone would 401 the cookie-less worker call and
+  // silently fail every scheduled post.
+  const actor = await requireApiActor(request);
+  if (actor instanceof NextResponse) return actor;
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -119,14 +133,28 @@ export async function POST(request: NextRequest) {
     return err('WHAPI_GROUP_NOT_FOUND', 'A valid groupId is required.', 400, attempt);
   }
   const cleanGroupId = groupId.trim();
-  if (!isValidGroupId(cleanGroupId)) {
-    return err('WHAPI_GROUP_NOT_FOUND', 'Invalid group ID format. Must be a group like 120363...@g.us', 400, attempt);
+  if (!isSendableTarget(cleanGroupId)) {
+    return err(
+      'WHAPI_GROUP_NOT_FOUND',
+      'That WhatsApp destination is not a valid chat or group. Refresh the destination list and pick another.',
+      400,
+      attempt,
+    );
   }
 
-  // Validate group exists in fetched groups (existing-group only)
-  const validation = await validateGroupExists(cleanGroupId, config.baseUrl, config.token);
-  if (!validation.valid) {
-    return err('WHAPI_GROUP_NOT_FOUND', validation.error || 'Group not found in connected channel.', 404, attempt);
+  // Group ids are verified against the provider's own listing. Chat ids
+  // (@s.whatsapp.net / @lid) are not in /groups, so the check is skipped for
+  // them rather than failing a perfectly valid destination.
+  if (isGroupTarget(cleanGroupId)) {
+    const validation = await validateGroupExists(cleanGroupId, config.baseUrl, config.token);
+    if (!validation.valid) {
+      return err(
+        'WHAPI_GROUP_NOT_FOUND',
+        validation.error || 'That WhatsApp group is no longer available to this number. Refresh the destination list and pick another.',
+        404,
+        attempt,
+      );
+    }
   }
 
   const caption = typeof text === 'string' ? text.trim() : '';
@@ -165,7 +193,7 @@ export async function POST(request: NextRequest) {
         return err(code, mapped.message, status, attempt);
       }
       const data = await res.json().catch(() => ({}));
-      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: session.userId, platform: 'whatsapp', resourceId: groupId, message: 'Message sent to WhatsApp group', requestId: attempt });
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: actor.userId, platform: 'whatsapp', resourceId: groupId, message: 'Message sent to WhatsApp group', requestId: attempt });
       return NextResponse.json({ success: true, message: 'Message sent to WhatsApp group.', attemptId: attempt, data });
     }
 
@@ -181,7 +209,7 @@ export async function POST(request: NextRequest) {
     // https URL instead. Absolute https URLs pass through untouched.
     let mediaValue: string;
     try {
-      mediaValue = await prepareWhapiMedia(url);
+      mediaValue = await prepareWhapiMedia(url, { baseUrl: config.baseUrl, token: config.token });
     } catch (e) {
       return err('WHAPI_UNSUPPORTED_MEDIA', e instanceof Error ? e.message : 'This media cannot be published to WhatsApp.', 400, attempt);
     }
@@ -211,7 +239,7 @@ export async function POST(request: NextRequest) {
         return err(code, mapped.message, status, attempt);
       }
       const data = await res.json().catch(() => ({}));
-      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: session.userId, platform: 'whatsapp', resourceId: groupId, message: 'Document sent to WhatsApp group', requestId: attempt });
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: actor.userId, platform: 'whatsapp', resourceId: groupId, message: 'Document sent to WhatsApp group', requestId: attempt });
       return NextResponse.json({ success: true, message: 'Document sent to WhatsApp group.', attemptId: attempt, data });
     }
 
@@ -235,7 +263,7 @@ export async function POST(request: NextRequest) {
         return err(code, mapped.message, status, attempt);
       }
       const data = await res.json().catch(() => ({}));
-      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: session.userId, platform: 'whatsapp', resourceId: groupId, message: 'Video sent to WhatsApp group', requestId: attempt });
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: actor.userId, platform: 'whatsapp', resourceId: groupId, message: 'Video sent to WhatsApp group', requestId: attempt });
       return NextResponse.json({ success: true, message: 'Video sent to WhatsApp group.', attemptId: attempt, data });
     }
 
@@ -262,11 +290,11 @@ export async function POST(request: NextRequest) {
       return err(code, mapped.message, status, attempt);
     }
     const data = await res.json().catch(() => ({}));
-    logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: session.userId, platform: 'whatsapp', resourceId: groupId, message: 'Image sent to WhatsApp group', requestId: attempt });
+    logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: actor.userId, platform: 'whatsapp', resourceId: groupId, message: 'Image sent to WhatsApp group', requestId: attempt });
     return NextResponse.json({ success: true, message: 'Image sent to WhatsApp group.', attemptId: attempt, data });
   } catch (e) {
     console.error('[whapi/publish] network failure:', e instanceof Error ? e.message : e);
-    logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', userId: session.userId, platform: 'whatsapp', resourceId: groupId, message: e instanceof Error ? e.message : 'Network error sending to Whapi.', requestId: attempt });
+    logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', userId: actor.userId, platform: 'whatsapp', resourceId: groupId, message: e instanceof Error ? e.message : 'Network error sending to Whapi.', requestId: attempt });
     return err('WHAPI_PUBLISH_FAILED', 'Network error sending to Whapi.', 502, attempt);
   }
 }

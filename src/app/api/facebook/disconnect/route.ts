@@ -1,66 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
 import { deleteFacebookAuth } from '../vault';
 import { requireApiSession } from '@/lib/auth/api';
+import { scrubUserPostAccounts } from '@/lib/post-store';
 import { logSystem } from '@/lib/system-log';
 
-const POSTS_FILE = join(process.cwd(), 'scheduled-posts.json');
-
-interface StoredAccount {
-  platform?: string;
-  accessToken?: string;
-  userId?: string;
-  [key: string]: unknown;
-}
-
-interface StoredPost {
-  accounts?: StoredAccount[];
-  [key: string]: unknown;
-}
-
-// POST /api/facebook/disconnect { platform, userId? }
-// Removes server-held credentials so a disconnected Page can never publish
-// again: deletes the user token + Page tokens from the vault and scrubs
-// credential copies stored inside scheduled posts.
+// POST /api/facebook/disconnect
+// Removes server-held credentials so a disconnected Page can never publish again:
+//   - deletes THIS user's Facebook connection (user + Page tokens)
+//   - scrubs credential copies out of THIS user's scheduled posts
+//
+// The provider userId in the body only narrows the scrub within the caller's
+// own posts. It no longer selects which stored credentials get deleted — that
+// was the bug: any authenticated user could pass someone else's id and
+// disconnect them, and omitting it entirely wiped the whole vault
+// system-wide. The old implementation also rewrote the entire global
+// scheduled-posts.json as a side effect.
 export async function POST(request: NextRequest) {
   const session = await requireApiSession();
   if (session instanceof NextResponse) return session;
   try {
-    const { platform, userId } = await request.json();
+    const body = await request.json().catch(() => ({}) as Record<string, unknown>);
+    const platform = body.platform;
+    const providerUserId = typeof body.userId === 'string' && body.userId ? body.userId : null;
 
     if (platform !== 'facebook') {
       return NextResponse.json(
         { success: false, code: 'UNSUPPORTED_PLATFORM', message: 'Only Facebook disconnect is supported.' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    deleteFacebookAuth(userId);
+    await deleteFacebookAuth(session.userId);
 
-    let scrubbedPosts = 0;
-    if (existsSync(POSTS_FILE)) {
-      try {
-        const posts = JSON.parse(readFileSync(POSTS_FILE, 'utf8')) as StoredPost[];
-        for (const post of posts) {
-          if (!Array.isArray(post.accounts)) continue;
-          let changed = false;
-          for (const account of post.accounts) {
-            if (account.platform !== 'facebook') continue;
-            if (userId && account.userId && account.userId !== userId) continue;
-            if ('accessToken' in account || 'userId' in account) {
-              delete account.accessToken;
-              delete account.userId;
-              changed = true;
-            }
-          }
-          if (changed) scrubbedPosts++;
-        }
-        writeFileSync(POSTS_FILE, JSON.stringify(posts, null, 2));
-      } catch (err) {
-        console.error('[facebook/disconnect] failed to scrub scheduled posts:', err instanceof Error ? err.message : err);
-      }
-    }
+    const scrubbedPosts = await scrubUserPostAccounts(session.userId, 'facebook', providerUserId);
 
     logSystem({ level: 'INFO', category: 'PLATFORM', event: 'FACEBOOK_DISCONNECTED', userId: session.userId, platform: 'facebook', message: 'Facebook disconnected' });
     return NextResponse.json({ success: true, scrubbedPosts });
@@ -68,7 +40,7 @@ export async function POST(request: NextRequest) {
     console.error('[facebook/disconnect] error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { success: false, code: 'DISCONNECT_FAILED', message: 'Failed to disconnect Facebook.' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

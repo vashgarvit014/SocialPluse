@@ -1,5 +1,7 @@
 import { startReturn } from '@/lib/oauth-return';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/auth/api';
+import { saveOAuthState } from '@/lib/oauth-state';
 
 const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID || '';
 const FACEBOOK_REDIRECT_URI = process.env.FACEBOOK_REDIRECT_URI || 'http://localhost:3001/api/facebook/callback';
@@ -24,6 +26,11 @@ const FACEBOOK_REDIRECT_URI = process.env.FACEBOOK_REDIRECT_URI || 'http://local
 const FACEBOOK_LOGIN_CONFIG_ID = process.env.FACEBOOK_LOGIN_CONFIG_ID || '';
 
 export async function GET(request: NextRequest) {
+  // Starting a connection requires being signed in: the userId recorded here
+  // is what the callback binds the Page tokens to.
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
+
   if (!FACEBOOK_APP_ID) {
     return NextResponse.json(
       { error: { code: 'FACEBOOK_NOT_CONFIGURED', message: 'Facebook App ID is not configured. Add FACEBOOK_APP_ID to .env.local.' } },
@@ -36,7 +43,9 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
-  const state = Math.random().toString(36).substring(2) + Date.now().toString(36);
+  // crypto CSPRNG (see oauth-state.ts) - was Math.random() + Date.now(),
+  // which is guessable and made the state parameter forgeable.
+  const state = await saveOAuthState('facebook', session.userId);
   const authUrl = `https://www.facebook.com/v21.0/dialog/oauth?` +
     `client_id=${FACEBOOK_APP_ID}&` +
     `redirect_uri=${encodeURIComponent(FACEBOOK_REDIRECT_URI)}&` +

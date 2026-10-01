@@ -5,6 +5,8 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { spawn } from 'child_process';
+import { saveMediaAsset } from '@/lib/media-assets';
+import { logSystem } from '@/lib/system-log';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -172,10 +174,35 @@ export async function POST(request: NextRequest) {
     // Cleanup
     await Promise.all([unlink(inVideo).catch(() => {}), unlink(inLogo).catch(() => {}), unlink(outVideo).catch(() => {})]);
 
+    // A logo-burned variant is a real, persistent artifact of the user's work,
+    // so it is filed as a user-owned MediaAsset (source BRANDED) rather than
+    // existing only as a base64 blob in the response. It lands in the Asset
+    // Gallery with the same 30-day window as every other asset.
+    let asset: { id: string; filename: string } | null = null;
+    try {
+      const saved = await saveMediaAsset({
+        userId: session.userId,
+        filename: `branded-${id}.mp4`,
+        mime: 'video/mp4',
+        bytes: outBuf,
+        source: 'BRANDED',
+      });
+      asset = { id: saved.id, filename: saved.filename };
+      logSystem({
+        level: 'SUCCESS', category: 'MEDIA', event: 'MEDIA_CREATED', userId: session.userId, resourceId: saved.id,
+        message: `Branded video saved to Asset Gallery (${saved.filename})`,
+        metadata: { filename: saved.filename, size: saved.size, source: 'BRANDED', expiresAt: saved.expiresAt },
+      });
+    } catch (e) {
+      // Never lose the render because the gallery write failed — the caller
+      // still gets the video inline.
+      console.error('[ffmpeg/logo] could not persist branded media:', e instanceof Error ? e.message : e);
+    }
+
     const outBase64 = outBuf.toString('base64');
     const dataUrl = `data:video/mp4;base64,${outBase64}`;
     console.log(`[ffmpeg] Done ${Math.round(outBuf.length/1024)}KB`);
-    return NextResponse.json({ success: true, videoUrl: dataUrl, size: outBuf.length });
+    return NextResponse.json({ success: true, videoUrl: dataUrl, size: outBuf.length, asset });
   } catch (err) {
     console.error('[ffmpeg/logo] error', err);
     return NextResponse.json({ error: err instanceof Error ? err.message : 'ffmpeg failed' }, { status: 500 });

@@ -3,7 +3,7 @@ import { prepareInstagramMedia } from '@/lib/instagram-media';
 import { publishInstagramTrialReel } from '@/lib/instagram-trial';
 import { NextRequest, NextResponse } from 'next/server';
 import { getInstagramAccount } from '../../facebook/vault';
-import { requireApiSession } from '@/lib/auth/api';
+import { requireApiActor } from '@/lib/internal-auth';
 import { logSystem } from '@/lib/system-log';
 
 // Instagram Business/Creator publishing goes through graph.facebook.com using
@@ -76,8 +76,11 @@ async function waitForContainer(id: string, token: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await requireApiSession();
-  if (session instanceof NextResponse) return session;
+  // Accepts EITHER a signed-in browser or the publish worker's signed
+  // assertion. A session alone would 401 the worker (it has no cookie) and
+  // silently fail every scheduled post.
+  const actor = await requireApiActor(request);
+  if (actor instanceof NextResponse) return actor;
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -85,7 +88,9 @@ export async function POST(request: NextRequest) {
     return err('INSTAGRAM_PUBLISH_FAILED', 'Invalid request body.', 400);
   }
 
-  const { content, imageUrl, videoUrl, mediaUrl, mediaType, mediaUrls, mediaList, isCarousel, trialReel, collaborator, userId, pageId, attemptId } = body as {
+  // userId is the PROVIDER's Meta profile id and is accepted but unused for
+// credential selection (see appUserId) - that was the cross-user token leak.
+const { content, imageUrl, videoUrl, mediaUrl, mediaType, mediaUrls, mediaList, isCarousel, trialReel, collaborator, pageId, attemptId } = body as {
     content?: string;
     imageUrl?: string;
     videoUrl?: string;
@@ -96,22 +101,21 @@ export async function POST(request: NextRequest) {
     isCarousel?: boolean;
     trialReel?: boolean;
     collaborator?: string;
-    userId?: string;
     pageId?: string;
     attemptId?: string;
   };
 
-  if (!userId) {
-    return err('INSTAGRAM_NOT_CONNECTED', 'Instagram is not connected. Connect Facebook (with a linked Instagram Business account) before publishing.', 401, typeof attemptId === 'string' ? attemptId : undefined);
-  }
+  // Whose credentials to publish with: the session user, unless the scheduler
+  // is acting for the post's recorded owner via a signed internal assertion.
+  const appUserId = actor.userId;
 
   const attempt = typeof attemptId === 'string' && attemptId ? attemptId : `att_${Date.now().toString(36)}`;
   if (typeof attemptId === 'string' && attemptId && isDuplicateAttempt(attemptId)) {
-    console.warn(`[instagram/publish] duplicate attempt ignored: ${attemptId} (user ${userId})`);
+    console.warn(`[instagram/publish] duplicate attempt ignored: ${attemptId} (user ${appUserId})`);
     return err('DUPLICATE_PUBLISH_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attemptId);
   }
 
-  const ig = getInstagramAccount(userId, typeof pageId === 'string' ? pageId : undefined);
+  const ig = await getInstagramAccount(appUserId, typeof pageId === 'string' ? pageId : undefined);
   if (!ig) {
     return err('INSTAGRAM_NOT_CONNECTED', 'No Instagram Business account is linked to the connected Facebook Page. Link one in Meta Business Suite, then reconnect.', 401, attempt);
   }
@@ -166,10 +170,10 @@ export async function POST(request: NextRequest) {
       attemptId: attempt,
     });
     if (!trial.ok) {
-      logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', userId: typeof userId === 'string' ? userId : undefined, platform: 'instagram', message: `${trial.code}: ${trial.message}`, requestId: attempt });
+      logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', userId: appUserId, platform: 'instagram', message: `${trial.code}: ${trial.message}`, requestId: attempt });
       return err(trial.code, trial.message, trial.status, attempt);
     }
-    logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'instagram', resourceId: trial.postId, message: trial.mock ? 'Trial Reel simulated (mock mode)' : 'Trial Reel published to Instagram', requestId: attempt });
+    logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: appUserId, platform: 'instagram', resourceId: trial.postId, message: trial.mock ? 'Trial Reel simulated (mock mode)' : 'Trial Reel published to Instagram', requestId: attempt });
     return NextResponse.json({ success: true, postId: trial.postId, attemptId: attempt, mock: trial.mock === true, message: trial.message });
   }
   if (wantsCarousel) {
@@ -222,7 +226,7 @@ export async function POST(request: NextRequest) {
         return err(code, message, publishRes.status === 429 ? 429 : 502, attempt);
       }
       const publishData = await publishRes.json();
-      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'instagram', resourceId: publishData.id, message: `Carousel published to Instagram (${slides.length} slides)`, requestId: attempt });
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: appUserId, platform: 'instagram', resourceId: publishData.id, message: `Carousel published to Instagram (${slides.length} slides)`, requestId: attempt });
       return NextResponse.json({ success: true, postId: publishData.id, attemptId: attempt, message: `Carousel published to Instagram (${slides.length} slides)!` });
     } catch (e) {
       console.error(`[instagram/publish] carousel network failure (attempt ${attempt}):`, e instanceof Error ? e.message : e);
@@ -275,11 +279,11 @@ export async function POST(request: NextRequest) {
       return err(code, message, publishRes.status === 429 ? 429 : 502, attempt);
     }
     const publishData = await publishRes.json();
-    logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'instagram', resourceId: publishData.id, message: 'Post published to Instagram', requestId: attempt });
+    logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: appUserId, platform: 'instagram', resourceId: publishData.id, message: 'Post published to Instagram', requestId: attempt });
     return NextResponse.json({ success: true, postId: publishData.id, attemptId: attempt, message: 'Post published to Instagram!' });
   } catch (e) {
     console.error(`[instagram/publish] network failure (attempt ${attempt}):`, e instanceof Error ? e.message : e);
-    logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', userId: typeof userId === 'string' ? userId : undefined, platform: 'instagram', message: e instanceof Error ? e.message : 'Instagram publishing failed; no retry was attempted.', requestId: attempt });
+    logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', userId: appUserId, platform: 'instagram', message: e instanceof Error ? e.message : 'Instagram publishing failed; no retry was attempted.', requestId: attempt });
     return err('INSTAGRAM_PUBLISH_FAILED', e instanceof Error ? e.message : 'Instagram publishing failed; no retry was attempted.', 502, attempt);
   }
 }

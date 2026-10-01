@@ -148,6 +148,12 @@ async function migrate(client: PoolClient) {
     );
   `);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage_log(created_at)`);
+  // AI usage was global; now attributable per account so Superadmin can see
+  // who spent what. Nullable on purpose: rows written before this migration
+  // (and any row whose actor is not resolvable) stay NULL rather than being
+  // backfilled onto an arbitrary user.
+  await client.query(`ALTER TABLE ai_usage_log ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE SET NULL`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_usage_user ON ai_usage_log(user_id, created_at DESC)`);
 
   // Server-side workspace draft — one row per user, full pixels included.
   // localStorage caps at ~5MB so the client autosave strips images past 4MB
@@ -205,6 +211,261 @@ async function migrate(client: PoolClient) {
     );
   `);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_media_assets_user ON media_assets(user_id, created_at DESC)`);
+
+  // ---------------------------------------------------------------------
+  // Media retention + ownership hardening (multi-user isolation work)
+  // ---------------------------------------------------------------------
+  // user_id stays NULLABLE on purpose. It is not a mistake and it must not be
+  // "fixed" with a NOT NULL constraint: rows written before ownership existed
+  // have no owner and we cannot prove who created them. Forcing a value here
+  // would hand one random user's private media to another. Instead legacy
+  // rows keep user_id = NULL and every user-facing query filters on
+  // `user_id = $1`, so they are invisible to everyone except Superadmin's
+  // explicit cross-user view.
+  //
+  // source CHECK is widened rather than replaced: 'AI'/'CANVA'/'SESSION' are
+  // the values older rows were written with. Dropping them would make those
+  // rows un-writable and would fail the ALTER against existing data.
+  await client.query(`ALTER TABLE media_assets DROP CONSTRAINT IF EXISTS media_assets_source_check`);
+  await client.query(`
+    ALTER TABLE media_assets ADD CONSTRAINT media_assets_source_check CHECK (source IN (
+      'UPLOAD', 'AI_GENERATED', 'CANVA_IMPORT', 'BRANDED', 'CAROUSEL', 'OTHER',
+      'AI', 'CANVA', 'SESSION'
+    ))
+  `);
+
+  // original_filename keeps the user's own name; `filename` remains the
+  // sanitized display name. They differ once a rename is applied.
+  await client.query(`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS original_filename TEXT`);
+  await client.query(`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS width INTEGER`);
+  await client.query(`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS height INTEGER`);
+  await client.query(`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS duration_ms INTEGER`);
+  await client.query(`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS alt_text TEXT`);
+  await client.query(`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS thumbnail_path TEXT`);
+  // Soft delete + retention. deleted_at IS NULL is "still owned by the user";
+  // expires_at <= now is "past its 30-day window" and hides it from the
+  // gallery without touching the file (the cleanup job owns file removal).
+  await client.query(`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`);
+  await client.query(`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
+  await client.query(`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS deleted_reason TEXT`);
+  // storage_path used to hold a bare filename in a flat shared directory. It
+  // now holds a user-namespaced relative key (media/{userId}/{bucket}/...).
+  // Existing rows keep their old value until they are rewritten; the read
+  // path resolves both shapes (see media-assets.ts#resolveWithinRoot).
+  await client.query(`UPDATE media_assets SET original_filename = filename WHERE original_filename IS NULL`);
+  // Backfill the retention window for pre-existing rows from their own
+  // created_at so they expire 30 days after they were made, not 30 days after
+  // this migration happened to run.
+  await client.query(`
+    UPDATE media_assets SET expires_at = created_at + INTERVAL '30 days'
+    WHERE expires_at IS NULL AND created_at IS NOT NULL
+  `);
+  await client.query(`ALTER TABLE media_assets ALTER COLUMN expires_at SET NOT NULL`);
+  // The Asset Gallery reads (user_id, active) ordered by recency on every
+  // load, and the cleanup job scans (expires_at) where deleted_at IS NULL.
+  // Neither composite was covered by the single-column index above.
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_media_assets_active ON media_assets(user_id, created_at DESC) WHERE deleted_at IS NULL`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_media_assets_expiry ON media_assets(expires_at) WHERE deleted_at IS NULL`);
+
+  // Scheduled posts / drafts / published history. This replaces the global
+  // scheduled-posts.json, which had no owner field at all and was therefore
+  // readable and writable by every authenticated user. The full record is
+  // kept in `payload` (JSONB) rather than exploded into columns because
+  // PostRecord is a wide, actively-evolving editor snapshot — the columns
+  // that are queried or filtered on (owner, status, time) are promoted to
+  // real indexed columns.
+  // id is TEXT, not UUID, on purpose: the pre-ownership JSON file contains
+  // Mongo-style ObjectId strings (e.g. "mt6swwrmj73u") alongside UUIDs, and a
+  // UUID column made the legacy import abort on the first non-UUID row — which
+  // broke draft creation for EVERY user, not just the import. TEXT preserves
+  // every existing id verbatim. New posts still use randomUUID(), which is a
+  // valid TEXT value.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS scheduled_posts (
+      id TEXT PRIMARY KEY,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'draft',
+      scheduled_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL,
+      payload JSONB NOT NULL
+    )
+  `);
+  // Drafts + Scheduler list views: WHERE user_id = $1 ORDER BY created_at.
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_posts_user ON scheduled_posts(user_id, created_at DESC)`);
+  // The publish worker claims due work with status = 'pending' AND
+  // scheduled_at <= now across ALL users in one query — without this it
+  // table-scans every user's posts on each tick.
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_posts_due ON scheduled_posts(scheduled_at) WHERE status = 'pending'`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_posts_user_status ON scheduled_posts(user_id, status)`);
+
+  // Platform OAuth credentials, one row per (app user, provider account).
+  // Replaces facebook-tokens.json / linkedin-tokens.json, which were keyed by
+  // the PROVIDER's user id and had no app-user association — so any user
+  // could reach any other user's stored token, and the "get any" fallback
+  // functions handed out the newest entry to whoever asked.
+  //
+  // `credentials` holds the access/refresh tokens. It never leaves the server
+  // on a user-facing route (the browser only receives display metadata), and
+  // must never be written to any log.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS platform_connections (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      platform TEXT NOT NULL CHECK (platform IN ('facebook', 'instagram', 'linkedin', 'canva')),
+      provider_user_id TEXT NOT NULL,
+      display_name TEXT,
+      email TEXT,
+      credentials JSONB NOT NULL DEFAULT '{}'::jsonb,
+      meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL,
+      disconnected_at TIMESTAMPTZ
+    )
+  `);
+  // One provider account is connected to exactly one SocialPulse user.
+  // Without this a second user could re-run OAuth for the same LinkedIn
+  // member id and hijack the first user's connection row.
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_connections_unique ON platform_connections(platform, provider_user_id) WHERE disconnected_at IS NULL`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_platform_connections_user ON platform_connections(user_id, platform) WHERE disconnected_at IS NULL`);
+
+  // Short-lived, user-bound OAuth handshake state (PKCE verifier, pending
+  // design, ready design). Replaces canva-sessions.json, whose maps were
+  // keyed by state/readyId with no owner — a readyId obtained from a shared
+  // browser could pull another user's exported design.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS oauth_handshakes (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      platform TEXT NOT NULL,
+      state_key TEXT NOT NULL UNIQUE,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_oauth_handshakes_expiry ON oauth_handshakes(expires_at)`);
+
+  // One-shot data migrations that cannot be expressed as DDL (e.g. importing
+  // the pre-ownership scheduled-posts.json). DDL is idempotent so it re-runs
+  // harmlessly on every boot; a one-shot import is NOT, so it records its own
+  // completion here instead of inferring "did I already run?" from row counts
+  // — a user who legitimately has zero posts must not cause a re-import.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS data_migrations (
+      key TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL,
+      details JSONB
+    )
+  `);
+
+  // ===================================================================
+  // WhatsApp (Whapi) connections — one row per USER, bound to the exact
+  // provider channel and QR session that user scanned.
+  // ===================================================================
+  // Before this table, WhatsApp connection state was derived entirely from the
+  // shared WHAPI_API_TOKEN env channel: getWhatsAppStatus() probed that one
+  // channel's /health and reported CONNECTED to every signed-in user, and a
+  // 409 from /users/login/rowdata (meaning "already authenticated, no QR
+  // needed") was returned to the caller as CONNECTED. So clicking "Connect"
+  // flipped straight to CONNECTED without any scan.
+  //
+  // channel_token is server-only: it authenticates as that user's channel to
+  // Whapi. It is never returned by a user-facing route and never logged.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS whatsapp_connections (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL DEFAULT 'WHAPI' CHECK (provider = 'WHAPI'),
+      provider_channel_id TEXT,
+      provider_session_id TEXT,
+      channel_token TEXT,
+      status TEXT NOT NULL DEFAULT 'DISCONNECTED' CHECK (status IN (
+        'DISCONNECTED', 'CREATING_QR', 'WAITING_FOR_SCAN', 'CONNECTED',
+        'EXPIRED', 'ERROR', 'CANCELLED'
+      )),
+      qr_fingerprint TEXT,
+      qr_created_at TIMESTAMPTZ,
+      qr_expires_at TIMESTAMPTZ,
+      phone_masked TEXT,
+      account_name TEXT,
+      last_polled_at TIMESTAMPTZ,
+      confirmed_at TIMESTAMPTZ,
+      connected_at TIMESTAMPTZ,
+      disconnected_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    )
+  `);
+  // At most one live connection row per user — the status endpoint and the
+  // publish path both resolve "this user's channel" with a single lookup.
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_conn_user ON whatsapp_connections(user_id)`);
+  // Webhook correlation: resolve an inbound provider event to exactly one user.
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_wa_conn_channel ON whatsapp_connections(provider_channel_id) WHERE provider_channel_id IS NOT NULL`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_wa_conn_session ON whatsapp_connections(provider_session_id) WHERE provider_session_id IS NOT NULL`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_wa_conn_status ON whatsapp_connections(status, qr_expires_at)`);
+
+  // ===================================================================
+  // Content moderation
+  // ===================================================================
+  // Immutable audit trail. prompt_text is deliberately NOT a column: the brief
+  // is explicit that raw explicit prompts should not be retained. We keep a
+  // salted-free SHA-256 fingerprint so the same request can be recognised as a
+  // repeat without storing what was asked for.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS moderation_events (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      category TEXT NOT NULL,
+      decision TEXT NOT NULL CHECK (decision IN (
+        'ALLOW', 'BLOCK_NUDITY', 'BLOCK_EXPLICIT_SEXUAL', 'BLOCK_OTHER_SAFETY'
+      )),
+      action TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK (severity IN ('INFO', 'WARNING', 'HIGH', 'CRITICAL')),
+      method TEXT NOT NULL,
+      provider TEXT,
+      counts_as_violation BOOLEAN NOT NULL DEFAULT false,
+      violation_count_after INTEGER,
+      prompt_fingerprint TEXT,
+      safe_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_moderation_user ON moderation_events(user_id, created_at DESC)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_moderation_created ON moderation_events(created_at DESC)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_moderation_violations ON moderation_events(user_id, created_at DESC) WHERE counts_as_violation`);
+
+  // Denormalised escalation state on the user so the "is this account
+  // flagged" question is a single indexed read on the Superadmin users table
+  // rather than a scan over moderation_events.
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS moderation_violation_count INTEGER NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS moderation_flagged BOOLEAN NOT NULL DEFAULT false`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS moderation_flag_reason TEXT`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS moderation_flagged_at TIMESTAMPTZ`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS moderation_first_violation_at TIMESTAMPTZ`);
+  await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS moderation_last_violation_at TIMESTAMPTZ`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_users_moderation ON users(moderation_flagged, moderation_violation_count DESC)`);
+
+  // In-app notification queue for Superadmin. This is the notification SYSTEM;
+  // the Cloudflare tunnel in front of the app is only transport and plays no
+  // part in alerting.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS admin_notifications (
+      id UUID PRIMARY KEY,
+      type TEXT NOT NULL,
+      category TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK (severity IN ('INFO', 'WARNING', 'HIGH', 'CRITICAL')),
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      is_read BOOLEAN NOT NULL DEFAULT false,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL,
+      read_at TIMESTAMPTZ
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_notif_unread ON admin_notifications(is_read, created_at DESC)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_notif_user ON admin_notifications(user_id, created_at DESC)`);
 }
 
 // Runs once per process (not once per request) — every route module import
@@ -272,8 +533,52 @@ export interface OtpChallengeRow {
   max_attempts: number;
   resend_count: number;
   max_resends: number;
-  last_sent_at: string;
   verified_at: string | null;
+  last_sent_at: string;
   invalidated_at: string | null;
   created_at: string;
+}
+
+/**
+ * Runs `fn` inside a single transaction and returns its value.
+ *
+ * Needed wherever a read-modify-write must not interleave with a concurrent
+ * request for the same user — the moderation escalation is the motivating
+ * case: "read violation count, increment, maybe flag, maybe notify" is four
+ * separate effects that must all land or none of them, or two simultaneous
+ * violations can both read count=1 and both decide not to flag.
+ *
+ * `fn` receives a client whose `query` has the same signature as the exported
+ * one, so call sites read normally.
+ */
+export async function withTransaction<T>(fn: (client: TransactionClient) => Promise<T>): Promise<T> {
+  await ensureMigrated();
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn({
+      query: async <R = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<R[]> => {
+        const res = await client.query(text, params);
+        return res.rows as R[];
+      },
+      queryOne: async <R = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<R | null> => {
+        const res = await client.query(text, params);
+        return (res.rows[0] as R) ?? null;
+      },
+    });
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch { /* connection already broken; nothing to roll back */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export interface TransactionClient {
+  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
+  queryOne<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T | null>;
 }

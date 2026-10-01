@@ -1,6 +1,7 @@
-import { finishReturn, invalidReturnState } from '@/lib/oauth-return';
+import { finishReturn } from '@/lib/oauth-return';
 import { NextRequest } from 'next/server';
 import { storeLinkedInToken } from '../vault';
+import { consumeOAuthState } from '@/lib/oauth-state';
 import { logSystem } from '@/lib/system-log';
 
 const LINKEDIN_CLIENT_ID = process.env.LINKEDIN_CLIENT_ID || '';
@@ -15,10 +16,20 @@ const LINKEDIN_REDIRECT_URI = process.env.LINKEDIN_REDIRECT_URI || 'http://local
 const APP_ORIGIN = new URL(LINKEDIN_REDIRECT_URI).origin;
 
 export async function GET(request: NextRequest) {
-  if (invalidReturnState(request)) return finishReturn(request, new URL('/dashboard?error=state_mismatch', APP_ORIGIN));
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
+
+  // The state row is the ONLY thing binding this callback to a SocialPulse
+  // account, and consuming it is what proves the flow was started by that user.
+  // It replaces invalidReturnState(), which reported a missing return cookie
+  // as VALID and therefore skipped the check entirely on a direct hit.
+  const state = await consumeOAuthState('linkedin', searchParams.get('state'));
+  if (!state) {
+    logSystem({ level: 'WARN', category: 'PLATFORM', event: 'OAUTH_STATE_INVALID', platform: 'linkedin', message: 'LinkedIn callback rejected: unknown or expired state' });
+    return finishReturn(request, new URL('/dashboard?error=state_mismatch', APP_ORIGIN));
+  }
+  const appUserId = state.userId;
 
   if (error) {
     return finishReturn(request, new URL(`/dashboard?error=${error}`, APP_ORIGIN));
@@ -57,19 +68,24 @@ export async function GET(request: NextRequest) {
     }
 
     const profileData = await profileResponse.json();
-    const userId = profileData.sub || '';
+    // The PROVIDER's member id, stored alongside the app user who owns it.
+    const providerUserId = profileData.sub || '';
 
-    // Store the token server-side only. The browser receives the user id
-    // (no access token in URL, storage, or API responses).
-    storeLinkedInToken(userId, accessToken);
-    logSystem({ level: 'SUCCESS', category: 'PLATFORM', event: 'LINKEDIN_CONNECTED', platform: 'linkedin', message: 'LinkedIn account connected' });
+    // Store the token server-side only, bound to the user who started the flow
+    // (appUserId) — never to the provider id alone, which was how one user's
+    // connection became the default account for everyone.
+    await storeLinkedInToken(appUserId, providerUserId, accessToken, {
+      displayName: profileData.name || null,
+      email: profileData.email || null,
+    });
+    logSystem({ level: 'SUCCESS', category: 'PLATFORM', event: 'LINKEDIN_CONNECTED', userId: appUserId, platform: 'linkedin', message: 'LinkedIn account connected' });
 
     const params = new URLSearchParams({
       platform: 'linkedin',
       connected: 'true',
       name: profileData.name || '',
       email: profileData.email || '',
-      user_id: userId,
+      user_id: providerUserId,
     });
 
     return finishReturn(request, new URL(`/dashboard?${params.toString()}`, APP_ORIGIN));

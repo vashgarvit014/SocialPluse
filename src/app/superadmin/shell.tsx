@@ -1,9 +1,11 @@
 'use client';
 
+import { clearAllUserState } from '@/lib/client-identity';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { initials, avatarColor } from './ui';
+import NotificationBell from './notification-bell';
 
 // Icon paths + palette match the approved design reference (a Claude
 // workshop artifact the design was reviewed in) — reproduced here as plain
@@ -19,13 +21,14 @@ const ICONS: Record<string, string> = {
   auth: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9.5 12l2 2 3.5-3.5',
   ai: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z',
   audit: 'M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01',
+  moderation: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM12 8v4M12 16h.01',
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
 };
 
 type NavItem = { id: string; href: string; label: string; icon: string; badge?: number; badgeColor?: string };
 type NavGroup = { label: string; items: NavItem[] };
 
-function buildGroups(pendingUsers: number, healthIssues: number, failedPublishing: number): NavGroup[] {
+function buildGroups(pendingUsers: number, healthIssues: number, failedPublishing: number, flaggedUsers?: number): NavGroup[] {
   return [
     { label: 'OVERVIEW', items: [{ id: 'dashboard', href: '/superadmin', label: 'Dashboard', icon: 'dashboard' }] },
     { label: 'MANAGE', items: [
@@ -38,6 +41,7 @@ function buildGroups(pendingUsers: number, healthIssues: number, failedPublishin
       { id: 'publishing', href: '/superadmin/publishing', label: 'Publishing Monitor', icon: 'publishing', badge: failedPublishing || undefined, badgeColor: '#c0352c' },
     ] },
     { label: 'MONITORING', items: [
+      { id: 'moderation', href: '/superadmin/moderation', label: 'Moderation', icon: 'moderation', badge: flaggedUsers || undefined, badgeColor: '#c0352c' },
       { id: 'auth', href: '/superadmin/auth-activity', label: 'Auth Activity', icon: 'auth' },
       { id: 'ai', href: '/superadmin/ai-usage', label: 'AI & Usage', icon: 'ai' },
       { id: 'logs', href: '/superadmin/logs', label: 'Logs', icon: 'audit' },
@@ -80,8 +84,9 @@ function pageTitle(pathname: string): string {
   return 'Superadmin';
 }
 
-export default function SuperadminShell({ name, email, pendingUsers, healthIssues, failedPublishing, children }: {
-  name: string; email: string; pendingUsers: number; healthIssues: number; failedPublishing: number; children: React.ReactNode;
+export default function SuperadminShell({ name, email, pendingUsers, healthIssues, failedPublishing, flaggedUsers, unreadNotifications, children }: {
+  name: string; email: string; pendingUsers: number; healthIssues: number; failedPublishing: number;
+  flaggedUsers: number; unreadNotifications: number; children: React.ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -114,6 +119,9 @@ export default function SuperadminShell({ name, email, pendingUsers, healthIssue
   async function handleLogout() {
     setLoggingOut(true);
     await fetch('/api/auth/logout', { method: 'POST' });
+    // Clear every user-owned browser store, not just the server session. The
+    // theme preference (sp_superadmin_theme) is intentionally kept.
+    await clearAllUserState();
     router.push('/superadmin/login');
     router.refresh();
   }
@@ -121,8 +129,8 @@ export default function SuperadminShell({ name, email, pendingUsers, healthIssue
   const isMobile = vw < 760;
   const tablet = !isMobile && vw < 1100;
   const collapsed = !isMobile && tablet;
-  const groups = buildGroups(pendingUsers, healthIssues, failedPublishing);
-  const current = pathname.startsWith('/superadmin/users') ? 'users' : PATH_TO_ID[pathname] || '';
+  const groups = buildGroups(pendingUsers, healthIssues, failedPublishing, flaggedUsers);
+  const current = pathname.startsWith('/superadmin/moderation') ? 'moderation' : pathname.startsWith('/superadmin/users') ? 'users' : PATH_TO_ID[pathname] || '';
 
   return (
     <div data-superadmin data-theme={theme} style={{ minHeight: '100vh', display: 'flex', background: 'var(--bg)', color: 'var(--tx)', fontSize: 14 }}>
@@ -228,6 +236,7 @@ export default function SuperadminShell({ name, email, pendingUsers, healthIssue
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'currentColor' }} />
             Live
           </span>
+          <NotificationBell initialUnread={unreadNotifications} />
           <button onClick={() => router.refresh()} title="Reload data" style={{ width: 38, height: 38, borderRadius: 10, border: '1px solid var(--bd)', background: 'var(--sf)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></svg>
           </button>

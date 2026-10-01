@@ -6,10 +6,15 @@ export type AiUsageType = 'CONTENT' | 'IMAGE';
 
 // Fire-and-forget, same pattern as logAuthEvent — a lost usage row must
 // never fail or delay the actual generation request.
-export function recordAiUsage(params: { type: AiUsageType; provider: string; success: boolean; durationMs?: number }): void {
+//
+// userId makes the row attributable. The column was added nullable and is NOT
+// backfilled: usage recorded before ownership existed cannot be honestly
+// assigned to anyone, so those rows stay NULL rather than being credited to
+// whichever account happens to exist now.
+export function recordAiUsage(params: { type: AiUsageType; provider: string; success: boolean; durationMs?: number; userId?: string | null }): void {
   query(
-    'INSERT INTO ai_usage_log (id, type, provider, success, duration_ms, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-    [randomUUID(), params.type, params.provider, params.success, params.durationMs ?? null, new Date().toISOString()],
+    'INSERT INTO ai_usage_log (id, user_id, type, provider, success, duration_ms, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+    [randomUUID(), params.userId ?? null, params.type, params.provider, params.success, params.durationMs ?? null, new Date().toISOString()],
   ).catch((error) => {
     console.error('[ai-usage] failed to record usage:', error instanceof Error ? error.message : 'unknown error');
   });

@@ -1,6 +1,7 @@
-import { finishReturn, invalidReturnState } from '@/lib/oauth-return';
+import { finishReturn } from '@/lib/oauth-return';
 import { NextRequest } from 'next/server';
 import { storeFacebookAuth } from '../vault';
+import { consumeOAuthState } from '@/lib/oauth-state';
 import { logSystem } from '@/lib/system-log';
 
 const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID || '';
@@ -16,10 +17,20 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 const APP_ORIGIN = new URL(FACEBOOK_REDIRECT_URI).origin;
 
 export async function GET(request: NextRequest) {
-  if (invalidReturnState(request)) return finishReturn(request, new URL('/dashboard?error=state_mismatch', APP_ORIGIN));
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
+
+  // The state row is the ONLY thing binding this callback to a SocialPulse
+  // account, and consuming it is what proves the flow was started by that
+  // user. It replaces invalidReturnState(), which reported a missing return
+  // cookie as VALID and therefore skipped the check entirely on a direct hit.
+  const state = await consumeOAuthState('facebook', searchParams.get('state'));
+  if (!state) {
+    logSystem({ level: 'WARN', category: 'PLATFORM', event: 'OAUTH_STATE_INVALID', platform: 'facebook', message: 'Facebook callback rejected: unknown or expired state' });
+    return finishReturn(request, new URL('/dashboard?error=state_mismatch', APP_ORIGIN));
+  }
+  const appUserId = state.userId;
   // Facebook's own dialog-level failures (e.g. an App Domains/redirect
   // mismatch) arrive as error_code/error_message instead of the standard
   // OAuth `error` param - surface the real reason instead of falling
@@ -66,8 +77,9 @@ export async function GET(request: NextRequest) {
       return finishReturn(request, new URL('/dashboard?error=profile_fetch_failed', APP_ORIGIN));
     }
     const profile = await profileRes.json();
-    const userId = profile.id || '';
-    if (!userId) {
+    // The PROVIDER's Meta profile id, stored alongside the app user who owns it.
+    const providerUserId = profile.id || '';
+    if (!providerUserId) {
       return finishReturn(request, new URL('/dashboard?error=profile_fetch_failed', APP_ORIGIN));
     }
 
@@ -106,10 +118,10 @@ export async function GET(request: NextRequest) {
 
     // Tokens stay server-side only. The browser gets the user id plus the
     // Page id/name list (no secrets) for the account card + page picker.
-    storeFacebookAuth(userId, userToken, pages);
-    logSystem({ level: 'SUCCESS', category: 'PLATFORM', event: 'FACEBOOK_CONNECTED', platform: 'facebook', message: `Facebook connected (${pages.length} page${pages.length === 1 ? '' : 's'})` });
+    await storeFacebookAuth(appUserId, providerUserId, userToken, pages);
+    logSystem({ level: 'SUCCESS', category: 'PLATFORM', event: 'FACEBOOK_CONNECTED', userId: appUserId, platform: 'facebook', message: `Facebook connected (${pages.length} page${pages.length === 1 ? '' : 's'})` });
     if (pages.some(p => p.instagramAccountId)) {
-      logSystem({ level: 'SUCCESS', category: 'PLATFORM', event: 'INSTAGRAM_CONNECTED', platform: 'instagram', message: 'Instagram Business account linked via Facebook Page' });
+      logSystem({ level: 'SUCCESS', category: 'PLATFORM', event: 'INSTAGRAM_CONNECTED', userId: appUserId, platform: 'instagram', message: 'Instagram Business account linked via Facebook Page' });
     }
 
     const params = new URLSearchParams({
@@ -117,7 +129,7 @@ export async function GET(request: NextRequest) {
       connected: 'true',
       name: profile.name || 'Facebook',
       email: '',
-      user_id: userId,
+      user_id: providerUserId,
       pages: JSON.stringify(pages.map(p => ({ id: p.id, name: p.name }))),
     });
 

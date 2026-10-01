@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getLinkedInToken } from '../vault';
-import { requireApiSession } from '@/lib/auth/api';
+import { getLinkedInAuth } from '../vault';
+import { requireApiActor } from '@/lib/internal-auth';
 import { logSystem } from '@/lib/system-log';
 
 // In-memory publish-attempt registry: one attempt ID = one LinkedIn request.
@@ -55,8 +55,11 @@ function linkedInErrorMessage(status: number, context: string): { code: string; 
 }
 
 export async function POST(request: NextRequest) {
-  const session = await requireApiSession();
-  if (session instanceof NextResponse) return session;
+  // Accepts EITHER a signed-in browser or the publish worker's signed
+  // assertion. A session alone would 401 the worker (it has no cookie) and
+  // silently fail every scheduled post.
+  const actor = await requireApiActor(request);
+  if (actor instanceof NextResponse) return actor;
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -72,9 +75,11 @@ export async function POST(request: NextRequest) {
     mediaType,
     mediaUrls,
     mediaList,
-    // accessToken in body is legacy compat only — the server vault is authoritative.
-    accessToken: bodyToken,
-    userId,
+    // Legacy field, still sent by older scheduled-post bodies. Accepted and
+    // ignored: the provider member id now always comes from the connection
+    // row owned by the session user. Body-supplied accessToken support was
+    // removed entirely — it let any authenticated user publish to any
+    // LinkedIn account by pasting a token they happened to hold.
     attemptId,
   } = body as {
     content?: string;
@@ -84,27 +89,32 @@ export async function POST(request: NextRequest) {
     mediaType?: string;
     mediaUrls?: string[];
     mediaList?: Array<{ url?: string; type?: string }>;
-    accessToken?: string;
-    userId?: string;
     attemptId?: string;
   };
 
-  if (!content || !userId) {
-    return err('LINKEDIN_NOT_CONNECTED', 'LinkedIn is not connected. Reconnect through OAuth before publishing.', 401, typeof attemptId === 'string' ? attemptId : undefined);
+  if (!content) {
+    return err('LINKEDIN_PUBLISH_FAILED', 'Post content is required.', 400, typeof attemptId === 'string' ? attemptId : undefined);
   }
+
+  // Whose credentials to publish with: the session user, unless the scheduler
+  // is acting for the post's recorded owner via a signed internal assertion.
+  // The body's userId is ignored for this purpose on purpose (see internal-auth).
+  const appUserId = actor.userId;
 
   const attempt = typeof attemptId === 'string' && attemptId ? attemptId : `att_${Date.now().toString(36)}`;
   if (typeof attemptId === 'string' && attemptId && isDuplicateAttempt(attemptId)) {
-    console.warn(`[linkedin/publish] duplicate attempt ignored: ${attemptId} (user ${userId})`);
+    console.warn(`[linkedin/publish] duplicate attempt ignored: ${attemptId} (user ${appUserId})`);
     return err('DUPLICATE_PUBLISH_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attemptId);
   }
 
-  // Resolve token server-side. Never log or return it.
-  const accessToken = getLinkedInToken(userId) || (typeof bodyToken === 'string' ? bodyToken : null);
-  if (!accessToken) {
-    console.warn(`[linkedin/publish] no stored token for user ${userId} (attempt ${attempt})`);
+  // Resolve token AND the LinkedIn member id server-side, from the connection
+  // row owned by appUserId. Never log or return the token.
+  const auth = await getLinkedInAuth(appUserId);
+  if (!auth) {
+    console.warn(`[linkedin/publish] no stored token for user ${appUserId} (attempt ${attempt})`);
     return err('LINKEDIN_NOT_CONNECTED', 'LinkedIn is not connected. Reconnect through OAuth before publishing.', 401, attempt);
   }
+  const { accessToken, providerUserId } = auth;
 
   // Build ordered list of media dataURLs to upload (multi-image support).
   // LinkedIn allows 1 video OR up to 9 images per post, not mixed.
@@ -159,7 +169,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         registerUploadRequest: {
           recipes: [recipe],
-          owner: `urn:li:person:${userId}`,
+          owner: `urn:li:person:${providerUserId}`,
           serviceRelationships: [{ relationshipType: 'OWNER', identifier: 'urn:li:userGeneratedContent' }],
         },
       }),
@@ -174,7 +184,7 @@ export async function POST(request: NextRequest) {
     }
     if (registerResponse.status === 401 || registerResponse.status === 403) {
       const mapped = linkedInErrorMessage(registerResponse.status, 'media upload');
-      console.error(`[linkedin/publish] registerUpload ${registerResponse.status} (attempt ${attempt}, user ${userId})`);
+      console.error(`[linkedin/publish] registerUpload ${registerResponse.status} (attempt ${attempt}, user ${appUserId})`);
       return err(mapped.code, mapped.message, registerResponse.status, attempt);
     }
     if (!registerResponse.ok) {
@@ -211,7 +221,7 @@ export async function POST(request: NextRequest) {
     }
     if (uploadRes.status === 401 || uploadRes.status === 403) {
       const mapped = linkedInErrorMessage(uploadRes.status, 'media upload');
-      console.error(`[linkedin/publish] media upload ${uploadRes.status} (attempt ${attempt}, user ${userId})`);
+      console.error(`[linkedin/publish] media upload ${uploadRes.status} (attempt ${attempt}, user ${appUserId})`);
       return err(mapped.code, mapped.message, uploadRes.status, attempt);
     }
     if (!uploadRes.ok) {
@@ -225,12 +235,12 @@ export async function POST(request: NextRequest) {
 
   // Never silently fall back to text-only: media was selected but nothing uploaded.
   if (mediaProvided && mediaUrns.length === 0) {
-    console.error(`[linkedin/publish] all media uploads failed, refusing text-only fallback (attempt ${attempt}, user ${userId})`);
+    console.error(`[linkedin/publish] all media uploads failed, refusing text-only fallback (attempt ${attempt}, user ${appUserId})`);
     return err('LINKEDIN_MEDIA_UPLOAD_FAILED', 'LinkedIn media upload failed. The post was NOT published — no text-only fallback was used. Fix the media and try again manually.', 400, attempt);
   }
 
   const postPayload: Record<string, unknown> = {
-    author: `urn:li:person:${userId}`,
+    author: `urn:li:person:${providerUserId}`,
     lifecycleState: 'PUBLISHED',
     specificContent: {
       'com.linkedin.ugc.ShareContent': {
@@ -266,7 +276,7 @@ export async function POST(request: NextRequest) {
   }
   if (!postResponse.ok) {
     const mapped = linkedInErrorMessage(postResponse.status, 'post creation');
-    console.error(`[linkedin/publish] ugcPosts ${postResponse.status} (attempt ${attempt}, user ${userId})`);
+    console.error(`[linkedin/publish] ugcPosts ${postResponse.status} (attempt ${attempt}, user ${appUserId})`);
     return err(mapped.code, mapped.message, postResponse.status, attempt);
   }
 
@@ -278,8 +288,11 @@ export async function POST(request: NextRequest) {
     postId = undefined;
   }
 
-  console.log(`[linkedin/publish] success (attempt ${attempt}, user ${userId}, media ${mediaUrns.length})`);
-  logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'linkedin', resourceId: postId || undefined, message: 'LinkedIn post published', requestId: attempt });
+  console.log(`[linkedin/publish] success (attempt ${attempt}, user ${appUserId}, media ${mediaUrns.length})`);
+  // userId here is the APP user (a real UUID); it previously carried the
+  // provider's numeric member id, which does not match system_logs.user_id's
+  // UUID foreign key and so silently failed to insert.
+  logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: appUserId, platform: 'linkedin', resourceId: postId || undefined, message: 'LinkedIn post published', requestId: attempt });
   return NextResponse.json({
     success: true,
     postId,

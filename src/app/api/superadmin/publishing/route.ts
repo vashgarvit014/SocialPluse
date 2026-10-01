@@ -12,6 +12,6 @@ export async function GET(request: NextRequest) {
   const platform = params.get('platform') || undefined;
   const limit = Math.min(Math.max(Number(params.get('limit')) || 50, 1), 200);
 
-  const items = listPublishing({ status, platform, limit });
+  const items = await listPublishing({ status, platform, limit });
   return NextResponse.json({ items });
 }

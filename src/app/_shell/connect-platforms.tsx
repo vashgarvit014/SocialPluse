@@ -17,6 +17,8 @@ type ConnectPlatformsProps = {
   startWhatsAppConnect: () => void;
   disconnectWhatsApp: () => void;
   whatsappDisconnecting: boolean;
+  /** The workspace can mint this user their own QR (partner API present). */
+  whapiCanConnect: boolean;
   canvaConnected: boolean;
   canvaName: string;
   disconnectCanva: () => void;
@@ -278,28 +280,38 @@ export default function ConnectPlatforms(p: ConnectPlatformsProps) {
                   ))}
                 </div>
               </>
-            ) : (
-              <>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>Connect your WhatsApp account by scanning a QR code.</div>
-                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>Link your device once — SocialPulse will use the Whapi session to publish to your existing groups.</div>
-                <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {['Send and receive messages', 'Manage your groups', 'Automate notifications', 'Keep your community engaged'].map(t => (
-                    <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: '#065f46', fontWeight: 500 }}>
-                      <span style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: '#10b981', flexShrink: 0 }} /> {t}
-                    </div>
-                  ))}
+) : p.whapiCanConnect ? (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>Connect your WhatsApp account by scanning a QR code.</div>
+                  <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>Link your device once — SocialPulse will use the Whapi session to publish to your existing groups.</div>
+                  <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {['Send and receive messages', 'Manage your groups', 'Automate notifications', 'Keep your community engaged'].map(t => (
+                      <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: '#065f46', fontWeight: 500 }}>
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: '#10b981', flexShrink: 0 }} /> {t}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>Personal WhatsApp accounts aren't enabled on this workspace.</div>
+                  <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                    This workspace publishes from a shared WhatsApp number managed by an administrator, so there's nothing for you to connect. Ask an admin to add your own number if you need a separate one.
+                  </div>
+                  <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', fontSize: 11.5, color: '#475569', lineHeight: 1.5 }}>
+                    To enable per-user connections, an admin sets <code style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11 }}>WHATSAPP_PARTNER_API_KEY</code> and <code style={{ fontFamily: 'ui-monospace,monospace', fontSize: 11 }}>WHATSAPP_PARTNER_PROJECT_ID</code>, then each user scans their own QR.
+                  </div>
                 </div>
-              </>
-            )}
+              )}
             <div style={{ display: 'flex', gap: 10, marginTop: 'auto', paddingTop: 14 }}>
               {p.whapiConnected ? (
                 <>
                   <button onClick={() => p.loadWhapiGroups()} disabled={p.whapiGroupsLoading} style={{ flex: 1, height: 44, borderRadius: 10, fontSize: 12, fontWeight: 700, border: '1px solid #e2e8f0', backgroundColor: '#fff', color: p.whapiGroupsLoading ? '#94a3b8' : '#334155', cursor: p.whapiGroupsLoading ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{p.whapiGroupsLoading ? 'Refreshing…' : '↻ Refresh Chats'}</button>
                   <button onClick={() => p.disconnectWhatsApp()} disabled={p.whatsappDisconnecting} style={{ flex: 1, height: 44, borderRadius: 10, fontSize: 12, fontWeight: 700, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', cursor: p.whatsappDisconnecting ? 'wait' : 'pointer', opacity: p.whatsappDisconnecting ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>🗑️ Disconnect</button>
                 </>
-              ) : (
+              ) : p.whapiCanConnect ? (
                 <button onClick={() => p.startWhatsAppConnect()} disabled={p.whapiLoading} style={{ width: '100%', height: 46, borderRadius: 10, fontSize: 13, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', cursor: p.whapiLoading ? 'wait' : 'pointer', boxShadow: '0 3px 10px rgba(37,211,102,0.25)' }}>Connect WhatsApp →</button>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

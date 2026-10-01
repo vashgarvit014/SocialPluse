@@ -49,7 +49,7 @@ export default function PrivacyPage() {
             <section>
               <h2 style={{ fontSize: 14, fontWeight: 800, color: "#0F172A", margin: "0 0 6px" }}>3. Storage</h2>
               <p style={{ margin: 0 }}>
-                OAuth tokens are stored server-side only (<code>linkedin-tokens.json</code>, <code>facebook-tokens.json</code> on the app server, never in browser storage or URLs). They are not logged or returned to the client. Scheduled posts are stored locally in <code>scheduled-posts.json</code> until published.
+                OAuth tokens are stored server-side only, in the database and never in browser storage or URLs. They are not logged or returned to the client. Drafts, scheduled posts and saved media are stored server-side and are scoped to your account: no other user can read, modify or preview them, and knowing an asset id is not enough to access it. Saved media (uploads, AI-generated images, Canva imports, branded variants) is retained for 30 days and then removed.
               </p>
             </section>
 

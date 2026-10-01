@@ -7,13 +7,13 @@ const PLATFORM_BG: Record<string, string> = {
 };
 const PLATFORM_SHORT: Record<string, string> = { Facebook: 'f', Instagram: 'IG', LinkedIn: 'in', 'Whapi (WhatsApp groups)': 'W', Canva: 'C' };
 
-export default function SuperadminConnectionsPage() {
-  const connections = getConnectionsOverview();
+export default async function SuperadminConnectionsPage() {
+  const connections = await getConnectionsOverview();
 
   return (
     <>
       <div style={{ padding: '11px 14px', borderRadius: 11, background: 'var(--acs)', color: 'var(--act)', fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>
-        SocialPulse connects one shared account per platform for the whole tool, not one per user — this reflects the app&apos;s actual architecture, not an individual user&apos;s settings.
+        SocialPulse stores one connection per account per platform. This page is the cross-user admin view; a user only ever sees their own connections at /connect-platforms.
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 12 }}>
         {connections.map(c => {
@@ -33,6 +33,9 @@ export default function SuperadminConnectionsPage() {
                     <span style={{ color: 'var(--mu)' }}>Account</span><span style={{ fontWeight: 600, textAlign: 'right' }}>{c.account}</span>
                   </div>
                 )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '7px 0', borderTop: '1px solid var(--bd)' }}>
+                  <span style={{ color: 'var(--mu)' }}>Accounts connected</span><span style={{ fontWeight: 600 }}>{c.connectedUsers}</span>
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '7px 0', borderTop: '1px solid var(--bd)' }}>
                   <span style={{ color: 'var(--mu)' }}>Last publish</span><span style={{ fontWeight: 600 }}>{relTime(c.lastPublishAt)}</span>
                 </div>

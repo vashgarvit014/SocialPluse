@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import LandingClient from "./landing-client";
+// Responsive layer for the landing page. Imported here (a Server Component)
+// because the component itself is styled with inline styles, which cannot
+// carry media queries. See landing.css for why.
+import "./landing.css";
 
 export const metadata: Metadata = {
   title: "SocialPulse — Create. Brand. Schedule. Grow.",

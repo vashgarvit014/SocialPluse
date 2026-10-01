@@ -729,7 +729,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       {!connected && !standby && !isWhapi && (
                         <button onClick={() => p.connectPlatform(cfg.id)} style={{ padding: '10px 20px', borderRadius: 11, fontSize: 12, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'center', boxShadow: '0 3px 10px rgba(124,58,237,0.3)', fontFamily: 'inherit' }}>Connect</button>
                       )}
-                      {!connected && !standby && isWhapi && (
+                      {!connected && !standby && isWhapi && p.whapiCanConnect && (
                         <button onClick={() => p.startWhatsAppConnect()} style={{ padding: '10px 20px', borderRadius: 11, fontSize: 12, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'center', boxShadow: '0 3px 10px rgba(124,58,237,0.3)', fontFamily: 'inherit' }}>Connect</button>
                       )}
                       {connected && !standby && !isWhapi && (
@@ -2459,7 +2459,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                           {p.whapiLoading ? 'Checking…' : p.whapiConnected ? `✓ Connected${p.whapiAccountName ? ` • ${p.whapiAccountName}` : ''}${p.whapiPhoneMasked ? ` • ${p.whapiPhoneMasked}` : ''}` : '● Not connected'}
                         </div>
                       </div>
-                      {!p.whapiConnected && (
+                      {!p.whapiConnected && p.whapiCanConnect && (
                         <button onClick={() => p.startWhatsAppConnect()} disabled={p.whapiLoading} style={{ padding: '9px 18px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 3px 10px rgba(124,58,237,0.3)' }}>Connect WhatsApp</button>
                       )}
                       {p.whapiConnected && (
@@ -2647,7 +2647,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       { state: p.logoImage ? 'ok' : 'neutral', label: p.logoImage ? 'Branding applied' : 'No logo (optional)', action: 'Edit Branding →', run: () => setCurrentStep(6) },
                       connectedSelected.length > 0
                         ? { state: 'ok' as const, label: `${connectedSelected.length} connected platform${connectedSelected.length === 1 ? '' : 's'}`, action: 'Review →', run: () => setCurrentStep(7) }
-                        : { state: 'warn' as const, label: 'Connect platform to publish', action: 'Connect Now →', run: () => { if (connectTarget === 'whatsapp') p.startWhatsAppConnect(); else if (connectTarget) p.connectPlatform(connectTarget); else setCurrentStep(2); } },
+                        : { state: 'warn' as const, label: 'Connect platform to publish', action: 'Connect Now →', run: () => { if (connectTarget === 'whatsapp' && p.whapiCanConnect) p.startWhatsAppConnect(); else if (connectTarget === 'whatsapp') setCurrentStep(2); else if (connectTarget) p.connectPlatform(connectTarget); else setCurrentStep(2); } },
                     ];
                     return rows.map(r => (
                       <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${C.borderSoft}` }}>

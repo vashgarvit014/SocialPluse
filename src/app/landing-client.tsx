@@ -220,42 +220,42 @@ export default function LandingClient() {
   const ringTiles = RING_KEYS.map((k, i) => ({ ...P[k], tf: `rotateY(${i * 45}deg) translateZ(210px)` }));
 
   return (
-    <div className={jakarta.className} style={{ background: '#f6f6fb', color: '#0f1020', WebkitFontSmoothing: 'antialiased', scrollBehavior: 'smooth' }}>
+    <div className={`lp-root ${jakarta.className}`} style={{ background: '#f6f6fb', color: '#0f1020', WebkitFontSmoothing: 'antialiased', scrollBehavior: 'smooth' }}>
       <div style={{ position: 'relative', overflow: 'hidden', background: 'radial-gradient(900px 600px at 78% 12%,#ebe6ff 0%,rgba(235,230,255,0) 70%),radial-gradient(700px 500px at 5% 90%,#eef2ff 0%,rgba(238,242,255,0) 70%),#f6f6fb' }}>
         {/* NAV */}
-        <nav style={sx('max-width:1240px;margin:0 auto;padding:22px 28px;display:flex;align-items:center;justify-content:space-between;gap:24px;position:relative;z-index:5;')}>
+        <nav style={sx('max-width:var(--lp-max);margin:0 auto;padding:22px var(--lp-pad);display:flex;align-items:center;justify-content:space-between;gap:18px;position:relative;z-index:5;')}>
           <a href="#" style={sx('display:flex;align-items:center;gap:12px;color:#0f1020;')}>
             <span style={sx('width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#5b6cff,#9b5cf6);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(91,76,245,.35);')}>
               <PulseIcon />
             </span>
-            <span style={sx('font-weight:800;font-size:22px;letter-spacing:-.02em;')}>SocialPulse</span>
+            <span style={sx('font-weight:800;font-size:clamp(18px,4.4vw,22px);letter-spacing:-.02em;white-space:nowrap;')}>SocialPulse</span>
           </a>
-          <div style={sx('display:flex;gap:34px;font-size:15px;font-weight:500;flex-wrap:wrap;')}>
+          <div className="lp-nav-links" style={sx('gap:34px;font-size:15px;font-weight:500;')}>
             <a href="#workflow" style={sx('color:#2a2c3d;')}>Workflow</a>
             <a href="#platforms" style={sx('color:#2a2c3d;')}>Platforms</a>
             <a href="#scheduler" style={sx('color:#2a2c3d;')}>Scheduler</a>
             <a href="#features" style={sx('color:#2a2c3d;')}>Features</a>
           </div>
           <div style={sx('display:flex;align-items:center;gap:22px;')}>
-            <Link href="/login-signup?mode=login" style={sx('color:#0f1020;font-weight:600;font-size:15px;')}>Log in</Link>
-            <Hover tag={Link} href="/login-signup?mode=signup" base="color:#fff;background:linear-gradient(135deg,#5b6cff,#8b5cf6);padding:12px 22px;border-radius:12px;font-weight:600;font-size:15px;box-shadow:0 10px 24px rgba(91,76,245,.3);display:inline-block;" hover="transform:translateY(-1px);box-shadow:0 14px 30px rgba(91,76,245,.4)">
+            <Link href="/login-signup?mode=login" className="lp-nav-login" style={sx('color:#0f1020;font-weight:600;font-size:15px;')}>Log in</Link>
+            <Hover tag={Link} href="/login-signup?mode=signup" className="lp-nav-cta" base="color:#fff;background:linear-gradient(135deg,#5b6cff,#8b5cf6);font-weight:600;box-shadow:0 10px 24px rgba(91,76,245,.3);display:inline-block;" hover="transform:translateY(-1px);box-shadow:0 14px 30px rgba(91,76,245,.4)">
               Get Started →
             </Hover>
           </div>
         </nav>
 
         {/* HERO */}
-        <header style={sx('max-width:1240px;margin:0 auto;padding:40px 28px 60px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:40px;align-items:center;')}>
+        <header style={sx('max-width:var(--lp-max);margin:0 auto;padding:40px var(--lp-pad) 60px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:var(--lp-gap);align-items:center;')}>
           <div style={sx('position:relative;z-index:3;')}>
             <div style={sx('display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;background:#ece8ff;color:#5b4cf5;font-size:14px;font-weight:600;')}>
               <span style={sx('width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,#5b6cff,#c056f0);')} />
               AI-powered social media workspace
             </div>
-            <h1 style={sx('font-size:clamp(52px,7vw,88px);line-height:1;letter-spacing:-.045em;font-weight:800;margin:26px 0 24px;')}>
+            <h1 style={sx('font-size:var(--lp-h1);line-height:1;letter-spacing:-.045em;font-weight:800;margin:26px 0 24px;')}>
               Create. Brand.<br />Schedule.{' '}
               <span style={sx('background:linear-gradient(90deg,#4f7cff,#8b5cf6,#c056f0);-webkit-background-clip:text;background-clip:text;color:transparent;')}>Grow.</span>
             </h1>
-            <p style={sx('font-size:19px;line-height:1.6;color:#4d5065;max-width:520px;margin:0 0 34px;text-wrap:pretty;')}>
+            <p style={sx('font-size:var(--lp-lede);line-height:1.6;color:#4d5065;max-width:520px;margin:0 0 34px;text-wrap:pretty;')}>
               An AI-powered social media workspace for creating, previewing, scheduling, and publishing content across multiple platforms.
             </p>
             <div style={sx('display:flex;gap:14px;flex-wrap:wrap;')}>
@@ -279,7 +279,8 @@ export default function LandingClient() {
             </div>
           </div>
 
-          <div style={sx('position:relative;height:600px;perspective:1800px;')}>
+          <div className="lp-hero-box">
+            <div className="lp-3d-fit" style={{ ['--lp-scale' as string]: 'var(--lp-hero-scale)', ['--lp-stage-h' as string]: '600px' } as React.CSSProperties}>
             <div ref={heroStageRef} style={sx('position:absolute;inset:0;transform-style:preserve-3d;transform:rotateX(10deg) rotateY(-16deg);')}>
               <div style={sx('position:absolute;left:12%;top:8%;width:78%;height:80%;border-radius:50%;background:radial-gradient(circle at 40% 40%,#d9d0ff,#efeaff 60%,rgba(239,234,255,0) 72%);transform:translateZ(-160px);')} />
 
@@ -358,13 +359,14 @@ export default function LandingClient() {
 
               <div className={caveat.className} style={sx('position:absolute;right:6%;top:40px;font-size:26px;color:#5b5e72;transform:translateZ(80px) rotate(-8deg);')}>Idea to impact ↓</div>
               <div className={caveat.className} style={sx('position:absolute;right:26%;bottom:-6px;font-size:24px;color:#5b5e72;transform:translateZ(60px) rotate(-6deg);')}>Plan today, publish everywhere</div>
+              </div>
             </div>
           </div>
         </header>
       </div>
 
       {/* LOGO STRIP */}
-      <div style={sx('max-width:1240px;margin:0 auto;padding:10px 28px 30px;')}>
+      <div style={sx('max-width:var(--lp-max);margin:0 auto;padding:10px var(--lp-pad) 30px;')}>
         <div style={sx('display:flex;align-items:center;gap:20px;font-size:12px;letter-spacing:.24em;color:#6b6d80;font-weight:600;')}>
           <span style={sx('flex:1;height:1px;background:#e4e4ee;')} />PUBLISH AND CONNECT ACROSS<span style={sx('flex:1;height:1px;background:#e4e4ee;')} />
         </div>
@@ -379,14 +381,14 @@ export default function LandingClient() {
       </div>
 
       {/* WORKFLOW */}
-      <section id="workflow" style={sx('max-width:1240px;margin:0 auto;padding:80px 28px;')}>
+      <section id="workflow" style={sx('max-width:var(--lp-max);margin:0 auto;padding:var(--lp-sec-pad) var(--lp-pad);')}>
         <div style={sx('text-align:center;max-width:720px;margin:0 auto 56px;')}>
           <div style={sx('font-size:12px;letter-spacing:.24em;color:#5b4cf5;font-weight:700;')}>ONE WORKFLOW</div>
-          <h2 style={sx('font-size:clamp(36px,4.6vw,56px);letter-spacing:-.035em;line-height:1.05;margin:16px 0;font-weight:800;')}>From idea to published, without switching tools.</h2>
+          <h2 style={sx('font-size:var(--lp-h2);letter-spacing:-.035em;line-height:1.05;margin:16px 0;font-weight:800;')}>From idea to published, without switching tools.</h2>
           <p style={sx('font-size:18px;color:#4d5065;line-height:1.6;margin:0;')}>Six steps, one workspace. Every step keeps its state, so you can jump back at any point.</p>
         </div>
         <div
-          style={sx('display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:48px;align-items:center;')}
+          style={sx('display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:var(--lp-gap);align-items:center;')}
           onMouseEnter={() => { anim.current.paused = true; }}
           onMouseLeave={() => { anim.current.paused = false; }}
         >
@@ -419,17 +421,18 @@ export default function LandingClient() {
             })}
           </div>
 
-          <div style={sx('position:relative;height:460px;perspective:1600px;')}>
+          <div className="lp-wf-box">
+            <div className="lp-3d-fit" style={{ ['--lp-scale' as string]: 'var(--lp-wf-scale)', ['--lp-stage-h' as string]: '460px' } as React.CSSProperties}>
             <div ref={stackRef} style={sx('position:absolute;inset:0;transform-style:preserve-3d;transform:rotateX(8deg) rotateY(-20deg);')}>
               {STEPS.map(([label], i) => {
                 const o = i - step;
                 let tf: string; let op: number;
                 if (o === 0) { tf = 'translate3d(0,0,0)'; op = 1; }
-                else if (o > 0) { tf = `translate3d(${o * 34}px,${-o * 30}px,${-o * 110}px)`; op = Math.max(0, 1 - o * 0.22); }
-                else { tf = 'translate3d(-60px,80px,160px) rotateX(-14deg)'; op = 0; }
+                else if (o > 0) { tf = `translate3d(${o * 22}px,${-o * 26}px,${-o * 110}px)`; op = Math.max(0, 1 - o * 0.22); }
+                else { tf = 'translate3d(-46px,80px,160px) rotateX(-14deg)'; op = 0; }
                 return (
                   <div key={label} style={{
-                    ...sx('position:absolute;left:8%;top:60px;width:84%;height:330px;background:#fff;border-radius:22px;padding:22px;box-shadow:0 40px 80px -24px rgba(40,30,120,.3),0 0 0 1px rgba(20,20,60,.05);transition:transform .8s cubic-bezier(.2,.8,.2,1),opacity .6s;'),
+                    ...sx('position:absolute;left:0;top:60px;width:80%;height:330px;background:#fff;border-radius:22px;padding:22px;box-shadow:0 40px 80px -24px rgba(40,30,120,.3),0 0 0 1px rgba(20,20,60,.05);transition:transform .8s cubic-bezier(.2,.8,.2,1),opacity .6s;'),
                     transform: tf, opacity: op, zIndex: 20 - Math.abs(o), pointerEvents: o === 0 ? 'auto' : 'none',
                   }}>
                     <div style={sx('display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;')}>
@@ -530,6 +533,7 @@ export default function LandingClient() {
                   </div>
                 );
               })}
+              </div>
             </div>
           </div>
         </div>
@@ -537,7 +541,7 @@ export default function LandingClient() {
 
       {/* PLATFORMS */}
       <section id="platforms" style={sx('background:#fff;border-top:1px solid #efeff5;border-bottom:1px solid #efeff5;')}>
-        <div style={sx('max-width:1240px;margin:0 auto;padding:96px 28px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:56px;align-items:center;')}>
+        <div style={sx('max-width:var(--lp-max);margin:0 auto;padding:var(--lp-sec-pad) var(--lp-pad);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:56px;align-items:center;')}>
           <div>
             <div style={sx('font-size:12px;letter-spacing:.24em;color:#5b4cf5;font-weight:700;')}>PLATFORM-SPECIFIC CONTENT</div>
             <h2 style={sx('font-size:clamp(34px,4.2vw,52px);letter-spacing:-.035em;line-height:1.06;margin:16px 0;font-weight:800;')}>One idea. Four versions that fit where they land.</h2>
@@ -627,7 +631,7 @@ export default function LandingClient() {
       )}
 
       {/* SCHEDULER */}
-      <section id="scheduler" style={sx('max-width:1240px;margin:0 auto;padding:96px 28px;')}>
+      <section id="scheduler" style={sx('max-width:var(--lp-max);margin:0 auto;padding:var(--lp-sec-pad) var(--lp-pad);')}>
         <div style={sx('display:flex;justify-content:space-between;align-items:flex-end;gap:30px;flex-wrap:wrap;margin-bottom:40px;')}>
           <div style={sx('max-width:620px;')}>
             <div style={sx('font-size:12px;letter-spacing:.24em;color:#5b4cf5;font-weight:700;')}>SCHEDULER</div>
@@ -706,7 +710,7 @@ export default function LandingClient() {
       )}
 
       {/* FEATURES */}
-      <section id="features" style={sx('max-width:1240px;margin:0 auto;padding:40px 28px 96px;')}>
+      <section id="features" style={sx('max-width:var(--lp-max);margin:0 auto;padding:40px var(--lp-pad) var(--lp-sec-pad);')}>
         <div style={sx('text-align:center;max-width:700px;margin:0 auto 48px;')}>
           <div style={sx('font-size:12px;letter-spacing:.24em;color:#5b4cf5;font-weight:700;')}>MORE THAN A SCHEDULER</div>
           <h2 style={sx('font-size:clamp(34px,4.2vw,52px);letter-spacing:-.035em;line-height:1.06;margin:16px 0 0;font-weight:800;')}>Everything around the post, in the same place.</h2>
@@ -783,8 +787,8 @@ export default function LandingClient() {
       </section>
 
       {/* CTA */}
-      <section id="start" style={sx('max-width:1240px;margin:0 auto;padding:0 28px 80px;')}>
-        <div style={sx('position:relative;overflow:hidden;border-radius:32px;background:radial-gradient(700px 400px at 80% 50%,#3b2f9e 0%,rgba(59,47,158,0) 70%),#0f1020;color:#fff;padding:72px 56px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:40px;align-items:center;')}>
+      <section id="start" style={sx('max-width:var(--lp-max);margin:0 auto;padding:0 var(--lp-pad) var(--lp-sec-pad);')}>
+        <div style={sx('position:relative;overflow:hidden;border-radius:clamp(20px,4vw,32px);background:radial-gradient(700px 400px at 80% 50%,#3b2f9e 0%,rgba(59,47,158,0) 70%),#0f1020;color:#fff;padding:var(--lp-cta-pad,72px 56px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:40px;align-items:center;')}>
           <div style={sx('position:relative;z-index:2;')}>
             <h2 style={sx('font-size:clamp(40px,5vw,64px);letter-spacing:-.04em;line-height:1.02;margin:0 0 20px;font-weight:800;')}>
               Create. Brand.<br />Schedule.{' '}
@@ -809,7 +813,7 @@ export default function LandingClient() {
         </div>
       </section>
 
-      <footer style={sx('max-width:1240px;margin:0 auto;padding:28px 28px 48px;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;border-top:1px solid #e7e7f1;font-size:14px;color:#6b6d80;')}>
+      <footer style={sx('max-width:var(--lp-max);margin:0 auto;padding:28px var(--lp-pad) 48px;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;border-top:1px solid #e7e7f1;font-size:14px;color:#6b6d80;')}>
         <div style={sx('display:flex;align-items:center;gap:10px;font-weight:800;color:#0f1020;font-size:16px;')}>
           <span style={sx('width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#5b6cff,#9b5cf6);')} />SocialPulse
         </div>

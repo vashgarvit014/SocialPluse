@@ -10,11 +10,25 @@ import { randomBytes } from 'crypto';
 //   media: "data:image/png;base64,..."  -> 500 "bad-request"
 //   media: "https://.../file.png"       -> passes media resolution
 //
-// Whapi reads the value as a fetchable URL (or a media id from their own
-// upload API). So a data: URL has to be staged on disk and served over public
-// HTTPS first, exactly like the Instagram path in src/lib/instagram-media.ts —
-// unguessable id, no directory listing, and a lifetime sweep so staged media
-// cannot accumulate.
+// Whapi reads the value as a fetchable URL. That created a trap: staging the
+// bytes on OUR disk and advertising NEXT_PUBLIC_APP_URL only works when the
+// server writing the file and the host serving the URL are the same machine.
+// Running the app locally while NEXT_PUBLIC_APP_URL points at production meant
+// Whapi fetched a URL the production container had never heard of -> 404 ->
+// "media link is not available". Two `.jpg` files in a local .whapi-media/
+// directory were the entire evidence.
+//
+// The fix is to stop needing a publicly reachable copy of our own filesystem.
+// This gateway accepts a raw binary body:
+//
+//   POST /media            Content-Type: image/png   <bytes>
+//     -> 200 {"media":[{"id":"png-<uuid>"}]}
+//   GET  /media
+//     -> {"files":[{"id":"png-<uuid>", "link":"https://…/in-files/png-<uuid>"}]}
+//
+// The returned `link` is a public object URL (verified fetchable with no auth),
+// which is exactly what the messages API wants. Disk staging is kept only as a
+// fallback so production behaviour is unchanged if the upload API is ever absent.
 
 const DIRECTORY = join(process.cwd(), '.whapi-media');
 const LIFETIME_MS = 60 * 60 * 1000; // 1 hour
@@ -40,20 +54,54 @@ async function sweep() {
   } catch { /* directory not created yet */ }
 }
 
-// Returns an absolute https URL Whapi can fetch. Absolute https inputs are
-// passed through untouched; data: URLs are staged on disk.
-export async function prepareWhapiMedia(url: string): Promise<string> {
+export interface WhapiChannel {
+  baseUrl: string;
+  token: string;
+}
+
+/**
+ * Uploads raw bytes to Whapi and returns the public link for them.
+ *
+ * The link comes from the API's own /media listing rather than a URL we
+ * assemble ourselves, so a change in their storage layout cannot silently
+ * produce 404s again.
+ */
+async function uploadToWhapi(bytes: Buffer, mime: string, channel: WhapiChannel): Promise<string> {
+  const base = channel.baseUrl.replace(/\/+$/, '');
+  const upload = await fetch(`${base}/media`, {
+    method: 'POST',
+    headers: { 'Content-Type': mime, Authorization: `Bearer ${channel.token}` },
+    body: new Uint8Array(bytes),
+  });
+  if (!upload.ok) {
+    const raw = await upload.text().catch(() => '');
+    throw new Error(`WhatsApp media upload failed (HTTP ${upload.status}): ${raw.slice(0, 200)}`);
+  }
+  const created = await upload.json().catch(() => null) as { media?: Array<{ id?: string }> } | null;
+  const id = created?.media?.[0]?.id;
+  if (!id) throw new Error('WhatsApp media upload returned no media id.');
+
+  // Resolve the public link from the API's own listing.
+  const listRes = await fetch(`${base}/media`, { headers: { Authorization: `Bearer ${channel.token}` } });
+  if (listRes.ok) {
+    const list = await listRes.json().catch(() => null) as { files?: Array<{ id?: string; link?: string }> } | null;
+    const match = list?.files?.find((f) => f.id === id && f.link);
+    if (match?.link) return match.link;
+  }
+  // Their listing did not surface a link; fall back to their own media path.
+  return `${base}/media/${id}`;
+}
+
+// Returns an absolute https URL (or media reference) Whapi can fetch.
+// Absolute https inputs pass through untouched; data: URLs are uploaded to
+// Whapi, falling back to local staging only if the upload API is unavailable.
+export async function prepareWhapiMedia(url: string, channel: WhapiChannel): Promise<string> {
   if (!url.startsWith('data:')) {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:') {
       throw new Error('WhatsApp media must be a public HTTPS URL or a data URL.');
     }
     return parsed.href;
-  }
-
-  const origin = new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001');
-  if (origin.protocol !== 'https:') {
-    throw new Error('Set NEXT_PUBLIC_APP_URL to your public HTTPS tunnel URL before publishing WhatsApp media.');
   }
 
   const match = /^data:((?:image\/(?:png|jpeg|webp)|video\/mp4|application\/pdf));base64,([A-Za-z0-9+/=\r\n]+)$/.exec(url);
@@ -67,10 +115,22 @@ export async function prepareWhapiMedia(url: string): Promise<string> {
   const bytes = Buffer.from(match[2], 'base64');
   if (bytes.length === 0) throw new Error('WhatsApp media is empty.');
 
+  // Preferred path: hand the bytes straight to Whapi. No public URL of our own
+  // is involved, so this behaves identically on localhost and in production.
+  try {
+    return await uploadToWhapi(bytes, mime, channel);
+  } catch (error) {
+    console.error('[whapi-media] upload to Whapi failed, falling back to local staging:',
+      error instanceof Error ? error.message : error);
+  }
+
+  const origin = new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001');
+  if (origin.protocol !== 'https:') {
+    throw new Error('WhatsApp media upload is unavailable and NEXT_PUBLIC_APP_URL is not a public HTTPS URL, so the image cannot be sent.');
+  }
   await mkdir(DIRECTORY, { recursive: true });
   await sweep();
   const id = `${randomBytes(24).toString('hex')}.${ext}`;
   await writeFile(join(DIRECTORY, id), bytes, { flag: 'wx', mode: 0o600 });
-
   return new URL(`/api/whapi/media/${id}`, origin).href;
 }

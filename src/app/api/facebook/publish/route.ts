@@ -1,7 +1,7 @@
 import { altPayload, mediaAlt } from '@/lib/alt-capabilities';
 import { NextRequest, NextResponse } from 'next/server';
 import { getFacebookPageToken } from '../vault';
-import { requireApiSession } from '@/lib/auth/api';
+import { requireApiActor } from '@/lib/internal-auth';
 import { logSystem } from '@/lib/system-log';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
@@ -68,8 +68,11 @@ function parseDataUrl(dataUrl: string): { buffer: Buffer; mime: string; ext: str
 }
 
 export async function POST(request: NextRequest) {
-  const session = await requireApiSession();
-  if (session instanceof NextResponse) return session;
+  // Accepts EITHER a signed-in browser or the publish worker's signed
+  // assertion. A session alone would 401 the worker (it has no cookie) and
+  // silently fail every scheduled post.
+  const actor = await requireApiActor(request);
+  if (actor instanceof NextResponse) return actor;
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -85,7 +88,9 @@ export async function POST(request: NextRequest) {
     mediaType,
     mediaUrls,
     mediaList,
-    userId,
+    // userId/pageId are the PROVIDER's Meta profile/Page ids. pageId may still
+    // choose between THIS user's own Pages; userId is not consulted for
+    // credential selection (see appUserId) - that was the cross-user leak.
     pageId,
     attemptId,
   } = body as {
@@ -96,25 +101,30 @@ export async function POST(request: NextRequest) {
     mediaType?: string;
     mediaUrls?: string[];
     mediaList?: Array<{ url?: string; type?: string; altText?: string }>;
-    userId?: string;
     pageId?: string;
     attemptId?: string;
   };
 
-  if (!content || !userId) {
-    return err('FACEBOOK_NOT_CONNECTED', 'Facebook is not connected. Reconnect through OAuth before publishing.', 401, typeof attemptId === 'string' ? attemptId : undefined);
+  if (!content) {
+    return err('FACEBOOK_PUBLISH_FAILED', 'Post content is required.', 400, typeof attemptId === 'string' ? attemptId : undefined);
   }
+
+  // Whose credentials to publish with: the session user, unless the scheduler
+  // is acting for the post's recorded owner via a signed internal assertion.
+  const appUserId = actor.userId;
 
   const attempt = typeof attemptId === 'string' && attemptId ? attemptId : `att_${Date.now().toString(36)}`;
   if (typeof attemptId === 'string' && attemptId && isDuplicateAttempt(attemptId)) {
-    console.warn(`[facebook/publish] duplicate attempt ignored: ${attemptId} (user ${userId})`);
+    console.warn(`[facebook/publish] duplicate attempt ignored: ${attemptId} (user ${appUserId})`);
     return err('DUPLICATE_PUBLISH_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attemptId);
   }
 
-  // Resolve the Page token server-side. Never log or return it.
-  const resolved = getFacebookPageToken(userId, typeof pageId === 'string' ? pageId : undefined);
+  // Resolve the Page token server-side from the connection row owned by
+  // appUserId. pageId only narrows within that user's own Pages. Never log or
+  // return the token.
+  const resolved = await getFacebookPageToken(appUserId, typeof pageId === 'string' ? pageId : undefined);
   if (!resolved) {
-    console.warn(`[facebook/publish] no stored Page for user ${userId} (attempt ${attempt})`);
+    console.warn(`[facebook/publish] no stored Page for user ${appUserId} (attempt ${attempt})`);
     return err('FACEBOOK_NOT_CONNECTED', 'Facebook Page is not connected. Reconnect through OAuth before publishing.', 401, attempt);
   }
   const { pageId: targetPageId, token: pageToken } = resolved;
@@ -156,7 +166,7 @@ export async function POST(request: NextRequest) {
         return err(code, message, res.status === 429 ? 429 : 502, attempt);
       }
       const data = await res.json();
-      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'facebook', resourceId: data.id, message: 'Facebook post published', requestId: attempt });
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: appUserId, platform: 'facebook', resourceId: data.id, message: 'Facebook post published', requestId: attempt });
       return NextResponse.json({ success: true, postId: data.id, attemptId: attempt });
     }
 
@@ -202,7 +212,7 @@ export async function POST(request: NextRequest) {
         return err(code, message, postRes.status === 429 ? 429 : 502, attempt);
       }
       const postData = await postRes.json();
-      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'facebook', resourceId: postData.id, message: 'Facebook post published', requestId: attempt });
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: appUserId, platform: 'facebook', resourceId: postData.id, message: 'Facebook post published', requestId: attempt });
       return NextResponse.json({ success: true, postId: postData.id, attemptId: attempt });
     }
 
@@ -233,7 +243,7 @@ export async function POST(request: NextRequest) {
         return err(finalCode, `${message} The post was NOT published (no text-only fallback).`, photoRes.status === 429 ? 429 : 502, attempt);
       }
       const photoData = await photoRes.json();
-      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'facebook', resourceId: photoData.post_id || photoData.id, message: 'Facebook post published', requestId: attempt });
+      logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: appUserId, platform: 'facebook', resourceId: photoData.post_id || photoData.id, message: 'Facebook post published', requestId: attempt });
       return NextResponse.json({ success: true, postId: photoData.post_id || photoData.id, attemptId: attempt });
     }
 
@@ -248,11 +258,11 @@ export async function POST(request: NextRequest) {
       return err(code, message, textRes.status === 429 ? 429 : 502, attempt);
     }
     const textData = await textRes.json();
-    logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: typeof userId === 'string' ? userId : undefined, platform: 'facebook', resourceId: textData.id, message: 'Facebook post published', requestId: attempt });
+    logSystem({ level: 'SUCCESS', category: 'PUBLISHING', event: 'POST_PUBLISH_SUCCESS', userId: appUserId, platform: 'facebook', resourceId: textData.id, message: 'Facebook post published', requestId: attempt });
     return NextResponse.json({ success: true, postId: textData.id, attemptId: attempt });
   } catch (e) {
     console.error(`[facebook/publish] network failure (attempt ${attempt}):`, e instanceof Error ? e.message : e);
-    logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', userId: typeof userId === 'string' ? userId : undefined, platform: 'facebook', message: e instanceof Error ? e.message : 'Facebook publishing failed; no retry was attempted.', requestId: attempt });
+    logSystem({ level: 'ERROR', category: 'PUBLISHING', event: 'POST_PUBLISH_FAILED', userId: appUserId, platform: 'facebook', message: e instanceof Error ? e.message : 'Facebook publishing failed; no retry was attempted.', requestId: attempt });
     return err('FACEBOOK_PUBLISH_FAILED', 'Network error publishing to Facebook — no retry was attempted.', 502, attempt);
   }
 }

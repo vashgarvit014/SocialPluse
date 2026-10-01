@@ -4,6 +4,9 @@ import { findUserById } from '@/lib/auth/users';
 import { listAuthEventsForUser } from '@/lib/auth/audit';
 import { avatarColor, initials, absTime, relTime, badge } from '../../ui';
 import UserActions from './user-actions';
+import ModerationPanel from './moderation-panel';
+import { getUserModerationSummary, severityForCount } from '@/lib/moderation-escalation';
+import { queryOne } from '@/lib/db';
 
 // Never fetches or displays password_hash/otp/session token/SMTP/Meta
 // credentials — findUserById()'s User type has no such fields to begin
@@ -19,6 +22,18 @@ export default async function SuperadminUserDetailPage({ params }: { params: Pro
   if (!user) notFound();
 
   const authEvents = await listAuthEventsForUser(user.id, 8);
+  // Only render the panel when there is something to show, so a clean account
+  // detail page stays uncluttered.
+  const hasModerationActivity = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM moderation_events WHERE user_id = $1
+     ) OR EXISTS(SELECT 1 FROM users WHERE id = $1 AND (moderation_violation_count > 0 OR moderation_flagged)) AS exists`,
+    [user.id],
+  );
+  const moderation = hasModerationActivity?.exists
+    ? await getUserModerationSummary(user.id)
+    : null;
+  const moderationSeverity = moderation ? severityForCount(moderation.violationCount) : 'WARNING';
   const st = badge(user.status);
   const ev = badge(user.emailVerifiedAt ? 'ACTIVE' : 'PENDING');
   const mv = badge(user.mobileVerifiedAt ? 'ACTIVE' : 'PENDING');
@@ -35,6 +50,8 @@ export default async function SuperadminUserDetailPage({ params }: { params: Pro
   return (
     <>
       <Link href="/superadmin/users" style={{ alignSelf: 'flex-start', border: 'none', background: 'none', color: 'var(--act)', fontWeight: 700, textDecoration: 'none' }}>← All users</Link>
+
+      <ModerationPanel userId={user.id} summary={moderation ? { ...moderation, severity: moderationSeverity } : null} />
 
       <div style={{ background: 'var(--sf)', border: '1px solid var(--bd)', borderRadius: 14, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <span style={{ width: 52, height: 52, borderRadius: '50%', background: avatarColor(user.name), color: '#fff', fontSize: 17, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{initials(user.name)}</span>

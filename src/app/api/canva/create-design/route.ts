@@ -6,9 +6,9 @@ import {
   uploadAsset,
   verifyImageAsset,
   createDesignWithAsset,
-  savePendingDesign,
   CanvaError,
 } from '@/lib/canva';
+import { savePendingDesign } from '@/lib/canva-handoffs';
 import { requireApiSession } from '@/lib/auth/api';
 
 const MIN_DIM = 40;
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     console.log(`[Canva] design ${design.id} created from asset ${assetId}`);
 
     const correlationState = randomBytes(16).toString('hex');
-    savePendingDesign(correlationState, design.id);
+    await savePendingDesign(session.userId, correlationState, design.id);
 
     // Canva echoes correlation_state back in the return-navigation JWT, but
     // only if it arrives as a proper query param on the edit URL. The edit

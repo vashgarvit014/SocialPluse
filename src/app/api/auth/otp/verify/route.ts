@@ -7,6 +7,7 @@ import { checkRateLimit } from '@/lib/auth/rate-limit';
 import { logAuthEvent, clientIp } from '@/lib/auth/audit';
 import { otpVerifySchema } from '@/lib/auth/schemas';
 import { validationErrorResponse } from '@/lib/auth/validation-response';
+import { isPublicHost, normalizeHost, SUPERADMIN_ORIGIN } from '@/lib/admin-host';
 
 const GENERIC_INVALID = 'This code is invalid or has expired. Please request a new one.';
 
@@ -87,10 +88,20 @@ export async function POST(request: NextRequest) {
 
   // Role-aware landing page (spec section 23) — decided server-side from a
   // fresh DB read (`user.role`), never trusted from the client. A plain
-  // USER always lands on /dashboard regardless of what it asks for; a
-  // SUPERADMIN goes to /superadmin. callbackUrl (if any) is applied by the
-  // client on top of this (see auth-client.tsx) only when it's a safe
-  // same-origin path.
-  const redirect = user.role === 'SUPERADMIN' ? '/superadmin' : '/dashboard';
+  // USER always lands on /dashboard regardless of what it asks for.
+  //
+  // A SUPERADMIN needs the host in the answer, not just the path: the admin
+  // console is served only from its own subdomain and /superadmin 404s on the
+  // public site (see src/proxy.ts). Handing back a bare "/superadmin" would
+  // drop them on a 404, so when the verification happened on the PUBLIC host
+  // we return the admin ORIGIN instead. On the admin host — and in local
+  // development, which matches neither host set — the same-origin relative
+  // path is kept.
+  const host = normalizeHost(request.headers.get('host'));
+  const redirect = user.role !== 'SUPERADMIN'
+    ? '/dashboard'
+    : isPublicHost(host)
+      ? `${SUPERADMIN_ORIGIN}/superadmin`
+      : '/superadmin';
   return NextResponse.json({ success: true, redirect });
 }

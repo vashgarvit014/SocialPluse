@@ -1,74 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
 import { deleteLinkedInToken } from '../vault';
 import { requireApiSession } from '@/lib/auth/api';
+import { scrubUserPostAccounts } from '@/lib/post-store';
 import { logSystem } from '@/lib/system-log';
 
-const POSTS_FILE = join(process.cwd(), 'scheduled-posts.json');
-
-interface StoredAccount {
-  platform?: string;
-  accessToken?: string;
-  userId?: string;
-  [key: string]: unknown;
-}
-
-interface StoredPost {
-  accounts?: StoredAccount[];
-  [key: string]: unknown;
-}
-
-// POST /api/linkedin/disconnect { platform, userId? }
+// POST /api/linkedin/disconnect
 // Removes server-held credentials so a disconnected account can never publish again:
-// - deletes the OAuth token from the server vault
-// - scrubs accessToken/userId copies stored inside scheduled posts
+//   - deletes THIS user's LinkedIn connection
+//   - scrubs credential copies out of THIS user's scheduled posts
+//
+// The provider userId in the body is used only to narrow the scrub within the
+// caller's own posts. It no longer selects which stored token gets deleted —
+// that was the bug: any authenticated user could pass someone else's id and
+// disconnect them, and omitting it entirely wiped the whole vault system-wide.
 export async function POST(request: NextRequest) {
   const session = await requireApiSession();
   if (session instanceof NextResponse) return session;
   try {
-    const { platform, userId } = await request.json();
+    const body = await request.json().catch(() => ({}) as Record<string, unknown>);
+    const platform = body.platform;
+    const providerUserId = typeof body.userId === 'string' && body.userId ? body.userId : null;
 
     if (platform !== 'linkedin') {
       return NextResponse.json(
         { success: false, code: 'UNSUPPORTED_PLATFORM', message: 'Only LinkedIn disconnect is supported.' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    deleteLinkedInToken(userId);
+    const removed = await deleteLinkedInToken(session.userId);
 
-    let scrubbedPosts = 0;
-    if (existsSync(POSTS_FILE)) {
-      try {
-        const posts = JSON.parse(readFileSync(POSTS_FILE, 'utf8')) as StoredPost[];
-        for (const post of posts) {
-          if (!Array.isArray(post.accounts)) continue;
-          let changed = false;
-          for (const account of post.accounts) {
-            if (account.platform !== 'linkedin') continue;
-            if (userId && account.userId && account.userId !== userId) continue;
-            if ('accessToken' in account || 'userId' in account) {
-              delete account.accessToken;
-              delete account.userId;
-              changed = true;
-            }
-          }
-          if (changed) scrubbedPosts++;
-        }
-        writeFileSync(POSTS_FILE, JSON.stringify(posts, null, 2));
-      } catch (err) {
-        console.error('[linkedin/disconnect] failed to scrub scheduled posts:', err instanceof Error ? err.message : err);
-      }
-    }
+    const scrubbedPosts = await scrubUserPostAccounts(session.userId, 'linkedin', providerUserId);
 
-    logSystem({ level: 'INFO', category: 'PLATFORM', event: 'LINKEDIN_DISCONNECTED', userId: session.userId, platform: 'linkedin', message: 'LinkedIn disconnected' });
-    return NextResponse.json({ success: true, scrubbedPosts });
+    logSystem({ level: 'INFO', category: 'PLATFORM', event: 'LINKEDIN_DISCONNECTED', userId: session.userId, platform: 'linkedin', message: removed ? 'LinkedIn disconnected' : 'No LinkedIn connection to disconnect' });
+    return NextResponse.json({ success: true, disconnected: removed, scrubbedPosts });
   } catch (error) {
     console.error('[linkedin/disconnect] error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { success: false, code: 'DISCONNECT_FAILED', message: 'Failed to disconnect LinkedIn.' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

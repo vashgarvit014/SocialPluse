@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import StudioWorkspace from './studio-workspace';
 import SchedulerCalendar from './scheduler-calendar';
 import ConnectPlatforms from './connect-platforms';
 import AssetLibrary from './asset-library';
 import { newestDrafts, postMedia, type PostRecord } from '@/lib/posts';
 import { returnStore } from '@/lib/editor-return';
+import { clearAllUserState, identityChanged, purgeForeignUserState, userScopedKey } from '@/lib/client-identity';
 
 interface SocialAccount {
   platform: string;
@@ -254,14 +255,38 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  // The signed-in account id, resolved before ANY user-owned browser state is
+  // read. Every localStorage key below is namespaced by it, so a key read can
+  // never resolve to another account's data. `null` until /api/auth/me
+  // resolves; draft loading waits for it rather than racing ahead unscoped.
+  const [userId, setUserId] = useState<string | null>(null);
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(d => { if (d?.user) setCurrentUser(d.user); }).catch(() => {});
+    let cancelled = false;
+    fetch('/api/auth/me')
+      .then(r => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled) return;
+        const id = d?.user?.id ?? null;
+        // A previous account's client state is purged the moment we learn who
+        // is actually signed in — including on a shared browser where the last
+        // visitor was somebody else.
+        if (id) identityChanged(id);
+        else purgeForeignUserState(null);
+        setUserId(id);
+        if (d?.user) setCurrentUser(d.user);
+      })
+      .catch(() => { if (!cancelled) purgeForeignUserState(null); });
+    return () => { cancelled = true; };
   }, []);
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } finally {
+      // Wipe every user-owned browser store before leaving. Without this the
+      // next person to sign in on this browser inherits the draft, the
+      // connected-account list and the IndexedDB editor snapshots.
+      await clearAllUserState();
       window.location.href = '/';
     }
   };
@@ -305,6 +330,11 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const [generationError, setGenerationError] = useState('');
   // Safety-filter popup: the image model refused the prompt (not an outage).
   const [safetyBlockedOpen, setSafetyBlockedOpen] = useState(false);
+  // Server-side moderation outcome (CONTENT_SAFETY_BLOCKED). Distinct from the
+  // provider-refusal dialog above: this one means OUR classifier declined the
+  // request before generation, which also advances the account's warning
+  // counter, so the copy has to say so.
+  const [moderationWarning, setModerationWarning] = useState<{ message: string; violationCount: number; flagged: boolean; severity: string } | null>(null);
   const SAFETY_EXAMPLE_PROMPT = 'Modern office desk with a sleek tablet displaying a colorful analytics dashboard, warm morning light, photorealistic';
   const [statusMessage, setStatusMessage] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -315,6 +345,7 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   // provider details are hidden behind /api/whatsapp routes.
   const [whapiConnected, setWhapiConnected] = useState(false);
   const [whapiChannelStatus, setWhapiChannelStatus] = useState('');
+  const [whapiCanConnect, setWhapiCanConnect] = useState(false);
   const [whapiAccountName, setWhapiAccountName] = useState('');
   const [whapiPhoneMasked, setWhapiPhoneMasked] = useState('');
   const [whapiLoading, setWhapiLoading] = useState(false);
@@ -332,6 +363,13 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const [whatsappQrImage, setWhatsappQrImage] = useState('');
   const [whatsappConnectMessage, setWhatsappConnectMessage] = useState('');
   const [whatsappConnecting, setWhatsappConnecting] = useState(false);
+  // Server-authoritative QR lifecycle. The client must NOT derive "connected"
+  // from anything except the server confirming THIS user's exact session:
+  // generating a QR, holding a QR, or a stale provider-level AUTH flag are all
+  // explicitly not connected.
+  const [whatsappQrStatus, setWhatsappQrStatus] = useState<string>('');
+  const [whatsappQrExpiresAt, setWhatsappQrExpiresAt] = useState<string | null>(null);
+  const [whatsappQrSecondsLeft, setWhatsappQrSecondsLeft] = useState<number | null>(null);
 
   // ---- Reload persistence ----
   // Browsers forbid custom popups *during* a reload (beforeunload only gets
@@ -339,7 +377,17 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   // the reload instead: work is autosaved continuously, and on load we ask
   // whether to keep it or start clean. Both buttons fully work - Keep
   // restores everything, Fresh wipes the saved draft and stays empty.
-  const DRAFT_KEY = 'socialpulse-draft';
+  // Namespaced by the signed-in user id. Previously a single global key, so a
+  // second user on the same browser was offered the first user's draft to
+  // restore. `null` while the id is still resolving.
+  const DRAFT_KEY = useMemo(() => (userId ? userScopedKey(userId, 'draft') : null), [userId]);
+  // Connected-account display cache. Namespaced for the same reason as the
+  // draft: it holds account names, emails and Page ids, and was previously a
+  // single global key that survived logout.
+  const ACCOUNTS_KEY = useMemo(() => (userId ? userScopedKey(userId, 'accounts') : null), [userId]);
+  // Pre-namespacing orphan store, kept readable for anyone who has not been
+  // purged yet but now scoped so it cannot cross accounts.
+  const LEGACY_DRAFTS_KEY = useMemo(() => (userId ? userScopedKey(userId, 'legacy-drafts') : null), [userId]);
   interface SavedDraft {
     prompt: string; tone: string; imageStyle: string; aspectRatio: string;
     content: string; platformContent: Record<string, { caption: string; hashtags: string[] }>;
@@ -382,6 +430,9 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has('editor_return')) return;
     if (new URLSearchParams(window.location.search).has('correlation_jwt')) return;
+    // Wait for the signed-in id: reading an unscoped key here is exactly the
+    // cross-user leak this guards against.
+    if (!DRAFT_KEY) return;
     let local: SavedDraft | null = null;
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
@@ -411,13 +462,15 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [DRAFT_KEY]);
 
   // Autosave everything that rebuilds the workspace (debounced). Skipped
   // while the restore popup is awaiting a choice, so we never clobber the
   // saved draft before the user picks Keep or Fresh.
   useEffect(() => {
     if (restorePromptOpen || oauthRestoring) return;
+    // Never write user state before we know whose it is.
+    if (!DRAFT_KEY) return;
     const t = setTimeout(() => {
       const draft: SavedDraft = captureEditor();
       const full = JSON.stringify(draft);
@@ -432,10 +485,10 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         (draft as SavedDraft).mediaSkipped = true;
       }
       try {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        localStorage.setItem(DRAFT_KEY!, JSON.stringify(draft));
       } catch {
         try {
-          localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          localStorage.setItem(DRAFT_KEY!, JSON.stringify({
             ...draft, mediaItems: [], topicMediaItems: [], generatedImage: '', generatedVideo: '', logoImage: '', mediaSkipped: true,
           }));
         } catch { /* storage unavailable - session simply won't restore */ }
@@ -493,7 +546,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   const keepRestoredDraft = () => restoreEditor(savedDraft);
 
   const discardSavedDraft = () => {
-    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    try { if (DRAFT_KEY) localStorage.removeItem(DRAFT_KEY); } catch {}
     fetch('/api/editor-draft', { method: 'DELETE' }).catch(() => {});
     setSavedDraft(null);
     setRestorePromptOpen(false);
@@ -539,7 +592,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     let facebookAccount: SocialAccount | undefined;
     let instagramAccount: SocialAccount | undefined;
 
-    const saved = localStorage.getItem('socialAccounts');
+    if (!ACCOUNTS_KEY) return;
+    const saved = localStorage.getItem(ACCOUNTS_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as SocialAccount[];
@@ -562,7 +616,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         instagramAccount = scrubbed.find(a => a.platform === 'instagram');
         const rest = scrubbed.filter(a => a.platform !== 'linkedin' && a.platform !== 'facebook' && a.platform !== 'instagram');
         setAccounts(rest);
-        localStorage.setItem('socialAccounts', JSON.stringify(rest));
+        localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(rest));
       } catch { /* ignore corrupt cache - status checks below still run unconditionally */ }
     }
 
@@ -590,7 +644,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             const base = linkedinAccount?.userId === data.userId ? linkedinAccount : undefined;
             setAccounts(prev => {
               const updated = [...prev.filter(a => a.platform !== 'linkedin'), { platform: 'linkedin', connected: true, userId: data.userId!, name: data.name || base?.name || 'LinkedIn', email: data.email || base?.email || '' }];
-              localStorage.setItem('socialAccounts', JSON.stringify(updated));
+              localStorage.setItem(ACCOUNTS_KEY!, JSON.stringify(updated));
               return updated;
             });
           })
@@ -610,7 +664,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             const pageId = pages?.some(p => p.id === base?.pageId) ? base?.pageId : pages?.[0]?.id;
             setAccounts(prev => {
               const updated = [...prev.filter(a => a.platform !== 'facebook'), { platform: 'facebook', connected: true, userId: data.userId!, name: data.name || base?.name || 'Facebook', email: base?.email || '', pages, pageId }];
-              localStorage.setItem('socialAccounts', JSON.stringify(updated));
+              localStorage.setItem(ACCOUNTS_KEY!, JSON.stringify(updated));
               return updated;
             });
           })
@@ -626,7 +680,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             if (!data.connected || !data.userId) return; // Facebook not connected, or no Page has Instagram linked
             setAccounts(prev => {
               const updated = [...prev.filter(a => a.platform !== 'instagram'), { platform: 'instagram', connected: true, userId: data.userId!, name: data.username ? `@${data.username}` : 'Instagram', email: '', igUserId: data.igUserId, pageId: data.pageId }];
-              localStorage.setItem('socialAccounts', JSON.stringify(updated));
+              localStorage.setItem(ACCOUNTS_KEY!, JSON.stringify(updated));
               return updated;
             });
           })
@@ -682,7 +736,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       setAccounts(prev => {
         const filtered = prev.filter(a => a.platform !== platform);
         const updated = [...filtered, newAccount];
-        localStorage.setItem('socialAccounts', JSON.stringify(updated));
+        localStorage.setItem(ACCOUNTS_KEY!, JSON.stringify(updated));
         return updated;
       });
       setPublishResult(`${platform.charAt(0).toUpperCase() + platform.slice(1)} connected successfully!`);
@@ -706,6 +760,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       setWhapiChannelStatus(data.status || '');
       setWhapiAccountName(data.accountName || '');
       setWhapiPhoneMasked(data.phoneMasked || '');
+      setWhapiCanConnect(!!data.canStartConnect);
       if (data.connected) setWhatsappConnectOpen(false);
       return !!data.connected;
     } catch {
@@ -723,15 +778,38 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     setWhatsappConnecting(true);
     setWhatsappQrImage('');
     setWhatsappConnectMessage('');
+    setWhatsappQrExpiresAt(null);
+    setWhatsappQrSecondsLeft(null);
     try {
       const res = await fetch('/api/whatsapp/connect', { method: 'POST' });
       const data = await res.json();
+      setWhatsappQrStatus(data.status || '');
+      // Already-connected short circuit: the server refuses to mint a new
+      // session when a healthy connection exists (doing so would unlink the
+      // paired device). Reflect that immediately instead of showing a QR the
+      // user has no reason to scan.
       if (data.status === 'CONNECTED') {
-        await refreshWhapiStatus();
-        setWhatsappConnectMessage('WhatsApp is already connected.');
-      } else if (data.qrImage) {
+        setWhatsappConnectOpen(false);
+        setWhatsappQrImage('');
+        void refreshWhapiStatus();
+        return;
+      }
+      // Prefer the PROVIDER's real remaining lifetime (often only ~15-40s) over
+      // our own 5-minute bookkeeping TTL. Counting down from 5 minutes told the
+      // user they had ample time while the code on screen was already dead —
+      // which is what made WhatsApp answer "couldn't link device".
+      if (typeof data.qrExpiresInSeconds === 'number') {
+        setWhatsappQrExpiresAt(new Date(Date.now() + data.qrExpiresInSeconds * 1000).toISOString());
+        setWhatsappQrSecondsLeft(data.qrExpiresInSeconds);
+      } else {
+        setWhatsappQrExpiresAt(data.qrExpiresAt || null);
+      }
+      // A QR having been generated is NOT a connection. The only branch that
+      // flips the UI to connected is the poll below confirming this exact
+      // session, so this handler never does it.
+      if (data.qrImage) {
         setWhatsappQrImage(data.qrImage);
-        setWhatsappConnectMessage('Open WhatsApp on your phone, go to Linked Devices, and scan this QR code.');
+        setWhatsappConnectMessage(data.message || 'Open WhatsApp on your phone, go to Linked Devices, and scan this QR code.');
       } else {
         setWhatsappConnectMessage(data.message || 'WhatsApp connection could not be completed. Please try again.');
       }
@@ -741,6 +819,45 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       setWhatsappConnecting(false);
     }
   };
+
+  // Abandons a pending QR. Server-side this moves the row to CANCELLED so a
+  // late scan cannot connect an attempt the user walked away from.
+  const cancelWhatsAppQr = async () => {
+    try {
+      await fetch('/api/whatsapp/cancel', { method: 'POST' });
+    } catch { /* the row expires on its own either way */ }
+    setWhatsappConnectOpen(false);
+    setWhatsappQrImage('');
+    setWhatsappQrExpiresAt(null);
+    setWhatsappQrSecondsLeft(null);
+    setWhatsappQrStatus('CANCELLED');
+    setWhatsappConnectMessage('QR code cancelled.');
+  };
+
+  // Counts the QR down using the provider's own remaining lifetime.
+  //
+  // This is the difference between a QR the user can actually scan and one
+  // that has already died: Whapi's pairing codes are valid for roughly 15-40
+  // seconds, and WhatsApp answers "couldn't link device" for an expired code.
+  // Hitting zero retires the image so the modal offers Generate New QR rather
+  // than leaving an unscannable code on screen.
+  useEffect(() => {
+    if (!whatsappConnectOpen || whatsappQrStatus !== 'WAITING_FOR_SCAN') return;
+    if (whatsappQrSecondsLeft === null) return;
+    const id = setInterval(() => {
+      setWhatsappQrSecondsLeft((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          setWhatsappQrStatus('EXPIRED');
+          setWhatsappQrImage('');
+          setWhatsappConnectMessage('This QR code expired. Generate a new one to continue.');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [whatsappConnectOpen, whatsappQrStatus, whatsappQrSecondsLeft === null]);
 
   // Unified destination loader — communities + groups + chats in one list.
   // Replaces the older groups-only loader, which could not represent 1:1 chats
@@ -887,9 +1004,26 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       if (stopped || inFlight || document.hidden) return;
       inFlight = true;
       try {
-        const res = await fetch('/api/whatsapp/status');
+        // poll=1 is REQUIRED while the QR modal is open. Without it the route
+        // only reads state and never calls pollWhatsAppConnection, which is the
+        // ONLY code path that can promote WAITING_FOR_SCAN to CONNECTED — so
+        // the scan would be detected by nobody and the row would never bind.
+        const url = whatsappConnectOpen ? '/api/whatsapp/status?poll=1' : '/api/whatsapp/status';
+        const res = await fetch(url);
         const data = await res.json().catch(() => ({}));
         if (stopped) return;
+        if (data) setWhapiCanConnect(!!data.canStartConnect);
+        if (data && whatsappConnectOpen) {
+          // Keep the modal's own status chip in step with the server so an
+          // expiry is actually visible, and drop the stale image rather than
+          // leaving an unscannable code on screen.
+          setWhatsappQrStatus(data.status || '');
+          if (data.status === 'EXPIRED' || data.status === 'CANCELLED') {
+            setWhatsappQrImage('');
+            setWhatsappQrSecondsLeft(null);
+          }
+          if (data.message) setWhatsappConnectMessage(data.message);
+        }
         if (data && data.connected) {
           setWhapiConnected(true);
           setWhapiChannelStatus(data.status || '');
@@ -1417,9 +1551,10 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     if (!window.confirm('Delete this draft permanently?')) return;
     try {
       if (post.id.startsWith('legacy:')) {
-        const list = JSON.parse(localStorage.getItem('socialDrafts') || '[]');
+        if (!LEGACY_DRAFTS_KEY) throw new Error('Not signed in');
+        const list = JSON.parse(localStorage.getItem(LEGACY_DRAFTS_KEY) || '[]');
         list.splice(Number(post.id.split(':')[1]), 1);
-        localStorage.setItem('socialDrafts', JSON.stringify(list)); loadLegacyDrafts();
+        localStorage.setItem(LEGACY_DRAFTS_KEY, JSON.stringify(list)); loadLegacyDrafts();
       } else {
         const res = await fetch('/api/scheduler', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: post.id, action: 'delete-draft' }) });
         if (!res.ok) throw new Error('Draft deletion failed'); await loadScheduledPosts();
@@ -1441,15 +1576,16 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   };
 
   const loadLegacyDrafts = () => {
+    if (!LEGACY_DRAFTS_KEY) return;
     try {
-      const list = JSON.parse(localStorage.getItem('socialDrafts') || '[]');
+      const list = JSON.parse(localStorage.getItem(LEGACY_DRAFTS_KEY) || '[]');
       if (!Array.isArray(list)) throw new Error('Invalid legacy drafts');
       setLegacyDrafts(list.map((d, i) => ({ ...d, id: 'legacy:' + i, content: d.content || d.prompt || '', imageUrl: d.imageUrl || '',
         platforms: d.platforms || d.selectedPlatforms || [], accounts: [], status: 'draft', scheduledAt: null,
         editorState: d, createdAt: d.createdAt || d.savedAt || '', updatedAt: d.updatedAt || d.savedAt || '', source: 'Manual Draft' })));
     } catch { notify('Old draft storage could not be read. It has been left unchanged.', true); }
   };
-  useEffect(() => { loadLegacyDrafts(); }, []);
+  useEffect(() => { loadLegacyDrafts(); }, [LEGACY_DRAFTS_KEY]);
 
   const updateAltText = (id: string, altText: string) => {
     setMediaItems(items => items.map(m => m.id === id ? { ...m, altText } : m));
@@ -1485,7 +1621,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           pageId: data.pageId || (data.pages?.some((p: {id: string}) => p.id === existing?.pageId) ? existing?.pageId : data.pages?.[0]?.id),
           igUserId: data.igUserId,
         });
-        localStorage.setItem('socialAccounts', JSON.stringify(updated)); return updated;
+        localStorage.setItem(ACCOUNTS_KEY!, JSON.stringify(updated)); return updated;
       });
       return [platform, !!data.connected] as const;
     }));
@@ -1556,7 +1692,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     } catch { /* local state is still cleared below */ }
     setAccounts(prev => {
       const updated = prev.filter(a => a.platform !== platform);
-      localStorage.setItem('socialAccounts', JSON.stringify(updated));
+      localStorage.setItem(ACCOUNTS_KEY!, JSON.stringify(updated));
       return updated;
     });
     setSelectedPlatforms(prev => prev.filter(p => p !== platform));
@@ -1602,7 +1738,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   const setAccountPageId = (platform: string, pageId: string) => {
     setAccounts(prev => {
       const updated = prev.map(a => (a.platform === platform ? { ...a, pageId } : a));
-      localStorage.setItem('socialAccounts', JSON.stringify(updated));
+      localStorage.setItem(ACCOUNTS_KEY!, JSON.stringify(updated));
       return updated;
     });
   };
@@ -1738,6 +1874,21 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         body: JSON.stringify({ prompt: promptText, style: imageStyle, size: { width: size.width, height: size.height }, aspectRatio }),
       });
       const startData = await startRes.json();
+      // Server refused BEFORE generating anything: no provider call, no image,
+      // no MediaAsset, nothing in the Asset Gallery.
+      if (startData.code === 'CONTENT_SAFETY_BLOCKED') {
+        setModerationWarning({
+          message: startData.error || 'This request cannot be processed.',
+          violationCount: startData.moderation?.violationCount ?? 0,
+          flagged: startData.moderation?.flagged === true,
+          severity: startData.moderation?.severity || 'WARNING',
+        });
+        setIsGeneratingImage(false);
+        return null;
+      }
+      if (startRes.status === 429) {
+        throw new Error(startData.error || 'Too many image requests. Please try again later.');
+      }
       if (!startRes.ok || !startData.jobId) {
         throw new Error(startData.message || startData.error || 'Could not start image generation — try again');
       }
@@ -3160,7 +3311,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
 
             whapiDestinations={whapiDestinations} whapiSelectedDestinations={whapiSelectedDestinations} setWhapiSelectedDestinations={setWhapiSelectedDestinations} loadWhapiDestinations={loadWhapiDestinations}
             whapiGroupsLoading={whapiGroupsLoading} whapiGroupsError={whapiGroupsError} loadWhapiGroups={loadWhapiGroups} startWhatsAppConnect={startWhatsAppConnect}
-            disconnectWhatsApp={disconnectWhatsApp} whatsappDisconnecting={whatsappDisconnecting}
+            disconnectWhatsApp={disconnectWhatsApp} whatsappDisconnecting={whatsappDisconnecting} whapiCanConnect={whapiCanConnect}
             publishToWhapi={publishToWhapi} whapiPublishing={whapiPublishing} refreshWhapiStatus={refreshWhapiStatus} whapiLoading={whapiLoading}
           />
         )}
@@ -3170,7 +3321,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             accounts={accounts} connectPlatform={connectPlatform} disconnectPlatform={disconnectPlatform}
             whapiConnected={whapiConnected} whapiChannelStatus={whapiChannelStatus} whapiAccountName={whapiAccountName} whapiPhoneMasked={whapiPhoneMasked}
             whapiGroups={whapiGroups} whapiLoading={whapiLoading} whapiGroupsLoading={whapiGroupsLoading} loadWhapiGroups={loadWhapiGroups} startWhatsAppConnect={startWhatsAppConnect}
-            disconnectWhatsApp={disconnectWhatsApp} whatsappDisconnecting={whatsappDisconnecting}
+            disconnectWhatsApp={disconnectWhatsApp} whatsappDisconnecting={whatsappDisconnecting} whapiCanConnect={whapiCanConnect}
             canvaConnected={canvaConnected} canvaName={canvaName} disconnectCanva={disconnectCanva} refreshWhapiStatus={refreshWhapiStatus} refreshCanvaStatus={refreshCanvaStatus}
             platformColors={platformColors} PlatformIcon={PlatformIcon}
           />
@@ -3713,6 +3864,63 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         </div>
       )}
 
+      {/* Server-side moderation warning. Shown when OUR classifier blocked the
+          request before generation; the account counter has already advanced,
+          so the copy states that plainly. */}
+      {moderationWarning && (() => {
+        const warnBody =
+          moderationWarning.violationCount < 2
+            ? 'Warning ' + moderationWarning.violationCount + ' of 2 on this account. One more blocked request will flag your account for review.'
+            : 'Warning ' + moderationWarning.violationCount + ' on this account. This account has been flagged for review.';
+        return (
+        <div
+          onClick={() => setModerationWarning(null)}
+          style={{
+            position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(2px)',
+            zIndex: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
+            animation: 'overlayIn 0.15s ease-out',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="sp-moderation-warning-title"
+            style={{
+              backgroundColor: '#fff', borderRadius: '18px', width: '100%', maxWidth: '470px',
+              boxShadow: '0 24px 64px rgba(15,23,42,0.3)', animation: 'modalPopIn 0.2s cubic-bezier(0.16,1,0.3,1)',
+            }}
+          >
+            <div style={{ padding: '22px 24px 0', display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{
+                width: '42px', height: '42px', borderRadius: '12px', flexShrink: 0,
+                background: 'linear-gradient(135deg,#ef4444,#b91c1c)', color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '19px',
+              }}>&#128737;</div>
+              <div>
+                <div id="sp-moderation-warning-title" style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Content Safety Warning</div>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>This request was not processed</div>
+              </div>
+            </div>
+            <div style={{ padding: '18px 24px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ fontSize: '13px', color: '#334155', lineHeight: 1.65 }}>{moderationWarning.message}</div>
+              {moderationWarning.violationCount > 0 && (
+                <div style={{
+                  fontSize: '12px', color: '#b45309', backgroundColor: '#fffbeb', border: '1px solid #fde68a',
+                  padding: '10px 12px', borderRadius: '10px', lineHeight: 1.55,
+                }}>{warnBody}</div>
+              )}
+              <button
+                onClick={() => setModerationWarning(null)}
+                style={{ padding: '11px 18px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
+              >I Understand</button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
+
+
       {safetyBlockedOpen && (
         <div
           onClick={() => setSafetyBlockedOpen(false)}
@@ -4153,11 +4361,10 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               <span style={{ width: 38, height: 38, borderRadius: 12, background: 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>💬</span>
               <div>
                 <h3 style={{ margin: 0, fontSize: 18, color: '#0F172A' }}>Connect WhatsApp</h3>
-                <p style={{ margin: '3px 0 0', fontSize: 12, color: '#64748B' }}>Connect your WhatsApp account to SocialPulse and publish directly from your workspace.</p>
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: '#64748B' }}>Scan this QR using WhatsApp. Your account is only connected after the scan is confirmed.</p>
               </div>
             </div>
             <div style={{ border: '1px solid #E2E8F0', borderRadius: 14, padding: 16, textAlign: 'center', background: '#F8FAFC' }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: '#0F172A', marginBottom: 10 }}>Step 1 · Connect your WhatsApp</div>
               {whatsappConnecting ? (
                 <div style={{ minHeight: 230, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B', fontSize: 13 }}>Preparing secure connection…</div>
               ) : whatsappQrImage ? (
@@ -4165,15 +4372,50 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={whatsappQrImage} alt="WhatsApp connection QR code" style={{ width: 220, height: 220, objectFit: 'contain', background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 10 }} />
                   <p style={{ margin: '12px auto 0', maxWidth: 300, color: '#475569', fontSize: 12, lineHeight: 1.55 }}>{whatsappConnectMessage}</p>
-                  <p style={{ margin: '8px auto 0', maxWidth: 300, color: '#059669', fontSize: 11, fontWeight: 700 }}>Waiting for scan — this closes automatically once connected.</p>
+                  <div
+                    aria-live="polite"
+                    style={{
+                      margin: '10px auto 0', maxWidth: 300, display: 'inline-flex', alignItems: 'center', gap: 7,
+                      padding: '5px 12px', borderRadius: 999,
+                      background: whatsappQrStatus === 'WAITING_FOR_SCAN' ? '#ECFDF5' : '#F1F5F9',
+                      border: `1px solid ${whatsappQrStatus === 'WAITING_FOR_SCAN' ? '#A7F3D0' : '#E2E8F0'}`,
+                      color: whatsappQrStatus === 'WAITING_FOR_SCAN' ? '#047857' : '#64748B',
+                      fontSize: 11.5, fontWeight: 800,
+                    }}
+                  >
+                    {whatsappQrStatus === 'WAITING_FOR_SCAN' && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981' }} />}
+                    {whatsappQrStatus === 'WAITING_FOR_SCAN'
+                      ? 'Status: Waiting for scan…'
+                      : whatsappQrStatus === 'EXPIRED'
+                        ? 'Status: QR expired'
+                        : whatsappQrStatus === 'CANCELLED'
+                          ? 'Status: Cancelled'
+                          : `Status: ${(whatsappQrStatus || 'PENDING').replace(/_/g, ' ')}`}
+                    {whatsappQrSecondsLeft !== null && whatsappQrStatus === 'WAITING_FOR_SCAN' && (
+                      <span style={{ opacity: 0.75, fontWeight: 700 }}>
+                        · {Math.floor(whatsappQrSecondsLeft / 60)}:{String(whatsappQrSecondsLeft % 60).padStart(2, '0')} left
+                      </span>
+                    )}
+                  </div>
                 </>
               ) : (
                 <p style={{ margin: '52px auto', maxWidth: 320, color: '#475569', fontSize: 13, lineHeight: 1.6 }}>{whatsappConnectMessage || 'Connection information will appear here.'}</p>
               )}
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-              <button onClick={() => setWhatsappConnectOpen(false)} style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer' }}>Close</button>
-              <button onClick={startWhatsAppConnect} disabled={whatsappConnecting || whapiLoading} style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', fontWeight: 800, cursor: whatsappConnecting || whapiLoading ? 'wait' : 'pointer' }}>{whatsappQrImage ? 'Refresh QR' : 'Try again'}</button>
+              <button
+                onClick={cancelWhatsAppQr}
+                style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={startWhatsAppConnect}
+                disabled={whatsappConnecting || whapiLoading}
+                style={{ flex: 1, padding: '11px 14px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', fontWeight: 800, cursor: whatsappConnecting || whapiLoading ? 'wait' : 'pointer', opacity: whatsappConnecting || whapiLoading ? 0.7 : 1 }}
+              >
+                {whatsappConnecting ? 'Preparing…' : whatsappQrImage && whatsappQrStatus !== 'EXPIRED' && whatsappQrStatus !== 'CANCELLED' ? 'Refresh QR' : 'Generate New QR'}
+              </button>
             </div>
           </div>
         </div>

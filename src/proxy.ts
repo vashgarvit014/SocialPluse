@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE, readSessionFromCookieValue } from '@/lib/auth/session';
+import {
+  canonicalPathname,
+  isPublicHost,
+  isSuperadminHost as hostIsSuperadmin,
+  isSuperadminPath,
+  normalizeHost,
+  rawPathname,
+} from '@/lib/admin-host';
 
 // Optimistic, cookie-only auth gate for pages (App Router file convention —
 // "middleware.ts" was renamed to "proxy.ts" in Next.js 16, same behavior:
@@ -32,16 +40,51 @@ const SUPERADMIN_AUTH_PAGE = '/superadmin/login';
 // bounced with a redirect, so the address bar shows only the clean domain.
 // Compared case-insensitively and on the Host header only — the Host header is
 // set by Cloudflare to the hostname the user actually requested, so this is not
-// a value a client can forge by sending a different origin. localhost (3000/3001)
-// is deliberately NOT in this list, so local development is unaffected.
-const SUPERADMIN_HOSTNAMES = new Set([
-  'supersocialpulse.dotstark.tech',
-]);
+// a value a client can forge by sending a different origin.
+//
+// The allow/deny sets live in src/lib/admin-host.ts so the same constants are
+// used by the OAuth/OTP routes that need to hand a Superadmin off to the
+// correct origin. localhost (3000/3001) is deliberately in NEITHER set, so
+// local development is unaffected.
 
 export default async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  const host = (request.headers.get('host') || '').split(':')[0].toLowerCase();
-  const isSuperadminHost = SUPERADMIN_HOSTNAMES.has(host);
+  const host = normalizeHost(request.headers.get('host'));
+  const isSuperadminHost = hostIsSuperadmin(host);
+
+  // The admin console is served ONLY from the admin subdomain. On the public
+  // product site the whole /superadmin tree does not exist and answers with the
+  // same styled 404 as any other unknown path — no login form, no hint that an
+  // admin surface is associated with this domain.
+  //
+  // The rewrite target (/404) calls notFound(), which is how a 404 STATUS is
+  // combined with the styled page: returning 404 straight from the proxy would
+  // only give plain text, and a rewrite alone is always a 200. The target is a
+  // fixed path with no query string, so nothing a requester appended is
+  // reflected back.
+  //
+  // localhost matches neither host set, so the console stays reachable in
+  // development. Nothing here is a substitute for authentication: the real
+  // gate is requireSuperadmin()'s DB role check in src/app/superadmin/layout.tsx.
+  //
+  // Matching runs against the CANONICAL form of the RAW request path, not
+  // nextUrl.pathname: with skipTrailingSlashRedirect enabled Next no longer
+  // normalises ahead of us, so `/superadmin/`, `/superadmin//` and
+  // `//superadmin` reach the proxy intact instead of answering 308.
+  const requestedPath = canonicalPathname(rawPathname(request.url));
+  if (!isSuperadminHost && isPublicHost(host) && isSuperadminPath(requestedPath)) {
+    return NextResponse.rewrite(new URL('/404', request.url));
+  }
+
+  // Re-apply the redirect Next used to perform, now that it is switched off
+  // (see skipTrailingSlashRedirect in next.config.ts). Same rule as Next's
+  // default trailingSlash:false — drop a trailing slash, except for the root.
+  // Without this, disabling the built-in redirect would have left
+  // `/dashboard/` unrouted instead of redirecting.
+  if (pathname !== '/' && pathname.length > 1 && pathname.endsWith('/')) {
+    const trimmed = pathname.replace(/\/+$/, '') || '/';
+    return NextResponse.redirect(new URL(trimmed + search, request.url), 308);
+  }
 
   // On the Superadmin host, "/" serves the Superadmin login as a REWRITE, so
   // the browser stays on https://supersocialpulse.dotstark.tech and gets a
@@ -74,13 +117,13 @@ export default async function proxy(request: NextRequest) {
   // it would break those screens. The existing role check, not this list, is
   // what actually protects the data.
   if (isSuperadminHost) {
-    const isSuperadminPath = pathname === '/superadmin' || pathname.startsWith('/superadmin/');
+    const isAdminPath = isSuperadminPath(pathname);
     const isPlatformPath =
       pathname === '/_next' || pathname.startsWith('/_next/') ||
       pathname === '/api' || pathname.startsWith('/api/');
     const isStaticAsset =
       /\.(?:svg|png|jpe?g|webp|gif|ico|css|js|map|woff2?|ttf|txt|xml|webmanifest|json)$/i.test(pathname);
-    if (!isSuperadminPath && !isPlatformPath && !isStaticAsset) {
+    if (!isAdminPath && !isPlatformPath && !isStaticAsset) {
       return new NextResponse('Not found', { status: 404 });
     }
   }

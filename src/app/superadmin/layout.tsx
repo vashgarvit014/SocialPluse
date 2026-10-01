@@ -4,6 +4,8 @@ import { requireSuperadmin } from '@/lib/auth/roles';
 import { countUsersByStatus } from '@/lib/auth/users';
 import { getSystemHealth } from '@/lib/auth/system-health';
 import { getPublishingCounts } from '@/lib/publishing-monitor';
+import { unreadCount } from '@/lib/admin-notifications';
+import { queryOne } from '@/lib/db';
 import SuperadminShell from './shell';
 import './theme.css';
 
@@ -32,12 +34,21 @@ export default async function SuperadminLayout({ children }: { children: React.R
   // Nav badge counts — cheap (a COUNT query, the already-cheap health check,
   // and a JSON file read — all already used elsewhere) so computing them on
   // every navigation is fine; nothing here calls an external provider API.
-  const [counts, health, publishing] = await Promise.all([countUsersByStatus(), getSystemHealth(), getPublishingCounts()]);
+  const flagged = await queryOne<{ count: string }>(
+    'SELECT count(*) AS count FROM users WHERE moderation_flagged = true',
+  );
+  const [counts, health, publishing, unread] = await Promise.all([
+    countUsersByStatus(), getSystemHealth(), getPublishingCounts(), unreadCount(),
+  ]);
   const healthIssues = health.filter(h => h.status !== 'OK').length;
 
   return (
     <div className={`${sans.variable} ${mono.variable}`} style={{ fontFamily: 'var(--font-sa-sans), system-ui, sans-serif' }}>
-      <SuperadminShell name={user.name} email={user.email} pendingUsers={counts.pending} healthIssues={healthIssues} failedPublishing={publishing.failed}>
+      <SuperadminShell
+        name={user.name} email={user.email} pendingUsers={counts.pending}
+        healthIssues={healthIssues} failedPublishing={publishing.failed}
+        flaggedUsers={Number(flagged?.count || 0)} unreadNotifications={unread}
+      >
         {children}
       </SuperadminShell>
     </div>

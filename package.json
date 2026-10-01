@@ -10,7 +10,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "create-superadmin": "node scripts/create-superadmin.mjs"
+    "create-superadmin": "node scripts/create-superadmin.mjs",
+    "cleanup:expired-media": "node scripts/cleanup-expired-media.mjs",
+    "cleanup:expired-media:dry": "node scripts/cleanup-expired-media.mjs --dry-run",
+    "test:isolation": "node scripts/verify-user-isolation.mjs",
+    "claim-legacy-connections": "node scripts/claim-legacy-connections.mjs",
+    "whatsapp:pair-qr": "node scripts/whatsapp-pair-qr.mjs",
+    "test:isolation:http": "node scripts/verify-user-isolation-http.mjs",
+    "test:whatsapp-qr": "node scripts/verify-whatsapp-qr.mjs",
+    "test:moderation-classifier": "node --import tsx scripts/verify-moderation-classifier.mjs",
+    "test:moderation:http": "node scripts/verify-moderation.mjs"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.64.0",
@@ -42,6 +51,7 @@
     "eslint-config-next": "16.3.2",
     "playwright": "^1.63.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

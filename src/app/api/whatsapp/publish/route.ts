@@ -1,11 +1,14 @@
 import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { publishWhatsAppMessage } from '@/lib/whatsapp-service';
-import { requireApiSession } from '@/lib/auth/api';
+import { requireApiActor } from '@/lib/internal-auth';
 
 export async function POST(request: NextRequest) {
-  const session = await requireApiSession();
-  if (session instanceof NextResponse) return session;
+  // Accepts EITHER a signed-in browser or the publish worker's signed
+  // assertion; a session alone would 401 the cookie-less worker call and
+  // silently fail every scheduled post.
+  const actor = await requireApiActor(request);
+  if (actor instanceof NextResponse) return actor;
   const body = await request.json().catch(() => ({}));
   const response = await publishWhatsAppMessage({
     communityId: body.communityId,
@@ -19,7 +22,11 @@ export async function POST(request: NextRequest) {
   const data = await response.json().catch(() => ({}));
   const code = typeof data.code === 'string' ? data.code : 'WHATSAPP_PUBLISH_FAILED';
   const message =
-    code === 'WHAPI_GROUP_NOT_FOUND' ? 'Selected WhatsApp Community was not found. Refresh and try again.' :
+    // Prefer the server's specific reason; the old single sentence claimed a
+    // "Community" was missing even when the user had picked a chat or simply
+    // sent a stale id, which sent people hunting for a group they never chose.
+    code === 'WHAPI_GROUP_NOT_FOUND' ? (typeof data.message === 'string' && data.message ? data.message
+      : 'That WhatsApp destination is no longer available. Refresh the destination list and choose again.') :
     code === 'WHAPI_TRIAL_LIMIT' ? 'This WhatsApp connection cannot publish to that community yet. Please contact your SocialPulse admin.' :
     code === 'WHAPI_UNAUTHORIZED' ? 'WhatsApp connection needs attention. Reconnect and try again.' :
     code === 'WHAPI_UNSUPPORTED_MEDIA' ? 'This media type is not supported for WhatsApp publishing yet.' :

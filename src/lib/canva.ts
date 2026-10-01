@@ -1,6 +1,4 @@
 import { randomBytes, createHash } from 'crypto';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
 
 // Canva Connect API (OAuth2 + PKCE) integration helpers.
 // Docs: https://www.canva.dev/docs/connect/
@@ -317,125 +315,8 @@ async function pollJob<T>(url: string, accessToken: string, extract: (job: any) 
 }
 
 // --- Server-side session store ---
-// Two short-lived handoffs, both single-use (consumed on read):
-//  - pending: correlation_state -> designId, from "Edit in Canva" until the
-//    user returns from the editor (verifies the return-navigation JWT's
-//    design_id actually matches the design we created, not just any signed JWT).
-//  - ready: readyId -> designId, from the return landing until the user
-//    explicitly clicks "Import from Canva" (export only happens on that click,
-//    never automatically on return).
-// Flat JSON file, same pattern as scheduled-posts.json / linkedin-tokens.json.
-// Fine for this app's single-instance/dev-scale deployment.
 
-const SESSIONS_FILE = join(process.cwd(), 'canva-sessions.json');
-const ONE_HOUR_MS = 60 * 60 * 1000;
-
-interface CanvaSessions {
-  pending: Record<string, { designId: string; createdAt: number }>;
-  ready: Record<string, { designId: string; createdAt: number }>;
-  // state -> code_verifier, for the /auth -> /callback PKCE round trip. Kept
-  // server-side rather than in a cookie: cookies set right before redirecting
-  // to a third party (Canva) and read back after Canva redirects to us don't
-  // reliably survive that cross-site hop on every browser/privacy setting
-  // (SameSite/ITP behavior varies, especially for IP-literal hosts like
-  // 127.0.0.1) - a server-side nonce keyed by the state Canva echoes back
-  // in the query string sidesteps that entirely.
-  oauth: Record<string, { codeVerifier: string; createdAt: number }>;
-}
-
-function loadSessions(): CanvaSessions {
-  if (!existsSync(SESSIONS_FILE)) return { pending: {}, ready: {}, oauth: {} };
-  try {
-    const parsed = JSON.parse(readFileSync(SESSIONS_FILE, 'utf8'));
-    return { pending: parsed.pending || {}, ready: parsed.ready || {}, oauth: parsed.oauth || {} };
-  } catch {
-    return { pending: {}, ready: {}, oauth: {} };
-  }
-}
-
-function saveSessions(sessions: CanvaSessions) {
-  writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
-}
-
-const TEN_MINUTES_MS = 10 * 60 * 1000;
-
-function pruneExpired(sessions: CanvaSessions) {
-  const now = Date.now();
-  for (const map of [sessions.pending, sessions.ready]) {
-    for (const [key, val] of Object.entries(map)) {
-      if (now - val.createdAt > ONE_HOUR_MS) delete map[key];
-    }
-  }
-  for (const [key, val] of Object.entries(sessions.oauth)) {
-    if (now - val.createdAt > TEN_MINUTES_MS) delete sessions.oauth[key];
-  }
-}
-
-export function savePkceVerifier(state: string, codeVerifier: string) {
-  const sessions = loadSessions();
-  pruneExpired(sessions);
-  sessions.oauth[state] = { codeVerifier, createdAt: Date.now() };
-  saveSessions(sessions);
-}
-
-// Consumes (deletes) the entry so a state/code can't be replayed.
-export function takePkceVerifier(state: string): string | null {
-  const sessions = loadSessions();
-  const entry = sessions.oauth[state];
-  if (!entry) return null;
-  delete sessions.oauth[state];
-  saveSessions(sessions);
-  return entry.codeVerifier;
-}
-
-export function savePendingDesign(correlationState: string, designId: string) {
-  const sessions = loadSessions();
-  pruneExpired(sessions);
-  sessions.pending[correlationState] = { designId, createdAt: Date.now() };
-  saveSessions(sessions);
-}
-
-export function takePendingDesign(correlationState: string): string | null {
-  const sessions = loadSessions();
-  const entry = sessions.pending[correlationState];
-  if (!entry) return null;
-  delete sessions.pending[correlationState];
-  saveSessions(sessions);
-  return entry.designId;
-}
-
-// Fallback for return-navigation JWTs that verify but carry an empty
-// correlation_state: consume the pending entry by verified design id.
-export function takePendingDesignById(designId: string): string | null {
-  if (!designId) return null;
-  const sessions = loadSessions();
-  const key = Object.keys(sessions.pending).find(k => sessions.pending[k]?.designId === designId);
-  if (!key) return null;
-  delete sessions.pending[key];
-  saveSessions(sessions);
-  return designId;
-}
-
-export function saveReadyDesign(readyId: string, designId: string) {
-  const sessions = loadSessions();
-  pruneExpired(sessions);
-  sessions.ready[readyId] = { designId, createdAt: Date.now() };
-  saveSessions(sessions);
-}
-
-export function takeReadyDesign(readyId: string): string | null {
-  const sessions = loadSessions();
-  const entry = sessions.ready[readyId];
-  if (!entry) return null;
-  delete sessions.ready[readyId];
-  saveSessions(sessions);
-  return entry.designId;
-}
-
-// Non-consuming read: lets /api/canva/export verify the readyId BEFORE the
-// (slow, fallible) export runs, and only consume it after the export
-// succeeds - so a failed import keeps its readyId and "Retry Import" works.
-export function peekReadyDesign(readyId: string): string | null {
-  const sessions = loadSessions();
-  return sessions.ready[readyId]?.designId ?? null;
-}
+// NOTE: the short-lived Canva OAuth/design handoffs that used to live here
+// (canva-sessions.json, keyed by state/readyId with no owner) now live in
+// src/lib/canva-handoffs.ts, backed by the user-scoped oauth_handshakes
+// table. Canva access/refresh tokens are stored in httpOnly cookies below.

@@ -1,7 +1,17 @@
+import { randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiSession } from '@/lib/auth/api';
 import { logSystem } from '@/lib/system-log';
 import { recordAiUsage } from '@/lib/ai-usage';
+import { saveMediaAsset } from '@/lib/media-assets';
+import { checkRateLimit } from '@/lib/auth/rate-limit';
+import {
+  MODERATION_USER_MESSAGE,
+  moderatePrompt,
+  promptFingerprint,
+  providerSafetyDecision,
+} from '@/lib/moderation';
+import { recordModerationDecision } from '@/lib/moderation-escalation';
 
 // In-memory job store so image generation can run as a background job
 // instead of inside one held-open HTTP request. gpt-image-2 via Pollinations
@@ -19,6 +29,15 @@ interface ImageJob {
   image?: string;
   model?: string;
   message?: string;
+  // Owning SocialPulse account. The job store is module-global, so without
+  // this any authenticated user could poll another user's jobId and receive
+  // their generated image. jobIds were also Date.now()+Math.random(), which is
+  // enumerable within the same millisecond window.
+  userId: string;
+  // Set once the generated image has been persisted as a MediaAsset, so the
+  // Asset Gallery can pick it up.
+  assetId?: string;
+  filename?: string;
   createdAt: number;
 }
 const jobs = new Map<string, ImageJob>();
@@ -41,6 +60,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Prompt is required' },
         { status: 400 }
+      );
+    }
+
+    // Rate limit BEFORE moderation so a client spamming blocked prompts cannot
+    // use the classifier as an amplification vector. Reuses the existing
+    // PostgreSQL-backed counter - no new infrastructure.
+    if (!(await checkRateLimit(`generate_image:user:${session.userId}`, 30, 3600))) {
+      return NextResponse.json(
+        { error: 'Too many image requests. Please try again later.' },
+        { status: 429 }
+      );
+    }
+
+    // ---- Content moderation, BEFORE any provider call ----------------------
+    // A blocked request must not reach the image model, must not be persisted,
+    // and must not produce a MediaAsset. Doing this after generation would
+    // still leave the image in the Asset Gallery.
+    const moderation = await moderatePrompt(String(prompt));
+    if (moderation.decision !== 'ALLOW') {
+      const escalation = await recordModerationDecision(moderation, {
+        userId: session.userId,
+        decision: moderation.decision,
+        method: moderation.method,
+        action: 'BLOCKED_BEFORE_GENERATION',
+        provider: moderation.provider ?? null,
+        reason: moderation.reason ?? undefined,
+        promptFingerprint: promptFingerprint(String(prompt)),
+        safeMetadata: { style: typeof style === 'string' ? style : 'unspecified' },
+      });
+      return NextResponse.json(
+        {
+          error: MODERATION_USER_MESSAGE,
+          code: 'CONTENT_SAFETY_BLOCKED',
+          moderation: {
+            decision: moderation.decision,
+            // Surfaced so the UI can adapt its wording, NOT so a client could
+            // treat this as advisory — the request is already refused.
+            violationCount: escalation.count,
+            flagged: escalation.flagged,
+            severity: escalation.severity,
+          },
+        },
+        { status: 422 },
       );
     }
 
@@ -74,8 +136,11 @@ export async function POST(request: NextRequest) {
     const PRIMARY_MODEL = 'gpt-image-2'; // Only model — no fallback, no timeout limit (user requested)
 
     cleanupJobs();
-    const jobId = `img_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    jobs.set(jobId, { status: 'pending', createdAt: Date.now() });
+    // crypto CSPRNG: jobId is the only thing standing between one user and
+    // another's generated image, so it must not be predictable. The previous
+    // value was Date.now() + Math.random(), enumerable within one millisecond.
+    const jobId = `img_${randomBytes(18).toString('base64url')}`;
+    jobs.set(jobId, { status: 'pending', userId: session.userId, createdAt: Date.now() });
     const genStartedAt = Date.now();
 
     // Wraps jobs.set for the three terminal states so every exit path
@@ -84,7 +149,7 @@ export async function POST(request: NextRequest) {
     const actorId = session.userId;
     function setTerminalJob(job: ImageJob) {
       jobs.set(jobId, job);
-      recordAiUsage({ type: 'IMAGE', provider: PRIMARY_MODEL, success: job.status === 'done', durationMs: Date.now() - genStartedAt });
+      recordAiUsage({ type: 'IMAGE', provider: PRIMARY_MODEL, success: job.status === 'done', durationMs: Date.now() - genStartedAt, userId: actorId });
       logSystem({
         level: job.status === 'done' ? 'SUCCESS' : 'ERROR',
         category: 'AI',
@@ -127,11 +192,27 @@ export async function POST(request: NextRequest) {
           // a 400. Retrying the same words (even with a different key) never
           // works - surface it distinctly instead of burning the fallback key.
           if (response.status === 400 && /safety system/i.test(errorText)) {
-            setTerminalJob({ status: 'blocked', model: PRIMARY_MODEL, createdAt: Date.now() });
+            // Layer 2: the provider's own verdict. Authoritative even though the
+            // classifier let this through, and it must count as a confirmed
+            // attempt.
+            const providerVerdict = providerSafetyDecision(response.status, errorText);
+            if (providerVerdict) {
+              await recordModerationDecision(providerVerdict, {
+                userId: actorId,
+                decision: providerVerdict.decision,
+                method: providerVerdict.method,
+                action: 'BLOCKED_BY_IMAGE_PROVIDER',
+                provider: providerVerdict.provider ?? null,
+                reason: providerVerdict.reason ?? undefined,
+                promptFingerprint: promptFingerprint(String(prompt)),
+                safeMetadata: { stage: 'primary-key', style: typeof style === 'string' ? style : 'unspecified' },
+              });
+            }
+            setTerminalJob({ status: 'blocked', model: PRIMARY_MODEL, userId: actorId, createdAt: Date.now() });
             return;
           }
           if (!fallbackApiKey) {
-            setTerminalJob({ status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} is currently unavailable. Please try again in a moment — no fallback will be used (hold).`, createdAt: Date.now() });
+            setTerminalJob({ status: 'error', model: PRIMARY_MODEL, userId: actorId, message: `${PRIMARY_MODEL} is currently unavailable. Please try again in a moment — no fallback will be used (hold).`, createdAt: Date.now() });
             return;
           }
           console.log(`[Image] Retrying ${PRIMARY_MODEL} with fallback Pollinations key... job ${jobId}`);
@@ -141,10 +222,10 @@ export async function POST(request: NextRequest) {
             const fallbackErrorText = await response.text();
             console.error(`[Image] ${PRIMARY_MODEL} failed with fallback key too: ${response.status} - ${fallbackErrorText.slice(0, 300)}`);
             if (response.status === 400 && /safety system/i.test(fallbackErrorText)) {
-              setTerminalJob({ status: 'blocked', model: PRIMARY_MODEL, createdAt: Date.now() });
+              setTerminalJob({ status: 'blocked', model: PRIMARY_MODEL, userId: actorId, createdAt: Date.now() });
               return;
             }
-            setTerminalJob({ status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} is currently unavailable on both keys. Please try again in a moment.`, createdAt: Date.now() });
+            setTerminalJob({ status: 'error', model: PRIMARY_MODEL, userId: actorId, message: `${PRIMARY_MODEL} is currently unavailable on both keys. Please try again in a moment.`, createdAt: Date.now() });
             return;
           }
         }
@@ -153,15 +234,47 @@ export async function POST(request: NextRequest) {
         const imageBase64 = data.data?.[0]?.b64_json;
         if (!imageBase64) {
           console.error(`[Image] ${PRIMARY_MODEL} returned no b64`);
-          setTerminalJob({ status: 'error', model: PRIMARY_MODEL, message: `${PRIMARY_MODEL} returned no image data. Please try again.`, createdAt: Date.now() });
+          setTerminalJob({ status: 'error', model: PRIMARY_MODEL, userId: actorId, message: `${PRIMARY_MODEL} returned no image data. Please try again.`, createdAt: Date.now() });
           return;
         }
         const mime = imageBase64.startsWith('iVBORw0KGgo') ? 'image/png' : 'image/jpeg';
         console.log(`[Image] Generated with ${PRIMARY_MODEL} ✅ ${Math.round(imageBase64.length / 1024)}KB, job ${jobId}`);
-        setTerminalJob({ status: 'done', image: `data:${mime};base64,${imageBase64}`, model: PRIMARY_MODEL, createdAt: Date.now() });
+
+        // Persist to the user's Asset Gallery. Without this the generated image
+        // existed only as a base64 string in this in-memory job and vanished on
+        // reload — it was never a MediaAsset, so it never appeared in the
+        // gallery and had no retention window. saveMediaAsset stamps
+        // user_id = the session user and expires_at = created_at + 30 days.
+        let assetId: string | undefined;
+        let filename: string | undefined;
+        try {
+          const bytes = Buffer.from(imageBase64, 'base64');
+          const asset = await saveMediaAsset({
+            userId: actorId,
+            filename: `ai-${Date.now().toString(36)}.${mime === 'image/png' ? 'png' : 'jpg'}`,
+            mime,
+            bytes,
+            source: 'AI_GENERATED',
+            altText: typeof prompt === 'string' ? prompt.slice(0, 300) : null,
+          });
+          assetId = asset.id;
+          filename = asset.filename;
+          logSystem({
+            level: 'SUCCESS', category: 'MEDIA', event: 'MEDIA_GENERATED', userId: actorId, resourceId: asset.id,
+            message: `AI image generated and saved to Asset Gallery (${asset.filename})`,
+            metadata: { filename: asset.filename, size: asset.size, source: 'AI_GENERATED', model: PRIMARY_MODEL, expiresAt: asset.expiresAt },
+            requestId: jobId,
+          });
+        } catch (persistErr) {
+          // Failing to file it in the gallery must not throw away the user's
+          // generated image — they still get it inline, and can re-save.
+          console.error('[Image] could not persist generated media:', persistErr instanceof Error ? persistErr.message : persistErr);
+        }
+
+        setTerminalJob({ status: 'done', image: `data:${mime};base64,${imageBase64}`, model: PRIMARY_MODEL, userId: actorId, assetId, filename, createdAt: Date.now() });
       } catch (err) {
         console.error(`[Image] ${PRIMARY_MODEL} failed:`, err instanceof Error ? err.message : err);
-        setTerminalJob({ status: 'error', model: PRIMARY_MODEL, message: 'Network error reaching the image model. Please try again.', createdAt: Date.now() });
+        setTerminalJob({ status: 'error', model: PRIMARY_MODEL, userId: actorId, message: 'Network error reaching the image model. Please try again.', createdAt: Date.now() });
       }
     })();
 
@@ -181,11 +294,24 @@ export async function GET(request: NextRequest) {
   const jobId = request.nextUrl.searchParams.get('jobId');
   if (!jobId) return NextResponse.json({ error: 'jobId is required' }, { status: 400 });
   const job = jobs.get(jobId);
-  if (!job) return NextResponse.json({ error: 'Unknown or expired job' }, { status: 404 });
+  // A job belonging to another user is reported as unknown rather than
+  // forbidden — a 403 here would confirm that the guessed id is real.
+  if (!job || job.userId !== session.userId) {
+    if (job) {
+      logSystem({
+        level: 'WARN', category: 'MEDIA', event: 'UNAUTHORIZED_RESOURCE_ACCESS_ATTEMPT', userId: session.userId,
+        resourceId: jobId, message: 'Image job requested by a different user',
+      });
+    }
+    return NextResponse.json({ error: 'Unknown or expired job' }, { status: 404 });
+  }
   return NextResponse.json({
     status: job.status,
     image: job.image,
     model: job.model,
     message: job.message,
+    // Lets the client show "Saved to Asset Gallery" and refresh it.
+    assetId: job.assetId,
+    filename: job.filename,
   });
 }

@@ -197,7 +197,7 @@ export interface StudioWorkspaceProps {
   toggleAccount: (key: string) => void;
   selectAllAccountsFor: (platform: string) => void;
   clearAccountsFor: (platform: string) => void;
-  disconnectWhatsApp: () => void; whatsappDisconnecting: boolean;
+  disconnectWhatsApp: () => void; whatsappDisconnecting: boolean; whapiCanConnect: boolean;
   publishToWhapi: () => void; whapiPublishing: boolean; refreshWhapiStatus: () => void; whapiLoading: boolean;
 }
 

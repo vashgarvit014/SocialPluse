@@ -1,68 +1,61 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import 'server-only';
+import {
+  disconnectPlatform,
+  getConnection,
+  getLinkedInCredentials,
+  saveConnection,
+} from '@/lib/platform-connections';
 
-// Server-side OAuth token vault. Tokens never leave the server:
-// the browser only ever holds { platform, userId, name, email }.
-const VAULT_FILE = join(process.cwd(), 'linkedin-tokens.json');
+// Server-side LinkedIn OAuth vault.
+//
+// Previously a global linkedin-tokens.json keyed by the LinkedIn `sub`, plus a
+// getAnyLinkedInToken() fallback that returned the newest entry to any caller
+// (so a freshly signed-in user was shown the previous user's connection) and a
+// deleteLinkedInToken() that emptied the entire file when called without an
+// argument. Credentials now live in platform_connections, keyed by
+// (user_id, platform). There is no "any" lookup and no optional-argument
+// delete here.
+//
+// Tokens never leave the server: the browser only ever holds
+// { platform, userId, name, email }.
 
-interface VaultEntry {
-  accessToken: string;
-  updatedAt: string;
+export async function storeLinkedInToken(userId: string, providerUserId: string, accessToken: string, meta?: { displayName?: string | null; email?: string | null }) {
+  if (!userId || !providerUserId || !accessToken) return;
+  await saveConnection({
+    userId,
+    platform: 'linkedin',
+    providerUserId,
+    displayName: meta?.displayName ?? null,
+    email: meta?.email ?? null,
+    credentials: { accessToken },
+  });
 }
 
-interface Vault {
-  linkedin: Record<string, VaultEntry>;
+/** userId is the OWNING SocialPulse account, from the server-side session. */
+export async function getLinkedInToken(userId: string): Promise<string | null> {
+  const creds = await getLinkedInCredentials(userId);
+  return creds?.accessToken || null;
 }
 
-function loadVault(): Vault {
-  if (!existsSync(VAULT_FILE)) return { linkedin: {} };
-  try {
-    const raw = JSON.parse(readFileSync(VAULT_FILE, 'utf8')) as Partial<Vault>;
-    if (!raw || typeof raw !== 'object' || !raw.linkedin || typeof raw.linkedin !== 'object') {
-      return { linkedin: {} };
-    }
-    return { linkedin: raw.linkedin as Record<string, VaultEntry> };
-  } catch {
-    return { linkedin: {} };
-  }
+/**
+ * Token plus the LinkedIn member id it belongs to, for the same user.
+ *
+ * These are two different identities and conflating them was the original
+ * bug: the OAuth callback used to write `userId = profile.sub` (the LinkedIn
+ * member id) while publish used a body-supplied value for the same field. The
+ * `urn:li:person:...` author needs the PROVIDER id, but that value must come
+ * from the connection row belonging to the session user — never from the
+ * request.
+ */
+export async function getLinkedInAuth(userId: string): Promise<{ providerUserId: string; accessToken: string } | null> {
+  const conn = await getConnection(userId, 'linkedin');
+  if (!conn) return null;
+  const creds = await getLinkedInCredentials(userId);
+  if (!creds?.accessToken) return null;
+  return { providerUserId: conn.providerUserId, accessToken: creds.accessToken };
 }
 
-function saveVault(vault: Vault) {
-  writeFileSync(VAULT_FILE, JSON.stringify(vault, null, 2));
-}
-
-export function storeLinkedInToken(userId: string, accessToken: string) {
-  if (!userId || !accessToken) return;
-  const vault = loadVault();
-  vault.linkedin[userId] = { accessToken, updatedAt: new Date().toISOString() };
-  saveVault(vault);
-}
-
-export function getLinkedInToken(userId: string): string | null {
-  if (!userId) return null;
-  const entry = loadVault().linkedin[userId];
-  return entry?.accessToken || null;
-}
-
-// Fallback lookup when the browser has no cached userId at all (e.g. OAuth
-// completed in a different tab than the one currently open, so nothing was
-// ever written to this tab's localStorage). Single-user local tool, not
-// multi-tenant, so "the one connected account" is a reasonable resolution —
-// mirrors the same fallback added to the Facebook vault. Picks the most
-// recently updated entry if somehow more than one exists.
-export function getAnyLinkedInToken(): { userId: string; accessToken: string } | null {
-  const entries = Object.entries(loadVault().linkedin);
-  if (entries.length === 0) return null;
-  const [userId, entry] = entries.sort((a, b) => (b[1].updatedAt || '').localeCompare(a[1].updatedAt || ''))[0];
-  if (!entry?.accessToken) return null;
-  return { userId, accessToken: entry.accessToken };
-}
-
-export function deleteLinkedInToken(userId?: string) {  const vault = loadVault();
-  if (userId) {
-    delete vault.linkedin[userId];
-  } else {
-    vault.linkedin = {};
-  }
-  saveVault(vault);
+/** Removes this user's LinkedIn connection. userId is required, never optional. */
+export async function deleteLinkedInToken(userId: string): Promise<boolean> {
+  return disconnectPlatform(userId, 'linkedin');
 }

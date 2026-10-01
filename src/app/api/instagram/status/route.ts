@@ -1,28 +1,25 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getFacebookAuth, getAnyFacebookAuth, getInstagramAccount } from '../../facebook/vault';
+import { NextResponse } from 'next/server';
+import { getFacebookAuth, getInstagramAccount } from '../../facebook/vault';
 import { requireApiSession } from '@/lib/auth/api';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 
-// Instagram has no account of its own here - it's derived from whichever
-// Facebook Page (of the Facebook account identified by userId, or the one
-// connected account when userId isn't known yet - same self-heal pattern as
-// facebook/status) has an Instagram Business account linked. Same pattern:
-// computed server-side, never trusted from client cache.
-export async function GET(request: NextRequest) {
+// Instagram has no account of its own here - it's derived from whichever of
+// THE SESSION USER'S Facebook Pages has an Instagram Business account linked.
+// Same pattern: computed server-side, never trusted from client cache.
+//
+// This route used to accept ?userId= and fall back to "whichever Facebook
+// account was connected most recently", so a new user was shown the previous
+// user's Instagram handle and Page name. Identity now comes from the session
+// only, with no fallback and no query parameter.
+export async function GET(): Promise<Response> {
   const session = await requireApiSession();
   if (session instanceof NextResponse) return session;
-  const requestedUserId = request.nextUrl.searchParams.get('userId');
-  let resolved: { userId: string; pages: Array<{ id: string; name: string; instagramAccountId?: string; instagramUsername?: string }> } | null;
-  if (requestedUserId) {
-    const found = getFacebookAuth(requestedUserId);
-    resolved = found ? { userId: requestedUserId, pages: found.pages } : null;
-  } else {
-    resolved = getAnyFacebookAuth();
-  }
-  if (!resolved) return NextResponse.json({ connected: false });
+  const found = await getFacebookAuth(session.userId);
+  if (!found) return NextResponse.json({ connected: false });
+  const resolved = { userId: found.providerUserId, pages: found.pages };
 
-  const ig = getInstagramAccount(resolved.userId);
+  const ig = await getInstagramAccount(session.userId);
   if (!ig) {
     // Facebook is connected, but no Page has an Instagram Business/Creator
     // account linked - a real, common state (most Pages don't), not an

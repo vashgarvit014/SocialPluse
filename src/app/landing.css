@@ -1,0 +1,198 @@
+/*
+ * Responsive layer for the landing page.
+ *
+ * WHY A SEPARATE STYLESHEET
+ * --------------------------
+ * landing-client.tsx styles everything with inline `style={sx('...')}`, and a
+ * style attribute cannot carry a media query. Rather than rewrite 800 lines of
+ * inline styles, every layout-critical value is read from a custom property
+ * defined here, so the component stays declarative while the breakpoints live
+ * in one readable place.
+ *
+ * The whole page is driven by --lp-* variables: container width and padding,
+ * grid gaps, section rhythm, and the scale of the two decorative 3D mockups
+ * (the hero screenshot and the workflow card stack). Both mockups are built
+ * from fixed pixel offsets and translateZ values, which is why they used to
+ * spill outside the viewport on narrower screens — scaling the wrapper is the
+ * only thing that brings them back inside without clipping their shadows.
+ */
+
+.lp-root {
+  /* container + rhythm */
+  --lp-max: 1240px;
+  --lp-pad: 28px;
+  --lp-gap: 40px;
+  --lp-sec-pad: 80px;
+
+  /* type scale */
+  --lp-h1: clamp(44px, 7vw, 88px);
+  --lp-h2: clamp(30px, 4.6vw, 56px);
+  --lp-lede: 19px;
+  --lp-body: 16px;
+
+  /* Decorative 3D mockups.
+     --lp-hero-scale / --lp-wf-scale only ever SCALE a scene whose internal
+     geometry is fixed pixels (top:70px, height:400px, translateZ(...)). The
+     stage therefore keeps its natural height and is never re-laid-out; the
+     layout reserves only `natural x scale` so there is no dead space and no
+     clipping. Changing a height here instead would shrink the clip box while
+     the card inside stayed 400px tall, which cut the card in half. */
+  --lp-hero-scale: 1;
+  --lp-wf-scale: 1;
+
+  /* nav */
+  --lp-nav-links: flex;
+}
+
+/* ---------- large desktop / small laptop ---------- */
+@media (max-width: 1280px) {
+  .lp-root {
+    --lp-pad: 24px;
+    --lp-gap: 32px;
+    --lp-sec-pad: 68px;
+  }
+}
+
+/* ---------- tablet landscape ---------- */
+@media (max-width: 1024px) {
+  .lp-root {
+    --lp-max: 100%;
+    --lp-pad: 20px;
+    --lp-gap: 28px;
+    --lp-sec-pad: 56px;
+    --lp-lede: 18px;
+
+    /* The hero grid drops to one column here, so the mockup gets the FULL
+       width. It was authored for a ~570px column, so without scaling it
+       spread well past the viewport edge. */
+    --lp-hero-scale: 0.86;
+  }
+}
+
+/* ---------- tablet portrait / large phone ---------- */
+@media (max-width: 820px) {
+  .lp-root {
+    --lp-pad: 16px;
+    --lp-gap: 22px;
+    --lp-sec-pad: 46px;
+    --lp-h1: clamp(38px, 8.4vw, 60px);
+    --lp-h2: clamp(27px, 6vw, 40px);
+    --lp-lede: 17px;
+    --lp-body: 15px;
+
+    --lp-hero-scale: 0.62;
+
+    --lp-wf-scale: 0.78;
+
+    /* The four centre links do not fit beside the logo and the two CTAs at
+       this width; they are hidden rather than allowed to wrap into the
+       button row. */
+    --lp-nav-links: none;
+  }
+}
+
+/* ---------- phone ---------- */
+@media (max-width: 560px) {
+  .lp-root {
+    --lp-pad: 14px;
+    --lp-gap: 18px;
+    --lp-sec-pad: 38px;
+    --lp-h1: clamp(32px, 9.2vw, 46px);
+    --lp-h2: clamp(24px, 7vw, 32px);
+    --lp-lede: 16px;
+    --lp-body: 14px;
+
+    --lp-hero-scale: 0.44;
+
+    --lp-wf-scale: 0.56;
+  }
+}
+
+/* ---------- small phone ---------- */
+@media (max-width: 390px) {
+  .lp-root {
+    --lp-hero-scale: 0.38;
+
+    --lp-wf-scale: 0.48;
+  }
+}
+
+/*
+ * Scaling wrapper for the decorative 3D scenes. `overflow:hidden` is
+ * deliberate here and only here: the mockups are decorative, and clipping them
+ * to the scaled box stops the 3D translateZ shadows from spilling sideways on
+ * narrow screens. It is applied to the WRAPPER (which is scaled to fit), not
+ * to the scene itself, so nothing is cut at desktop widths where the scene
+ * already sits inside its column.
+ */
+.lp-3d-fit {
+  /* The scene keeps its NATURAL height (--lp-stage-h) so nothing is clipped,
+     and is scaled visually. The parent reserves natural x scale, so the scaled
+     result fills the reserved space exactly. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--lp-stage-h, 600px);
+  transform: scale(var(--lp-scale, 1));
+  transform-origin: top center;
+}
+
+/* Reserved height for the two 3D scenes = natural height x scale. */
+.lp-hero-box {
+  position: relative;
+  height: calc(600px * var(--lp-hero-scale));
+  perspective: 1800px;
+}
+
+.lp-wf-box {
+  position: relative;
+  height: calc(460px * var(--lp-wf-scale));
+  perspective: 1600px;
+}
+
+/* Nav links hidden by --lp-nav-links on small screens. */
+.lp-nav-links {
+  display: var(--lp-nav-links);
+}
+
+/* Nav actions shrink on phones so "Log in" and the CTA stay on one line
+   instead of wrapping mid-word. */
+.lp-nav-login {
+  white-space: nowrap;
+}
+
+.lp-nav-cta {
+  white-space: nowrap;
+  padding: 12px 22px;
+  font-size: 15px;
+  border-radius: 12px;
+}
+
+@media (max-width: 560px) {
+  .lp-nav-cta {
+    padding: 10px 15px;
+    font-size: 13.5px;
+    border-radius: 10px;
+  }
+  .lp-nav-login {
+    font-size: 14px;
+  }
+}
+
+/* Full-bleed CTA block loses its oversized padding on small screens. */
+.lp-cta-pad {
+  padding: var(--lp-cta-pad, 72px 56px);
+}
+
+@media (max-width: 820px) {
+  .lp-cta-pad {
+    --lp-cta-pad: 48px 26px;
+  }
+}
+
+@media (max-width: 560px) {
+  .lp-cta-pad {
+    --lp-cta-pad: 38px 20px;
+  }
+}

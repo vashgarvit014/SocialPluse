@@ -803,12 +803,12 @@ export async function POST(request: NextRequest) {
     // this outer scope; threading that through would mean touching its
     // large internal branching logic, which isn't worth the risk for a
     // usage-count metric. Success/failure and timing are still exact.
-    recordAiUsage({ type: 'CONTENT', provider: 'text-generation', success: true, durationMs: Date.now() - startedAt });
+    recordAiUsage({ type: 'CONTENT', provider: 'text-generation', success: true, durationMs: Date.now() - startedAt, userId: session.userId });
     logSystem({ level: 'SUCCESS', category: 'AI', event: 'CONTENT_GENERATION_SUCCESS', userId: session.userId, message: `Content generated (${selectedPlatforms.join(', ')})`, metadata: { durationMs: Date.now() - startedAt } });
 
     return NextResponse.json(result);
   } catch (error) {
-    recordAiUsage({ type: 'CONTENT', provider: 'text-generation', success: false });
+    recordAiUsage({ type: 'CONTENT', provider: 'text-generation', success: false, userId: session?.userId ?? null });
     logSystem({ level: 'ERROR', category: 'AI', event: 'CONTENT_GENERATION_FAILED', userId: session?.userId, message: error instanceof Error ? error.message : 'Failed to generate content' });
     console.error('Error generating content:', error);
     return NextResponse.json(

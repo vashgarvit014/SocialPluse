@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { randomBytes } from 'crypto';
-import { CANVA_CLIENT_ID, takePendingDesign, takePendingDesignById, saveReadyDesign, APP_ORIGIN } from '@/lib/canva';
+import { CANVA_CLIENT_ID, APP_ORIGIN } from '@/lib/canva';
+import { takePendingDesign, takePendingDesignById, saveReadyDesign } from '@/lib/canva-handoffs';
+import { requireApiSession } from '@/lib/auth/api';
+import { logSystem } from '@/lib/system-log';
 
 // Canva's own JSON Web Key Set - used to verify correlation_jwt was really
 // issued by Canva and not forged by a caller hitting this endpoint directly.
@@ -19,6 +22,11 @@ const JWKS = createRemoteJWKSet(new URL('https://api.canva.com/rest/v1/connect/k
 // (e.g. same-tab fallback), it forwards to /?canva_ready= like before.
 // https://www.canva.dev/docs/connect/return-navigation-guide/
 export async function GET(request: NextRequest) {
+  // Canva's return navigation is a top-level browser redirect from a third-party
+  // origin, so the session cookie is present (SameSite=Lax) but this route still
+  // has to verify it - previously anyone could mint a "ready" design id.
+  const session = await requireApiSession();
+  if (session instanceof NextResponse) return session;
   const { searchParams } = new URL(request.url);
   const correlationJwt = searchParams.get('correlation_jwt');
   const fail = (code: string) => NextResponse.redirect(new URL(`/canva-return?error=${code}`, APP_ORIGIN));
@@ -37,14 +45,16 @@ export async function GET(request: NextRequest) {
     // Fallback: Canva occasionally echoes an empty correlation_state (e.g. if
     // the state query param was lost on the edit URL) - then match by the
     // verified design_id instead of failing outright.
+    // All three lookups are scoped to the session user.
     const expectedDesignId = correlationState
-      ? takePendingDesign(correlationState)
+      ? await takePendingDesign(session.userId, correlationState)
       : null;
-    const matchedDesignId = expectedDesignId ?? takePendingDesignById(designId);
+    const matchedDesignId = expectedDesignId ?? (await takePendingDesignById(session.userId, designId));
     if (!matchedDesignId || matchedDesignId !== designId) return fail('CANVA_IMPORT_FAILED');
 
     const readyId = randomBytes(16).toString('hex');
-    saveReadyDesign(readyId, designId);
+    await saveReadyDesign(session.userId, readyId, designId);
+    logSystem({ level: 'INFO', category: 'PLATFORM', event: 'CANVA_DESIGN_READY', userId: session.userId, platform: 'canva', resourceId: designId, message: 'Canva design returned and ready to import' });
 
     return NextResponse.redirect(new URL(`/canva-return?canva_ready=${readyId}`, APP_ORIGIN));
   } catch (error) {

@@ -388,6 +388,14 @@ export default function AuthClient() {
         return;
       }
       const target = callbackUrl && callbackUrl.startsWith('/') && !callbackUrl.startsWith('//') ? callbackUrl : (data.redirect || '/dashboard');
+      // A SUPERADMIN who verified on the public site is handed the admin
+      // ORIGIN (absolute), because /superadmin only exists on the admin
+      // subdomain. router.push() is for same-origin client navigation; an
+      // absolute cross-origin target needs a real document navigation.
+      if (/^https?:\/\//i.test(target)) {
+        window.location.assign(target);
+        return;
+      }
       router.push(target);
       router.refresh();
     } catch {

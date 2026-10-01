@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { loadPosts, savePosts, updatePost } from '@/lib/post-store';
+import { deleteUserPost, getUserPost, listUserPosts, updateUserPost, upsertUserPost } from '@/lib/post-store';
 import { cancelPost, reschedulePost, type PostRecord } from '@/lib/posts';
 import { requireApiSession } from '@/lib/auth/api';
+import { logSystem } from '@/lib/system-log';
 
+// Every handler here is scoped to session.userId and nothing else. The post id
+// is only ever resolved together with the owner, so a guessed id from another
+// user reads as "not found" rather than as someone else's post.
 export async function GET() {
   const session = await requireApiSession();
   if (session instanceof NextResponse) return session;
   try {
-    return NextResponse.json({ posts: loadPosts().map(p => ({ ...p, accounts: (p.accounts || []).map(({ accessToken: _token, ...a }) => { void _token; return a; }) })) });
+    const posts = await listUserPosts(session.userId);
+    return NextResponse.json({ posts: posts.map(p => ({ ...p, accounts: (p.accounts || []).map(({ accessToken: _token, ...a }) => { void _token; return a; }) })) });
   } catch { return NextResponse.json({ error: 'Unable to read post storage; no data changed.' }, { status: 500 }); }
 }
 export async function POST(request: NextRequest) {
@@ -19,8 +24,10 @@ export async function POST(request: NextRequest) {
     const draft = body.status === 'draft';
     if (typeof body.content !== 'string' || !Array.isArray(body.platforms) || (!draft && (!body.content.trim() || !body.platforms.length))) return NextResponse.json({ error: 'Missing content or platforms' }, { status: 400 });
     if (!draft && (!body.scheduledAt || !Number.isFinite(Date.parse(body.scheduledAt)) || Date.parse(body.scheduledAt) <= Date.now() + 300000)) return NextResponse.json({ error: 'Schedule time must be at least 5 minutes from now' }, { status: 400 });
-    const posts = loadPosts();
-    const existing = body.id ? posts.find(p => p.id === body.id) : undefined;
+    // Owner-scoped lookup: a body.id belonging to another user resolves to
+    // `undefined`, which falls through to the "missing or no longer editable"
+    // branch below rather than mutating their post.
+    const existing = body.id ? await getUserPost(session.userId, body.id) : undefined;
     if (body.id && (!existing || !['draft', 'cancelled', 'pending', 'scheduled'].includes(existing.status))) return NextResponse.json({ error: 'Post is missing or no longer editable' }, { status: 409 });
     const now = new Date().toISOString();
     const base = draft && existing && ['pending', 'scheduled', 'cancelled'].includes(existing.status) ? cancelPost(existing, now) : existing;
@@ -31,8 +38,8 @@ export async function POST(request: NextRequest) {
       createdAt: existing?.createdAt || now, updatedAt: now, source: base?.source || body.source || 'Manual Draft',
       cancelledAt: base?.cancelledAt || null,
     };
-    if (existing) posts[posts.indexOf(existing)] = post; else posts.push(post);
-    savePosts(posts); return NextResponse.json({ success: true, post });
+    const saved = await upsertUserPost(session.userId, post);
+    return NextResponse.json({ success: true, post: saved });
   } catch { return NextResponse.json({ error: 'Unable to save post; existing storage was not replaced with empty data.' }, { status: 500 }); }
 }
 // Reschedule: updates scheduledAt on the SAME post/job — never creates a new
@@ -49,7 +56,7 @@ export async function PATCH(request: NextRequest) {
     if (typeof scheduledAt !== 'string' || !Number.isFinite(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now() + 300000) {
       return NextResponse.json({ error: 'Schedule time must be at least 5 minutes from now' }, { status: 400 });
     }
-    const post = updatePost(id, current => reschedulePost(current, scheduledAt));
+    const post = await updateUserPost(session.userId, id, current => reschedulePost(current, scheduledAt));
     return NextResponse.json({ success: true, post });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Reschedule failed' }, { status: 409 }); }
 }
@@ -59,11 +66,15 @@ export async function DELETE(request: NextRequest) {
   if (session instanceof NextResponse) return session;
   try {
     const { id, action } = await request.json();
+    if (typeof id !== 'string' || !id) return NextResponse.json({ error: 'Missing post id' }, { status: 400 });
     if (action === 'delete-draft') {
-      const posts = loadPosts(); const post = posts.find(p => p.id === id);
+      const post = await getUserPost(session.userId, id);
       if (!post || !['draft', 'cancelled'].includes(post.status)) return NextResponse.json({ error: 'Only drafts may be deleted' }, { status: 409 });
-      savePosts(posts.filter(p => p.id !== id)); return NextResponse.json({ success: true });
+      await deleteUserPost(session.userId, id);
+      logSystem({ level: 'INFO', category: 'PUBLISHING', event: 'DRAFT_DELETED', userId: session.userId, resourceId: id, message: 'Draft deleted' });
+      return NextResponse.json({ success: true });
     }
-    return NextResponse.json({ success: true, post: updatePost(id, p => cancelPost(p)) });
+    const post = await updateUserPost(session.userId, id, p => cancelPost(p));
+    return NextResponse.json({ success: true, post });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Cancellation failed' }, { status: 409 }); }
 }
