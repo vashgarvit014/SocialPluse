@@ -18,3 +18,70 @@ input, textarea, select {
 input::placeholder, textarea::placeholder {
   color: #9ca3af !important;
 }
+
+/* ---------------------------------------------------------------------------
+   Responsive safety net
+   ---------------------------------------------------------------------------
+   Every real overflow defect was fixed at its source (see the shell's
+   min-width:0, the wizard's grid containment and the off-canvas drawer).
+   These rules are a BACKSTOP so a future fixed width cannot reintroduce a
+   page-wide horizontal scrollbar — they are not the fix.
+
+   `clip` rather than `hidden`: `hidden` on html/body turns them into scroll
+   containers, which silently breaks `position: sticky` on the app header.
+   `clip` contains the overflow without establishing a scrollport.          */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+/* Replaced elements must never exceed their column. */
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+/* Form controls must never exceed their column, and long values must not
+   widen a flex/grid track. */
+input,
+textarea,
+select,
+button {
+  max-width: 100%;
+}
+
+input,
+textarea {
+  overflow-wrap: anywhere;
+}
+
+/* Long unbroken strings (emails, URLs, chat ids) must wrap instead of
+   stretching their container. */
+p,
+span,
+div,
+label,
+li,
+td {
+  overflow-wrap: break-word;
+}
+
+/* Dialogs stay inside the viewport on small screens. */
+[role='dialog'],
+[aria-modal='true'] {
+  max-width: min(95vw, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Mobile: single-column rhythm and comfortable tap targets. */
+@media (max-width: 768px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+}

@@ -338,6 +338,34 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const SAFETY_EXAMPLE_PROMPT = 'Modern office desk with a sleek tablet displaying a colorful analytics dashboard, warm morning light, photorealistic';
   const [statusMessage, setStatusMessage] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Off-canvas drawer state.
+  //
+  // The sidebar is position:fixed at 248px, so on a 390px phone it permanently
+  // occupied 63% of the viewport and pushed the content column down to ~102px —
+  // which is what left the last 22px of the page overflowing, and made mobile
+  // unusable regardless of any width fix. Below 1024px it is now hidden off
+  // canvas and opened deliberately by the hamburger.
+  const [isNarrow, setIsNarrow] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const sync = () => {
+      setIsNarrow(mq.matches);
+      // Leaving the mobile breakpoint must never strand an open drawer.
+      if (!mq.matches) setMobileNavOpen(false);
+    };
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  // Scroll-lock the page behind an open drawer, and never leave it locked.
+  useEffect(() => {
+    if (!isNarrow) return;
+    document.body.style.overflow = mobileNavOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileNavOpen, isNarrow]);
+  // Any tab change is navigation: close the drawer behind it.
+  useEffect(() => { setMobileNavOpen(false); }, [activeTab]);
   const [draggedMediaId, setDraggedMediaId] = useState<string | null>(null);
   const [dragOverMediaId, setDragOverMediaId] = useState<string | null>(null);
 
@@ -3092,6 +3120,30 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   return (
     <div style={{ display: 'flex', minHeight: '100vh', fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif', backgroundColor: '#F7F8FC' }}>
       <style>{`
+        /* --- App shell responsiveness ------------------------------------------------
+           The header's right cluster (tagline, platform-count pill, date, bell, avatar)
+           measured 504px wide while the header itself had only 142px to give it, so it
+           overflowed the page by 533px on a 390px phone. Rather than hide information,
+           the non-essential parts collapse first: tagline and date go, the status pill
+           shortens to an icon-sized count, and everything else shrinks rather than
+           forcing the row wider. */
+        .sp-hdr { min-width: 0; }
+        .sp-hdr > * { min-width: 0; }
+        .sp-hdr-right { min-width: 0; flex-shrink: 1; overflow: hidden; }
+        .sp-hdr-right > * { min-width: 0; flex-shrink: 0; }
+        .sp-hdr-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+        @media (max-width: 1100px) {
+          .sp-hdr-tagline { display: none; }
+          .sp-hdr-divider { display: none; }
+          .sp-hdr-status { max-width: 132px; }
+        }
+        @media (max-width: 768px) {
+          .sp-hdr { padding: 0 12px !important; gap: 8px; }
+          .sp-hdr-date { display: none; }
+          .sp-hdr-status { max-width: 40px; padding: 6px 10px !important; }
+          .sp-hdr-status-text { display: none; }
+          .sp-hdr-right { gap: 8px; }
+        }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
@@ -3110,7 +3162,18 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       `}</style>
 
       {/* Sidebar - collapsible slidebar */}
-      <aside style={{ width: sidebarCollapsed ? '72px' : '248px', backgroundColor: '#0f172a', color: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, position: 'fixed', height: '100vh', zIndex: 10, boxShadow: '4px 0 24px rgba(0,0,0,0.15)', transition: 'width 0.3s cubic-bezier(0.4,0,0.2,1)', overflow: 'hidden', overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: '#334155 transparent' }}>
+      {isNarrow && mobileNavOpen && (
+        <div
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden="true"
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.5)', zIndex: 9 }}
+        />
+      )}
+      <aside style={{
+        width: isNarrow ? '248px' : (sidebarCollapsed ? '72px' : '248px'),
+        transform: isNarrow && !mobileNavOpen ? 'translateX(-100%)' : 'translateX(0)',
+        transition: 'transform 0.25s cubic-bezier(0.4,0,0.2,1), width 0.3s cubic-bezier(0.4,0,0.2,1)',
+        backgroundColor: '#0f172a', color: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, position: 'fixed', height: '100vh', zIndex: 10, boxShadow: '4px 0 24px rgba(0,0,0,0.15)', overflow: 'hidden', overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: '#334155 transparent' }}>
         <div style={{ padding: sidebarCollapsed ? '20px 12px' : '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: '12px', justifyContent: sidebarCollapsed ? 'center' : 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
             <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #6366f1, #a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 700, flexShrink: 0 }}>SP</div>
@@ -3122,7 +3185,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             )}
           </div>
           <button
-            onClick={() => setSidebarCollapsed(v => !v)}
+            onClick={() => (isNarrow ? setMobileNavOpen(v => !v) : setSidebarCollapsed(v => !v))}
             title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             style={{ width: '28px', height: '28px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.06)', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', flexShrink: 0, transition: 'all 0.2s' }}
             onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
@@ -3211,18 +3274,36 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       )}
 
       {/* Main Content */}
-      <div style={{ flex: 1, marginLeft: sidebarCollapsed ? '72px' : '248px', display: 'flex', flexDirection: 'column', minHeight: '100vh', transition: 'margin-left 0.3s cubic-bezier(0.4,0,0.2,1)', backgroundColor: '#f8fafc' }}>
+      <div style={{
+        // minWidth:0 is the whole fix for the page-wide horizontal scroll. A
+        // flex item defaults to min-width:auto, i.e. it refuses to shrink below
+        // its content's min-content width. This subtree's min-content width is
+        // ~1104px (the wizard's maxWidth:1120 plus padding), so at a 1024px
+        // viewport the available column is only 776px after the sidebar offset —
+        // and the item stayed 1104px, pushing the document to 1352px and giving
+        // the entire app a horizontal scrollbar on desktop AND mobile.
+        flex: 1,
+        minWidth: 0,
+        width: 'auto',
+        maxWidth: '100%',
+        marginLeft: isNarrow ? '0' : (sidebarCollapsed ? '72px' : '248px'),
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: '100vh',
+        transition: 'margin-left 0.3s cubic-bezier(0.4,0,0.2,1)',
+        backgroundColor: '#f8fafc',
+      }}>
         {/* Top Bar — professional white header */}
-        <header style={{
+        <header className="sp-hdr" style={{
           height: '64px', backgroundColor: '#ffffff',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px 0 28px',
           borderBottom: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(15,23,42,0.06)', position: 'sticky', top: 0, zIndex: 5,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button onClick={() => setSidebarCollapsed(v => !v)} style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', transition: 'all 0.2s' }} title="Toggle sidebar">
+            <button onClick={() => (isNarrow ? setMobileNavOpen(v => !v) : setSidebarCollapsed(v => !v))} aria-label={isNarrow ? 'Open navigation menu' : 'Toggle sidebar'} style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', transition: 'all 0.2s' }} title="Toggle sidebar">
               ☰
             </button>
-            <div style={{ width: '1px', height: '24px', backgroundColor: '#e2e8f0' }} />
+            <div className="sp-hdr-divider" style={{ width: '1px', height: '24px', backgroundColor: '#e2e8f0' }} />
             <div>
               <div style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.015em', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block', boxShadow: '0 0 0 3px rgba(16,185,129,0.15)' }} />
@@ -3231,16 +3312,16 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               <div style={{ fontSize: '12px', color: '#64748b', marginTop: '1px', fontWeight: 400 }}>{topBarInfo[activeTab].subtitle}</div>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="sp-hdr-right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {activeTab === 'studio' && (
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#6D28D9', backgroundColor: '#F1EBFF', border: '1px solid #C4B5FD', padding: '6px 12px', borderRadius: 999, whiteSpace: 'nowrap' }}>Create. Brand. Schedule. Grow.</span>
+              <span className="sp-hdr-tagline" style={{ fontSize: 11, fontWeight: 700, color: '#6D28D9', backgroundColor: '#F1EBFF', border: '1px solid #C4B5FD', padding: '6px 12px', borderRadius: 999, whiteSpace: 'nowrap' }}>Create. Brand. Schedule. Grow.</span>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '999px', padding: '6px 14px' }}>
+            <div className="sp-hdr-status" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '999px', padding: '6px 14px' }}>
               <span style={{ fontSize: '12px', color: '#64748b' }}>●</span>
-              <span style={{ fontSize: '12px', color: '#334155', fontWeight: 500 }}>{accounts.length ? `${accounts.length} platform${accounts.length!==1?'s':''} connected` : 'No platform connected'}</span>
+              <span className="sp-hdr-status-text" style={{ fontSize: '12px', color: '#334155', fontWeight: 500 }}>{accounts.length ? `${accounts.length} platform${accounts.length!==1?'s':''} connected` : 'No platform connected'}</span>
             </div>
             <div style={{ width: '1px', height: '24px', backgroundColor: '#e2e8f0' }} />
-            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, whiteSpace: 'nowrap' }}>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+            <div className="sp-hdr-date" style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, whiteSpace: 'nowrap' }}>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
             <div style={{ position: 'relative' }}>
               <button style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#fff', border: '1px solid #e2e8f0', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>🔔</button>
               {pendingPosts.length > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #fff' }}>{pendingPosts.length}</span>}

@@ -301,10 +301,35 @@ async function callMercury(prompt: string, systemPrompt: string, timeoutMs = TEX
       console.error(`[Mercury:${model}] API error:`, response.status, errorText.slice(0, 500));
       throw new Error(`Mercury API error: ${response.status}`);
     }
+    const startedAt = Date.now();
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    console.log(`[Mercury:${model}] content: ${content.length} chars in <${timeoutMs}ms`);
-    return content.trim();
+    const message = data.choices?.[0]?.message ?? {};
+    // Mercury intermittently answers with tool_calls and `content: null`. The
+    // old code turned that into an empty string, which failed JSON extraction
+    // and pushed every such request onto the (dead) NVIDIA fallback — a 120s
+    // stall for what was really one empty reply. Surface it as an error so the
+    // caller retries the primary instead, and salvage a tool call's text if
+    // that is where the answer landed.
+    const raw = typeof message.content === 'string' ? message.content : '';
+    if (!raw.trim() && Array.isArray(message.tool_calls) && message.tool_calls.length) {
+      const salvaged = message.tool_calls
+        .map((tc: { function?: { arguments?: string } }) => tc?.function?.arguments)
+        .filter((a2: unknown): a2 is string => typeof a2 === 'string' && a2.trim().length > 0)
+        .join('\n');
+      if (salvaged.trim()) {
+        console.log(`[Mercury:${model}] recovered content from tool_calls (${salvaged.length} chars)`);
+        console.log(`[Mercury:${model}] content: ${salvaged.length} chars in ${Date.now() - startedAt}ms`);
+        return salvaged.trim();
+      }
+    }
+    // Real elapsed time, not the timeout constant. The old line printed the
+    // timeout, so "<120000ms" read as "this took 120s" and sent diagnosis after
+    // the provider that was actually fast.
+    console.log(`[Mercury:${model}] content: ${raw.length} chars in ${Date.now() - startedAt}ms`);
+    if (!raw.trim()) {
+      throw new Error(`Mercury returned an empty completion (content null, no tool text) — retry`);
+    }
+    return raw.trim();
   } catch (err) {
     clearTimeout(timer);
     if ((err as Error).name === 'AbortError') throw new Error(`Mercury API timeout (${Math.round(timeoutMs / 1000)}s) — please retry`);
@@ -312,10 +337,31 @@ async function callMercury(prompt: string, systemPrompt: string, timeoutMs = TEX
   }
 }
 
-async function callNVIDIA(prompt: string, systemPrompt: string, timeoutMs = TEXT_TIMEOUT_MS, model = TEXT_MODEL): Promise<string> {
+/**
+ * NVIDIA fallback circuit breaker.
+ *
+ * Measured against this deployment: GET /v1/models answers in 0.19s and a POST
+ * with a bad key 401s in 0.14s, but a POST with the CONFIGURED key never
+ * returns a response at all — not even an error. The endpoint accepts the
+ * request and hangs, so every fallback cost the full timeout. Once that has
+ * happened, retrying it on the next request just repeats the stall.
+ *
+ * After NVIDIA_TIMEOUT_MS the endpoint is skipped for a cool-off window, which
+ * turns a guaranteed 120s failure into an instant one.
+ */
+const NVIDIA_TIMEOUT_MS = 20_000;
+const NVIDIA_COOLOFF_MS = 10 * 60 * 1000;
+let nvidiaDownUntil = 0;
+
+async function callNVIDIA(prompt: string, systemPrompt: string, timeoutMs = NVIDIA_TIMEOUT_MS, model = TEXT_MODEL): Promise<string> {
   if (!NVIDIA_API_KEY) throw new Error('NVIDIA API key not configured');
+  if (Date.now() < nvidiaDownUntil) {
+    throw new Error(`NVIDIA fallback is in cool-off after a timeout — skipped without waiting`);
+  }
+  const budget = Math.min(timeoutMs, NVIDIA_TIMEOUT_MS);
+  const nvidiaStartedAt = Date.now();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), budget);
   try {
     const response = await fetch(NVIDIA_API_URL, {
       method: 'POST',
@@ -344,11 +390,19 @@ async function callNVIDIA(prompt: string, systemPrompt: string, timeoutMs = TEXT
     }
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
-    console.log(`[NVIDIA:${model}] content: ${content.length} chars in <${timeoutMs}ms`);
+    console.log(`[NVIDIA:${model}] content: ${content.length} chars in ${Date.now() - nvidiaStartedAt}ms`);
     return content.trim();
   } catch (err) {
     clearTimeout(timer);
-    if ((err as Error).name === 'AbortError') throw new Error(`NVIDIA API timeout (${Math.round(timeoutMs / 1000)}s) — please retry`);
+    if ((err as Error).name === 'AbortError') {
+      // Trip the breaker so the NEXT request skips NVIDIA immediately instead
+      // of stalling for another full budget.
+      nvidiaDownUntil = Date.now() + NVIDIA_COOLOFF_MS;
+      console.error(
+        `[NVIDIA:${model}] no response in ${Math.round(budget / 1000)}s — fallback disabled for ${NVIDIA_COOLOFF_MS / 60000} minutes`,
+      );
+      throw new Error(`NVIDIA API timeout (${Math.round(budget / 1000)}s) — please retry`);
+    }
     throw err;
   }
 }

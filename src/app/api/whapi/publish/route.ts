@@ -69,6 +69,50 @@ function mediaFields(url: string, fallbackMime: string): { media: string; mime_t
 // picker. Stops as soon as the id is found, and gives up (allowing the send,
 // so a transient fetch problem never blocks a legitimate post) after a bounded
 // number of pages.
+/**
+ * Announcement-group sends can 403 with `group-announce-not-admin` for a short
+ * window AFTER an admin promotion, while WhatsApp propagates the grant. The
+ * paired account is genuinely an admin — /groups already reports rank=admin —
+ * so a first refusal is stale provider state, not a real permission decision.
+ *
+ * Retrying once after a short pause turns that into an invisible success. If
+ * the account truly is not an admin the retry fails identically and the honest
+ * error is still surfaced, so this cannot mask a real permission problem or
+ * double-post: the retry only runs on a response that delivered nothing.
+ */
+const ANNOUNCE_RETRY_DELAY_MS = 4000;
+
+async function sendAllowingAnnouncePropagation(
+  send: () => Promise<Response>,
+): Promise<Response> {
+  const first = await send();
+  if (first.status !== 403) return first;
+
+  // Drain the body so the connection is reusable, and keep it for inspection.
+  const firstBody = await first.text().catch(() => '');
+  if (!/group-announce-not-admin/i.test(firstBody)) {
+    return new Response(firstBody, { status: first.status, headers: first.headers });
+  }
+
+  console.warn(
+    `[whapi/publish] announcement group refused the first attempt; retrying in ${ANNOUNCE_RETRY_DELAY_MS}ms `
+    + 'while WhatsApp propagates the admin grant',
+  );
+  await new Promise((r) => setTimeout(r, ANNOUNCE_RETRY_DELAY_MS));
+
+  const second = await send();
+  if (second.status === 403) {
+    const secondBody = await second.text().catch(() => '');
+    if (/group-announce-not-admin/i.test(secondBody)) {
+      // Still refused: genuinely not an admin (or the grant never propagated).
+      return new Response(secondBody, { status: second.status, headers: second.headers });
+    }
+    return new Response(secondBody, { status: second.status, headers: second.headers });
+  }
+  console.log('[whapi/publish] announcement retry succeeded');
+  return second;
+}
+
 async function validateGroupExists(groupId: string, baseUrl: string, token: string): Promise<{ valid: boolean; error?: string }> {
   const PAGE = 100;
   const MAX_PAGES = 20; // 2000 groups — far beyond any realistic channel
@@ -213,7 +257,9 @@ export async function POST(request: NextRequest) {
       // 1. Text only
       const payload = { to: cleanGroupId, body: caption };
       console.log(`[whapi/publish] text to ${cleanGroupId.slice(0, 12)}... attempt ${attempt} ${sanitizeForLog({ len: caption.length })}`);
-      const res = await whapiFetch('/messages/text', config.token, { method: 'POST', body: JSON.stringify(payload) }, config.baseUrl);
+      const res = await sendAllowingAnnouncePropagation(() =>
+        whapiFetch('/messages/text', config.token, { method: 'POST', body: JSON.stringify(payload) }, config.baseUrl),
+      );
       if (!res.ok) {
         const errBody = await res.text().catch(() => '');
         const mapped = whapiError(res.status, errBody, 'sending text');
@@ -256,7 +302,9 @@ export async function POST(request: NextRequest) {
         filename,
       };
       console.log(`[whapi/publish] document to ${cleanGroupId.slice(0, 12)}... attempt ${attempt}`);
-      const res = await whapiFetch('/messages/document', config.token, { method: 'POST', body: JSON.stringify(payload) }, config.baseUrl);
+      const res = await sendAllowingAnnouncePropagation(() =>
+        whapiFetch('/messages/document', config.token, { method: 'POST', body: JSON.stringify(payload) }, config.baseUrl),
+      );
       if (!res.ok) {
         const errBody = await res.text().catch(() => '');
         const mapped = whapiError(res.status, errBody, 'sending document');
@@ -281,7 +329,9 @@ export async function POST(request: NextRequest) {
         caption: caption || undefined,
       };
       console.log(`[whapi/publish] video to ${cleanGroupId.slice(0, 12)}... attempt ${attempt}`);
-      const res = await whapiFetch('/messages/video', config.token, { method: 'POST', body: JSON.stringify(payload) }, config.baseUrl);
+      const res = await sendAllowingAnnouncePropagation(() =>
+        whapiFetch('/messages/video', config.token, { method: 'POST', body: JSON.stringify(payload) }, config.baseUrl),
+      );
       if (!res.ok) {
         const errBody = await res.text().catch(() => '');
         const mapped = whapiError(res.status, errBody, 'sending video');
@@ -304,7 +354,9 @@ export async function POST(request: NextRequest) {
       caption: caption || undefined,
     };
     console.log(`[whapi/publish] image to ${cleanGroupId.slice(0, 12)}... attempt ${attempt} caption ${caption.length} chars`);
-    const res = await whapiFetch('/messages/image', config.token, { method: 'POST', body: JSON.stringify(payload) }, config.baseUrl);
+    const res = await sendAllowingAnnouncePropagation(() =>
+      whapiFetch('/messages/image', config.token, { method: 'POST', body: JSON.stringify(payload) }, config.baseUrl),
+    );
     if (!res.ok) {
       const errBody = await res.text().catch(() => '');
       const mapped = whapiError(res.status, errBody, 'sending image');

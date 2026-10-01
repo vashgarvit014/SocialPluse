@@ -432,7 +432,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 20, flex: 1, alignItems: 'stretch', minHeight: 'calc(100vh - 64px)', maxWidth: 1120, width: '100%', margin: '0 auto' }}>
+    <div className="sp-wiz-root" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 20, flex: 1, alignItems: 'stretch', minHeight: 'calc(100vh - 64px)', maxWidth: 1120, width: '100%', minWidth: 0, margin: '0 auto' }}>
       <style>{`
         .sp-wiz-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         .sp-wiz-prev { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 14px; align-items: start; }
@@ -464,6 +464,24 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         @media (max-width: 1024px) { .sp-s1-grid, .sp-s2-grid { grid-template-columns: 1fr; } }
         @media (max-width: 900px) { .sp-wiz-grid2, .sp-wiz-prev, .sp-wiz-media2 { grid-template-columns: 1fr; } }
         @media (max-width: 700px) { .sp-wiz-grid3 { grid-template-columns: 1fr; } }
+
+        /* --- Overflow containment -------------------------------------------------
+           Every flex/grid item defaults to min-width:auto, so it refuses to shrink
+           below its content's min-content width. The 8-step WizardStepper is 8 x
+           100px = 923px wide; it is a deliberate horizontal SCROLL region, but its
+           parent card inherited that 923px min-content and grew to match, dragging
+           the whole document wide on phones. Constraining each item to min-width:0
+           lets the scroll region clip as intended and keeps the page at 100%. */
+        .sp-wiz-root, .sp-wiz-root > * { min-width: 0; max-width: 100%; }
+        .sp-s1-grid > *, .sp-s2-grid > *, .sp-wiz-grid2 > *, .sp-wiz-grid3 > *,
+        .sp-wiz-prev > *, .sp-wiz-media2 > *, .sp-prev-grid > *, .sp-review-grid > *,
+        .sp-step7-grid > *, .sp-prev-trio > * { min-width: 0; max-width: 100%; }
+        .sp-s1-grid, .sp-s2-grid, .sp-wiz-grid2, .sp-wiz-grid3, .sp-wiz-prev,
+        .sp-wiz-media2, .sp-prev-grid, .sp-review-grid, .sp-step7-grid, .sp-prev-trio { min-width: 0; }
+        /* Text must never widen a track. */
+        .sp-wiz-root p, .sp-wiz-root span, .sp-wiz-root h1, .sp-wiz-root h2,
+        .sp-wiz-root h3, .sp-wiz-root label { overflow-wrap: anywhere; }
+        @media (max-width: 768px) { .sp-wiz-root { padding: 14px; gap: 12px; } }
       `}</style>
 
       <div style={{ ...card, padding: '14px 20px' }}>
