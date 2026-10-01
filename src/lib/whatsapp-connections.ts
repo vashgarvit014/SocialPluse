@@ -292,14 +292,38 @@ export async function resolveByProviderRef(params: {
  * learned from the provider once a pairing completes — during the first pairing
  * the row has no provider_channel_id yet, but it always has the token.
  */
-export async function getConnectedOwnerByToken(token: string): Promise<{ user_id: string; phone_masked: string | null } | null> {
-  return queryOne<{ user_id: string; phone_masked: string | null }>(
-    `SELECT user_id, phone_masked FROM whatsapp_connections
-      WHERE channel_token = $1 AND status = 'CONNECTED'
-      ORDER BY connected_at DESC NULLS LAST
+export async function getConnectedOwnerByToken(token: string): Promise<{ user_id: string; phone_masked: string | null; owner_email: string | null } | null> {
+  return queryOne<{ user_id: string; phone_masked: string | null; owner_email: string | null }>(
+    `SELECT w.user_id, w.phone_masked, u.email AS owner_email
+       FROM whatsapp_connections w
+       LEFT JOIN users u ON u.id = w.user_id
+      WHERE w.channel_token = $1 AND w.status = 'CONNECTED'
+      ORDER BY w.connected_at DESC NULLS LAST
       LIMIT 1`,
     [token],
   );
+}
+
+/**
+ * Single-channel ownership gate.
+ *
+ * The deployment runs ONE Whapi channel, so its groups, communities and chats
+ * belong to whoever paired that channel — not to every signed-in account. Read
+ * routes that resolve the deployment token directly must therefore confirm the
+ * caller is the recorded owner, exactly as the publish route does.
+ *
+ * Provider state alone is never sufficient: /health being healthy says only
+ * that SOME account paired the channel.
+ */
+export type OwnershipVerdict =
+  | { ok: true; ownerUserId: string }
+  | { ok: false; code: 'WHATSAPP_CHANNEL_UNCLAIMED' | 'WHATSAPP_NOT_CHANNEL_OWNER'; ownerUserId?: string };
+
+export async function checkChannelOwnership(userId: string, token: string): Promise<OwnershipVerdict> {
+  const owner = await getConnectedOwnerByToken(token);
+  if (!owner) return { ok: false, code: 'WHATSAPP_CHANNEL_UNCLAIMED' };
+  if (owner.user_id !== userId) return { ok: false, code: 'WHATSAPP_NOT_CHANNEL_OWNER', ownerUserId: owner.user_id };
+  return { ok: true, ownerUserId: owner.user_id };
 }
 
 /** Summary shape for the status endpoint. Never includes channel_token. */

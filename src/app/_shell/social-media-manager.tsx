@@ -1018,11 +1018,22 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           // expiry is actually visible, and drop the stale image rather than
           // leaving an unscannable code on screen.
           setWhatsappQrStatus(data.status || '');
+          // Terminal states own the copy, because the QR they refer to is gone.
           if (data.status === 'EXPIRED' || data.status === 'CANCELLED') {
             setWhatsappQrImage('');
             setWhatsappQrSecondsLeft(null);
+            setWhatsappConnectMessage(
+              data.status === 'CANCELLED'
+                ? 'QR code cancelled.'
+                : 'This QR code expired. Generate a new one to continue.',
+            );
           }
-          if (data.message) setWhatsappConnectMessage(data.message);
+          // Deliberately NOT copying the generic status copy here. The status
+          // endpoint always carries a message ("Scan a QR code with WhatsApp to
+          // connect your account"), and overwriting the modal with it every 3s
+          // buried whatever Connect actually said — including a real refusal
+          // such as "already connected to another account", which then rendered
+          // as an empty modal with no QR and no explanation.
         }
         if (data && data.connected) {
           setWhapiConnected(true);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { appendFileSync } from 'fs';
+import { appendFileSync, statSync } from 'fs';
 import { join } from 'path';
 
 // Separate Whapi webhook — DO NOT reuse /api/whatsapp/webhook (Meta payloads differ)
@@ -8,6 +8,20 @@ import { join } from 'path';
 // Logs sanitized metadata only, returns 200 quickly. Extensible for groups/communities.
 
 const LOG_FILE = join(process.cwd(), 'whapi-events.log');
+
+// This endpoint is unauthenticated by necessity — Whapi calls it — and it
+// appends to disk on every request. Without a ceiling, anyone who can reach
+// the host can grow the file without bound. Past the cap we accept and discard
+// rather than reject, so the provider never retries and floods us.
+const MAX_LOG_BYTES = 32 * 1024 * 1024;
+
+function logFull(): boolean {
+  try {
+    return statSync(LOG_FILE).size >= MAX_LOG_BYTES;
+  } catch {
+    return false; // no file yet
+  }
+}
 
 function sanitizePayload(body: unknown): unknown {
   try {
@@ -45,7 +59,7 @@ export async function POST(request: NextRequest) {
     const sanitized = sanitizePayload(body);
     const line = `${new Date().toISOString()} whapi ${eventType} ${chatId ? chatId.slice(0, 12) + '...' : ''} ${JSON.stringify(sanitized).slice(0, 800)}\n`;
     try {
-      appendFileSync(LOG_FILE, line);
+      if (!logFull()) appendFileSync(LOG_FILE, line);
     } catch (err) {
       console.error('[whapi/webhook] failed to write log:', err instanceof Error ? err.message : err);
     }

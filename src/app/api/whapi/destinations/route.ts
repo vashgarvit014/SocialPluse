@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhapiConfig, whapiFetch } from '../client';
 import { requireApiSession } from '@/lib/auth/api';
+import { checkChannelOwnership } from '@/lib/whatsapp-connections';
 
 // GET /api/whapi/destinations
 // One normalized list of everything this channel can publish to:
@@ -97,6 +98,24 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Single-channel ownership gate: these routes read the shared channel with the
+  // deployment token, so without this any signed-in account could list the
+  // groups, communities and chats belonging to whichever account paired it.
+  const verdict = await checkChannelOwnership(session.userId, config.token);
+  if (!verdict.ok) {
+    return NextResponse.json(
+      {
+        success: false,
+        connected: false,
+        code: verdict.code,
+        message: verdict.code === 'WHATSAPP_CHANNEL_UNCLAIMED'
+          ? 'No WhatsApp account is connected to this workspace yet. Connect WhatsApp first.'
+          : 'This WhatsApp number is connected to a different SocialPulse account.',
+      },
+      { status: 403 },
+    );
+  }
+
   const force = request.nextUrl.searchParams.get('refresh') === '1';
   if (!force && cache && Date.now() - cache.at < CACHE_TTL_MS) {
     return NextResponse.json(cache.body);
@@ -154,8 +173,19 @@ export async function GET(request: NextRequest) {
           `/communities/${encodeURIComponent(String(c.id))}/subgroups`, config, 2,
         );
         const info = sub.data?.announceGroupInfo;
-        c.announcementGroupId = info?.id ? String(info.id) : String(c.id);
-        c.announcementGroupName = info?.title ? String(info.title) : '';
+        // Only a real announce-group JID may be used as a send target.
+        //
+        // Falling back to the community's own id looked harmless but sent to
+        // the community PARENT, which WhatsApp refuses outright:
+        //   400 "Cannot send messages to a community parent group. Use the
+        //        community announce group JID <id>@g.us instead."
+        // That surfaced as a confusing provider error on an otherwise valid
+        // community, so an unresolvable community is now left unresolved and
+        // filtered out below rather than pointed at a non-sendable JID.
+        if (info?.id) {
+          c.announcementGroupId = String(info.id);
+          c.announcementGroupName = info?.title ? String(info.title) : '';
+        }
       },
     );
 
@@ -189,7 +219,10 @@ export async function GET(request: NextRequest) {
 
     for (const c of communities) {
       const id = String(c.id);
-      const sendId = String(c.announcementGroupId || id);
+      // Skip communities whose announcement group could not be resolved: we
+      // must never fall back to the parent JID, which is not sendable.
+      if (!c.announcementGroupId) continue;
+      const sendId = String(c.announcementGroupId);
       const existing = byId.get(sendId);
       const name = label(c, existing?.name ?? 'WhatsApp Community');
       byId.set(id, {

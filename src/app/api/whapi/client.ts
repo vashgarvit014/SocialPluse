@@ -43,7 +43,16 @@ export function whapiError(status: number, body: string, context: string): Whapi
   }
   if (status === 403) {
     if (/group-announce-not-admin/i.test(combined)) {
-      return { code: 'WHAPI_PERMISSION_DENIED', message: `You are not an admin of this announcement group — only admins can post to community announcement groups. Make this number an admin in WhatsApp, or choose a regular group (e.g. from All groups).${suffix}` };
+      // This is a 403 from WhatsApp relayed by Whapi, not a local check.
+      // Whapi's own /groups participant data can already show this account as
+      // rank=admin while WhatsApp still refuses, because the group-admin grant
+      // has not propagated to WhatsApp's servers. Saying "you are not an
+      // admin" therefore sends people to re-promote an account that is already
+      // an admin on Whapi's record. Name the real situation instead.
+      return {
+        code: 'WHAPI_PERMISSION_DENIED',
+        message: `WhatsApp refused this announcement-group post: the paired number is not accepted as an admin of that group's announcement group yet. Whapi already lists it as an admin, so the promotion made in WhatsApp has not propagated to WhatsApp's servers — wait a little and retry, or choose a regular group.${suffix}`,
+      };
     }
     return { code: 'WHAPI_PERMISSION_DENIED', message: `Whapi denied permission during ${context} (403).${suffix}` };
   }

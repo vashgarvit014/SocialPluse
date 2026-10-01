@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getWhapiConfig, whapiFetch, whapiError, maskPhone } from '../client';
 import { requireApiSession } from '@/lib/auth/api';
+import { checkChannelOwnership } from '@/lib/whatsapp-connections';
 
 // GET /api/whapi/status — separate from Meta /api/whatsapp/status
 // Calls Whapi /health to verify channel is connected.
@@ -13,6 +14,25 @@ export async function GET() {
   if (!config) {
     return NextResponse.json({ connected: false, reason: 'NOT_CONFIGURED', message: 'Whapi is not configured. Add WHAPI_API_TOKEN to .env.local.' });
   }
+
+  // Single-channel ownership gate: this reports the SHARED channel's provider
+  // state. Provider-connected is not the same as "connected to you", so a
+  // non-owner must not be able to read it and infer whose number is paired.
+  const verdict = await checkChannelOwnership(session.userId, config.token);
+  if (!verdict.ok) {
+    return NextResponse.json(
+      {
+        connected: false,
+        reason: verdict.code,
+        code: verdict.code,
+        message: verdict.code === 'WHATSAPP_CHANNEL_UNCLAIMED'
+          ? 'No WhatsApp account is connected to this workspace yet. Connect WhatsApp first.'
+          : 'This WhatsApp number is connected to a different SocialPulse account.',
+      },
+      { status: 403 },
+    );
+  }
+
 
   try {
     // Whapi health endpoint: GET https://gate.whapi.cloud/health

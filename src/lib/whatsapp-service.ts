@@ -84,6 +84,15 @@ async function partnerFetch(path: string, init?: RequestInit) {
   });
 }
 
+/** Masks an email so the UI can name the owner without leaking it. */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return 'another account';
+  const head = local.slice(0, 1);
+  const tail = local.length > 2 ? local.slice(-1) : '';
+  return `${head}${'*'.repeat(Math.max(2, local.length - 2))}${tail}@${domain}`;
+}
+
 function clientMessage(): string {
   return 'WhatsApp connection could not be completed. Please try connecting again.';
 }
@@ -117,6 +126,8 @@ async function probeChannel(channel: ChannelConfig): Promise<{
   ok: boolean;
   authenticated: boolean;
   phone?: string;
+  /** Provider-side account identifier. This gateway returns a LID here, not a phone. */
+  accountId?: string;
   accountName?: string;
   channelId?: string;
   providerStatus: string;
@@ -167,6 +178,7 @@ async function probeChannel(channel: ChannelConfig): Promise<{
       ok: true,
       authenticated,
       phone: data.user?.phone,
+      accountId: data.user?.id != null ? String(data.user.id) : undefined,
       accountName: data.user?.pushname || data.user?.name,
       channelId: data.channel_id || channel.channelId,
       providerStatus,
@@ -343,8 +355,15 @@ export async function pollWhatsAppConnection(userId: string): Promise<WhatsAppSt
       const channelMatches =
         !probe.channelId || !row.provider_channel_id || probe.channelId === row.provider_channel_id;
       if (channelMatches) {
+        // This gateway returns no phone for a linked account, so phone_masked
+        // was landing as NULL and the UI showed "Connected" with no identity at
+        // all — indistinguishable from a stale row. Fall back to the masked
+        // provider account id so the connection always shows what it is.
+        const identity = probe.phone
+          ? maskPhone(probe.phone)
+          : (probe.accountId ? `id ${probe.accountId.slice(-4).padStart(Math.min(8, probe.accountId.length), '•')}` : null);
         const result = await connections.confirmConnection(userId, row.provider_session_id!, {
-          phoneMasked: probe.phone ? maskPhone(probe.phone) : null,
+          phoneMasked: identity,
           accountName: probe.accountName || null,
           channelId: probe.channelId || null,
         });
@@ -457,9 +476,15 @@ export async function createWhatsAppConnectionSession(userId: string): Promise<Q
       // a number that is already connected to somebody.
       const owner = await connections.getConnectedOwnerByToken(shared.token);
       if (owner && owner.user_id !== userId) {
+        // Name WHO holds it, masked. "Ask an administrator" with no subject is
+        // unactionable — the reader cannot tell whether this is their own second
+        // account or a stranger, which is exactly the question they have.
+        const who = owner.owner_email ? maskEmail(owner.owner_email) : 'another account';
         return {
           status: 'ERROR',
-          message: 'This workspace already has a WhatsApp number connected. Only one WhatsApp account can be linked here — ask an administrator if you need it changed.',
+          message: `This WhatsApp number is already connected to ${who}. `
+            + 'Only one account can use the shared number at a time. '
+            + `Sign in as ${who} and disconnect it there first, or ask an administrator to release it.`,
         };
       }
       channel = shared;

@@ -29,6 +29,8 @@ export async function POST(request: NextRequest) {
       : 'That WhatsApp destination is no longer available. Refresh the destination list and choose again.') :
     code === 'WHAPI_TRIAL_LIMIT' ? 'This WhatsApp connection cannot publish to that community yet. Please contact your SocialPulse admin.' :
     code === 'WHAPI_UNAUTHORIZED' ? 'WhatsApp connection needs attention. Reconnect and try again.' :
+    code === 'WHATSAPP_NOT_CHANNEL_OWNER' ? (typeof data.message === 'string' && data.message ? data.message
+      : 'This WhatsApp number is connected to a different SocialPulse account.') :
     code === 'WHAPI_UNSUPPORTED_MEDIA' ? 'This media type is not supported for WhatsApp publishing yet.' :
     code === 'WHAPI_PERMISSION_DENIED' ? (typeof data.message === 'string' && data.message ? data.message : 'You are not an admin of this announcement group — only admins can post there. Choose a regular group or make this number an admin.') :
     code === 'WHAPI_COMMUNITY_PARENT' ? (typeof data.message === 'string' && data.message ? data.message : 'This chat cannot receive messages directly. Select its announcement group instead.') :

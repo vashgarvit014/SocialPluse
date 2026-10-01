@@ -18,6 +18,7 @@
     "whatsapp:pair-qr": "node scripts/whatsapp-pair-qr.mjs",
     "test:isolation:http": "node scripts/verify-user-isolation-http.mjs",
     "test:whatsapp-qr": "node scripts/verify-whatsapp-qr.mjs",
+    "test:whatsapp-ownership": "node scripts/verify-whatsapp-ownership.mjs",
     "test:moderation-classifier": "node --import tsx scripts/verify-moderation-classifier.mjs",
     "test:moderation:http": "node scripts/verify-moderation.mjs"
   },

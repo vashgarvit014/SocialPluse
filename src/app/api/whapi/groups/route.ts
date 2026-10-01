@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWhapiConfig, whapiFetch, whapiError } from '../client';
 import { requireApiSession } from '@/lib/auth/api';
+import { checkChannelOwnership } from '@/lib/whatsapp-connections';
 
 // GET /api/whapi/groups — existing WhatsApp groups only via Whapi
 // Uses official Whapi endpoint GET https://gate.whapi.cloud/groups?count=100&offset=0
@@ -18,6 +19,24 @@ export async function GET(request: NextRequest) {
   if (session instanceof NextResponse) return session;
   const config = getWhapiConfig();
   if (!config) return notConfigured();
+  // Single-channel ownership gate: these routes read the shared channel with the
+  // deployment token, so without this any signed-in account could list the
+  // groups, communities and chats belonging to whichever account paired it.
+  const verdict = await checkChannelOwnership(session.userId, config.token);
+  if (!verdict.ok) {
+    return NextResponse.json(
+      {
+        success: false,
+        connected: false,
+        code: verdict.code,
+        message: verdict.code === 'WHATSAPP_CHANNEL_UNCLAIMED'
+          ? 'No WhatsApp account is connected to this workspace yet. Connect WhatsApp first.'
+          : 'This WhatsApp number is connected to a different SocialPulse account.',
+      },
+      { status: 403 },
+    );
+  }
+
 
   const countParam = request.nextUrl.searchParams.get('count');
   const count = countParam ? Math.min(500, Math.max(1, parseInt(countParam, 10) || 100)) : 100;

@@ -3,6 +3,7 @@ import { getWhapiConfig, whapiFetch, whapiError, sanitizeForLog } from '../clien
 import { requireApiActor } from '@/lib/internal-auth';
 import { logSystem } from '@/lib/system-log';
 import { prepareWhapiMedia } from '@/lib/whapi-media';
+import { getConnectedOwnerByToken } from '@/lib/whatsapp-connections';
 
 // In-memory publish-attempt registry — same pattern as linkedin/publish, facebook/publish
 const seenAttempts = new Map<string, number>();
@@ -127,6 +128,35 @@ export async function POST(request: NextRequest) {
   const config = getWhapiConfig();
   if (!config) {
     return err('WHAPI_NOT_CONFIGURED', 'Whapi is not configured. Add WHAPI_API_TOKEN to .env.local.', 401, attempt);
+  }
+
+  // ---- OWNERSHIP GATE ------------------------------------------------------
+  // This route publishes with the DEPLOYMENT token (WHAPI_API_TOKEN), because
+  // there is exactly one Whapi channel shared by the workspace. That made the
+  // token a shared credential: requireApiActor accepts a plain browser cookie,
+  // so any signed-in user could POST here and publish through whichever device
+  // happened to be paired to the channel — including one paired by a different
+  // SocialPulse account. The per-user ownership record existed but nothing on
+  // this path consulted it.
+  //
+  // Provider-connected state is NOT ownership. The channel being live says only
+  // that SOME account paired it; publishing requires that the caller is the
+  // account recorded as the active owner of that channel.
+  const owner = await getConnectedOwnerByToken(config.token);
+  if (!owner) {
+    return err(
+      'WHATSAPP_NOT_CHANNEL_OWNER',
+      'No WhatsApp account is connected to this workspace channel yet. Connect WhatsApp first.',
+      403, attempt,
+    );
+  }
+  if (owner.user_id !== actor.userId) {
+    console.error(`[whapi/publish] ownership refused: user ${actor.userId} is not the active owner of the shared channel`);
+    return err(
+      'WHATSAPP_NOT_CHANNEL_OWNER',
+      'This WhatsApp number is connected to a different SocialPulse account. Only the account that paired it can publish.',
+      403, attempt,
+    );
   }
 
   if (!groupId || !groupId.trim()) {

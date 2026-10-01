@@ -281,7 +281,7 @@ async function main() {
       const mac = createHmac('sha256', INTERNAL).update(`${B.id}.${stamp}`).digest('hex');
       const good = await api('/api/linkedin/publish', {
         method: 'POST',
-        body: { content: 'worker test', userId: 'ignored-by-design', attemptId: 'iso-worker-ok' },
+        body: { content: 'worker test', userId: 'ignored-by-design', attemptId: `iso-worker-ok-${stamp}` },  // unique per run: the publish route dedupes attemptIds for a TTL window
         headers: { 'x-socialpulse-internal-actor': `${B.id}.${stamp}.${mac}` },
       });
       // Reaching "not connected" means the assertion was accepted and the
