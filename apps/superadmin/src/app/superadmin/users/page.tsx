@@ -1,22 +1,14 @@
 import Link from 'next/link';
 import { avatarColor, initials, relTime, absDate, badge } from '../ui';
+import { callAdminService as callAdminGateway } from '@/lib/admin-client';
 
 // Phase 11 cleanup: this page used to call listUsers()/countUsersByStatus()
 // directly against Postgres from inside the monolith's SSR render — now
 // reads from admin-service, which proxies to user-service (the actual
 // owner of this data since Phase 8).
-const ADMIN_SERVICE_URL = process.env.ADMIN_SERVICE_URL || 'http://admin-service:4009';
-const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
-
-async function callAdminService(path: string) {
-  try {
-    const res = await fetch(`${ADMIN_SERVICE_URL}${path}`, { headers: { 'x-internal-secret': INTERNAL_SECRET }, cache: 'no-store' });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    // admin-service unreachable — degrade gracefully, never a raw 500.
-    return null;
-  }
+async function callAdminService(path: string): Promise<Record<string, unknown> | null> {
+  const res = await callAdminGateway(path);
+  return res.ok ? (res.data as Record<string, unknown>) : null;
 }
 
 type UserStatus = 'ACTIVE' | 'PENDING' | 'SUSPENDED';

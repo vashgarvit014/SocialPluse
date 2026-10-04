@@ -205,6 +205,15 @@ const server = http.createServer(async (req, res) => {
         return send(res, 500, { error: 'Unable to read post storage.' });
       }
     }
+    if (url.pathname === '/internal/scrub-post-accounts' && req.method === 'POST') {
+      const body = await readJsonBody(req);
+      const userId = typeof body.userId === 'string' ? body.userId : '';
+      const platform = typeof body.platform === 'string' ? body.platform : '';
+      const providerUserId = typeof body.providerUserId === 'string' ? body.providerUserId : null;
+      if (!userId || !platform) return send(res, 400, { error: 'INVALID_REQUEST' });
+      const scrubbedPosts = await store.scrubUserPostAccounts(userId, platform, providerUserId);
+      return send(res, 200, { scrubbedPosts });
+    }
     if (url.pathname.match(/^\/internal\/posts\/[^/]+\/retry$/) && req.method === 'POST') {
       const id = url.pathname.split('/')[3];
       try {

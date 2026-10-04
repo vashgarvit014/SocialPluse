@@ -13,8 +13,7 @@ import { NextResponse } from 'next/server';
 // src/lib/auth/session.ts#getSession for this app only — apps/web keeps
 // its own original (DB-backed) copies, unchanged.
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:4011';
-const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://gateway:8080';
 export const SESSION_COOKIE = 'sp_session';
 
 export interface SuperadminSession {
@@ -27,17 +26,17 @@ export interface SuperadminSession {
 async function callVerifySession(cookieValue: string | undefined): Promise<SuperadminSession | null> {
   if (!cookieValue) return null;
   try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/internal/verify-session`, {
+    const res = await fetch(`${GATEWAY_URL}/api/superadmin/auth/check`, {
       headers: {
         cookie: `${SESSION_COOKIE}=${cookieValue}`,
-        'x-internal-secret': INTERNAL_SECRET,
       },
       cache: 'no-store',
     });
     if (!res.ok) return null;
     const data = await res.json();
-    if (!data.authenticated) return null;
-    return { userId: data.userId, role: data.role, accountStatus: data.accountStatus, sessionId: data.sessionId ?? null };
+    const user = data.user;
+    if (!user || user.role !== 'SUPERADMIN') return null;
+    return { userId: user.id, role: user.role, accountStatus: user.status || 'ACTIVE', sessionId: data.sessionId ?? null };
   } catch {
     // auth-service unreachable — fail closed, same as the gateway's own
     // authenticateRequest(). Never grant access when verification cannot

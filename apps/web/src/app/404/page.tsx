@@ -13,8 +13,8 @@ import { notFound } from 'next/navigation';
 //
 // This route is only reachable via that rewrite. On the admin subdomain the
 // proxy's own filter already 404s it, and on the public host it is an
-// ordinary harmless page — there is nothing to protect here, because the real
-// gate for every admin screen is requireSuperadmin()'s DB role check.
+// ordinary harmless page — there is nothing to protect here, because admin
+// screens are gated through the gateway/auth-service boundary.
 export default function NotFoundStatusRoute() {
   notFound();
 }

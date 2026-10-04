@@ -186,6 +186,33 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { success: true });
     }
 
+    if (url.pathname.match(/^\/internal\/users\/[^/]+\/reset-access$/) && req.method === 'POST') {
+      if (!verifyInternalSecretHeader(req)) return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
+      const userId = url.pathname.split('/')[3];
+      const body = await readJsonBody(req);
+      const user = await usersRepo.findUserById(userId);
+      if (!user) return send(res, 404, { error: 'User not found.' });
+      if (user.status === 'SUSPENDED') {
+        return send(res, 400, { error: 'This account is suspended. Reactivate it before resetting access.' });
+      }
+      const channel = user.email ? 'EMAIL' : 'WHATSAPP';
+      const destination = user.email || user.mobile;
+      if (!destination) return send(res, 400, { error: 'This account has no email or mobile on file.' });
+
+      const { otp } = await otpStore.createChallenge({ userId: user.id, channel, destination, purpose: 'PASSWORD_RESET' });
+      const delivery = await deliverOtp({ channel, destination, otp, purpose: 'PASSWORD_RESET', isSuperadmin: user.role === 'SUPERADMIN' });
+      if (!delivery.ok) {
+        logAuthEvent('OTP_DELIVERY_FAILED', { userId: user.id, channel, purpose: 'PASSWORD_RESET', ip: clientIp(req) });
+        return send(res, 502, { error: 'Could not send the verification code. Please try again shortly.' });
+      }
+      logAuthEvent('RESET_ACCESS_TRIGGERED', { userId: user.id, channel, purpose: 'PASSWORD_RESET', ip: clientIp(req), meta: { actorUserId: body?.actorUserId || null } });
+      return send(res, 200, {
+        success: true,
+        message: 'A verification code has been sent to the user. They can complete the reset from the login page (Forgot Password).',
+        maskedDestination: channel === 'EMAIL' ? maskEmail(destination) : maskMobile(destination),
+      });
+    }
+
     const ip = clientIp(req);
 
     // ============================= SIGNUP =============================

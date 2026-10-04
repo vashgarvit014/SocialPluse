@@ -7,7 +7,7 @@ const LINKEDIN_CLIENT_ID = process.env.LINKEDIN_CLIENT_ID || '';
 const LINKEDIN_CLIENT_SECRET = process.env.LINKEDIN_CLIENT_SECRET || '';
 const LINKEDIN_REDIRECT_URI = process.env.LINKEDIN_REDIRECT_URI || 'http://localhost:3000/api/linkedin/callback';
 const APP_ORIGIN = new URL(LINKEDIN_REDIRECT_URI).origin;
-const WEB_UPSTREAM = process.env.WEB_UPSTREAM || 'http://socialpulse:3000';
+const SCHEDULER_SERVICE_URL = process.env.SCHEDULER_SERVICE_URL || 'http://scheduler-service:4007';
 const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
 
 function json(res, status, body) {
@@ -30,9 +30,9 @@ function requireActor(req) {
 // import + scheduled_posts logic here would be the wrong owner for it — see
 // Canva's /export, left in the monolith for the same reason. This is a
 // small enough dependency to bridge via one internal call instead.
-async function scrubViaMonolith(userId, platform, providerUserId, requestId) {
+async function scrubViaScheduler(userId, platform, providerUserId, requestId) {
   try {
-    const res = await fetch(`${WEB_UPSTREAM}/api/internal/scrub-post-accounts`, {
+    const res = await fetch(`${SCHEDULER_SERVICE_URL}/internal/scrub-post-accounts`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-internal-secret': INTERNAL_SECRET, 'x-request-id': requestId },
       body: JSON.stringify({ userId, platform, providerUserId }),
@@ -140,7 +140,7 @@ export function createLinkedInRouter(pool) {
         }
         const providerUserId = typeof body.userId === 'string' && body.userId ? body.userId : null;
         const removed = await vault.deleteLinkedInToken(userId);
-        const scrubbedPosts = await scrubViaMonolith(userId, 'linkedin', providerUserId, requestId);
+        const scrubbedPosts = await scrubViaScheduler(userId, 'linkedin', providerUserId, requestId);
         return json(res, 200, { success: true, disconnected: removed, scrubbedPosts });
       } catch {
         return json(res, 500, { success: false, code: 'DISCONNECT_FAILED', message: 'Failed to disconnect LinkedIn.' });

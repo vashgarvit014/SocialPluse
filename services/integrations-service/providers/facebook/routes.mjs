@@ -9,7 +9,7 @@ const FACEBOOK_REDIRECT_URI = process.env.FACEBOOK_REDIRECT_URI || 'http://local
 const FACEBOOK_LOGIN_CONFIG_ID = process.env.FACEBOOK_LOGIN_CONFIG_ID || '';
 const APP_ORIGIN = new URL(FACEBOOK_REDIRECT_URI).origin;
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const WEB_UPSTREAM = process.env.WEB_UPSTREAM || 'http://socialpulse:3000';
+const SCHEDULER_SERVICE_URL = process.env.SCHEDULER_SERVICE_URL || 'http://scheduler-service:4007';
 const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
 
 function json(res, status, body) {
@@ -27,9 +27,9 @@ function requireActor(req) {
 
 // Same bridge pattern as LinkedIn's disconnect — scrubUserPostAccounts()
 // belongs to scheduler/publishing, not integrations-service.
-async function scrubViaMonolith(userId, platform, providerUserId, requestId) {
+async function scrubViaScheduler(userId, platform, providerUserId, requestId) {
   try {
-    const res = await fetch(`${WEB_UPSTREAM}/api/internal/scrub-post-accounts`, {
+    const res = await fetch(`${SCHEDULER_SERVICE_URL}/internal/scrub-post-accounts`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-internal-secret': INTERNAL_SECRET, 'x-request-id': requestId },
       body: JSON.stringify({ userId, platform, providerUserId }),
@@ -169,7 +169,7 @@ export function createFacebookRouter(pool) {
         }
         const providerUserId = typeof body.userId === 'string' && body.userId ? body.userId : null;
         await vault.deleteFacebookAuth(userId);
-        const scrubbedPosts = await scrubViaMonolith(userId, 'facebook', providerUserId, requestId);
+        const scrubbedPosts = await scrubViaScheduler(userId, 'facebook', providerUserId, requestId);
         return json(res, 200, { success: true, scrubbedPosts });
       } catch {
         return json(res, 500, { success: false, code: 'DISCONNECT_FAILED', message: 'Failed to disconnect Facebook.' });

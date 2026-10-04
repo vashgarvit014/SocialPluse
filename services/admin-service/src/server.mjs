@@ -28,6 +28,7 @@ const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://user-service:4010';
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:4011';
 const SCHEDULER_SERVICE_URL = process.env.SCHEDULER_SERVICE_URL || 'http://scheduler-service:4007';
+const WHAPI_API_TOKEN = process.env.WHAPI_API_TOKEN || '';
 const log = createLogger('admin-service');
 
 async function callService(baseUrl, path, { method = 'GET', body } = {}) {
@@ -51,6 +52,73 @@ function logAuditEvent(db, event, { userId, meta }) {
     `INSERT INTO auth_audit_logs (id, event, user_id, channel, purpose, ip, created_at, meta) VALUES ($1,$2,$3,NULL,NULL,NULL,$4,$5)`,
     [randomUUID(), event, userId || null, new Date().toISOString(), meta ? JSON.stringify(meta) : null],
   ).catch((err) => log.warn({ event: 'audit_log_write_failed', message: err instanceof Error ? err.message : 'unknown' }));
+}
+
+function summariseConnections(platform, rows) {
+  const matches = rows.filter((row) => row.platform === platform);
+  return { rows: matches, users: new Set(matches.map((row) => row.user_id)).size };
+}
+
+async function getConnectionsOverview(db) {
+  const { rows } = await db.query(
+    `SELECT user_id, platform, provider_user_id, display_name, email, meta
+       FROM platform_connections
+      WHERE disconnected_at IS NULL
+      ORDER BY platform, created_at DESC`,
+  );
+  const fb = summariseConnections('facebook', rows);
+  const ig = summariseConnections('facebook', rows);
+  const li = summariseConnections('linkedin', rows);
+  const canva = summariseConnections('canva', rows);
+  const fbNames = fb.rows
+    .map((row) => {
+      const pages = row.meta?.pageCount;
+      return `${row.display_name || row.provider_user_id}${typeof pages === 'number' ? ` (${pages} page${pages === 1 ? '' : 's'})` : ''}`;
+    })
+    .slice(0, 5)
+    .join(', ');
+  return [
+    {
+      name: 'Facebook',
+      status: fb.users > 0 ? 'CONNECTED' : 'NOT_CONNECTED',
+      account: fbNames || null,
+      detail: fb.users > 0 ? `${fb.users} user${fb.users === 1 ? '' : 's'} connected` : 'No account connected',
+      lastPublishAt: null,
+      connectedUsers: fb.users,
+    },
+    {
+      name: 'Instagram',
+      status: ig.users > 0 ? 'CONNECTED' : 'NOT_CONNECTED',
+      account: ig.rows.map((row) => row.display_name).filter(Boolean).slice(0, 5).join(', ') || null,
+      detail: ig.users > 0 ? `${ig.users} user${ig.users === 1 ? '' : 's'} linked via a Facebook Page` : 'No linked Instagram Business account',
+      lastPublishAt: null,
+      connectedUsers: ig.users,
+    },
+    {
+      name: 'LinkedIn',
+      status: li.users > 0 ? 'CONNECTED' : 'NOT_CONNECTED',
+      account: li.rows.map((row) => row.display_name || row.email).filter(Boolean).slice(0, 5).join(', ') || null,
+      detail: li.users > 0 ? `${li.users} user${li.users === 1 ? '' : 's'} connected` : 'No account connected',
+      lastPublishAt: null,
+      connectedUsers: li.users,
+    },
+    {
+      name: 'Whapi (WhatsApp groups)',
+      status: WHAPI_API_TOKEN ? 'CONNECTED' : 'NOT_CONNECTED',
+      account: null,
+      detail: WHAPI_API_TOKEN ? 'Token configured in integrations-service/admin-service env' : 'WHAPI_API_TOKEN not set',
+      lastPublishAt: null,
+      connectedUsers: WHAPI_API_TOKEN ? 1 : 0,
+    },
+    {
+      name: 'Canva',
+      status: canva.users > 0 ? 'CONNECTED' : 'NOT_TRACKABLE',
+      account: canva.rows.map((row) => row.display_name).filter(Boolean).slice(0, 5).join(', ') || null,
+      detail: canva.users > 0 ? `${canva.users} user${canva.users === 1 ? '' : 's'} connected` : 'No Canva connections recorded',
+      lastPublishAt: null,
+      connectedUsers: canva.users,
+    },
+  ];
 }
 
 types.setTypeParser(types.builtins.TIMESTAMPTZ, (v) => (v === null ? null : new Date(v).toISOString()));
@@ -226,6 +294,20 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // POST /users/:id/reset-access — Superadmin-triggered password-reset OTP.
+  // auth-service owns OTP/password-reset state; admin-service is only the
+  // Superadmin facade behind the gateway's role check.
+  if (parts[0] === 'users' && parts[2] === 'reset-access' && parts.length === 3 && req.method === 'POST') {
+    if (!verifyInternalSecret(req, INTERNAL_SECRET)) return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
+    try {
+      const { status, data } = await callAuthService(`/internal/users/${parts[1]}/reset-access`, { method: 'POST', body: { actorUserId } });
+      return send(res, status, data);
+    } catch (err) {
+      log.error({ requestId, event: 'reset_access_failed', message: err instanceof Error ? err.message : 'unknown' });
+      return send(res, 503, { code: 'ADMIN_SERVICE_UNAVAILABLE', message: 'Admin service is temporarily unavailable.' });
+    }
+  }
+
   // GET /moderation/users/:id — moderation summary (combines user-service's
   // profile + moderation-summary reads, same response shape as the original
   // monolith route).
@@ -279,6 +361,17 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { checks: await getSystemHealth(getPool()) });
     } catch (err) {
       log.error({ requestId, event: 'system_health_failed', message: err instanceof Error ? err.message : 'unknown' });
+      return send(res, 503, { code: 'ADMIN_SERVICE_UNAVAILABLE', message: 'Admin service is temporarily unavailable.' });
+    }
+  }
+
+  // GET /connections — cross-user provider connection overview.
+  if (url.pathname === '/connections' && req.method === 'GET') {
+    if (!verifyInternalSecret(req, INTERNAL_SECRET)) return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
+    try {
+      return send(res, 200, { connections: await getConnectionsOverview(getPool()) });
+    } catch (err) {
+      log.error({ requestId, event: 'connections_overview_failed', message: err instanceof Error ? err.message : 'unknown' });
       return send(res, 503, { code: 'ADMIN_SERVICE_UNAVAILABLE', message: 'Admin service is temporarily unavailable.' });
     }
   }

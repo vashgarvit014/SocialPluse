@@ -94,6 +94,16 @@ const AUTH_ROUTES = new Map([
   ['/api/superadmin/settings/email/resend', '/superadmin/settings/email/resend'],
 ]);
 
+const SUPERADMIN_ADMIN_ROUTES = new Map([
+  ['/api/superadmin/audit-logs', '/audit-logs'],
+  ['/api/superadmin/auth-activity', '/auth-events/filtered'],
+  ['/api/superadmin/connections', '/connections'],
+  ['/api/superadmin/notifications', '/notifications'],
+  ['/api/superadmin/publishing', '/publishing'],
+  ['/api/superadmin/sessions', '/sessions'],
+  ['/api/superadmin/system-health', '/system-health'],
+]);
+
 // ai-service (Phase 7, this round). Maps the existing frontend paths
 // directly (same shape as PUBLISH_ROUTES). Any signed-in user, not
 // Superadmin-only — matches the original routes' requireApiSession().
@@ -112,6 +122,7 @@ const PUBLISH_ROUTES = new Map([
   ['/api/linkedin/publish', '/linkedin'],
   ['/api/facebook/publish', '/facebook'],
   ['/api/instagram/publish', '/instagram'],
+  ['/api/whatsapp/publish', '/whapi'],
   ['/api/whapi/publish', '/whapi'],
 ]);
 
@@ -131,6 +142,7 @@ const CANVA_ROUTES = new Map([
   ['/api/canva/disconnect', { skipAuth: false }],
   ['/api/canva/create-design', { skipAuth: false }],
   ['/api/canva/create-blank', { skipAuth: false }],
+  ['/api/canva/export', { skipAuth: false }],
 ]);
 
 // LinkedIn (Phase 3B, this round). /api/linkedin/publish is deliberately
@@ -174,6 +186,13 @@ const WHATSAPP_ROUTES = new Map([
   ['/api/whatsapp/cancel', { skipAuth: false }],
   ['/api/whatsapp/disconnect', { skipAuth: false }],
   ['/api/whatsapp/communities', { skipAuth: false }],
+  ['/api/whatsapp/groups', { skipAuth: false, targetPath: '/whatsapp/groups' }],
+  ['/api/whatsapp/send-message', { skipAuth: false, targetPath: '/whatsapp/send-message' }],
+  ['/api/whatsapp/webhook', { skipAuth: true, targetPath: '/whatsapp/webhook' }],
+  ['/api/whapi/status', { skipAuth: false, targetPath: '/status/whapi' }],
+  ['/api/whapi/groups', { skipAuth: false, targetPath: '/whapi/groups' }],
+  ['/api/whapi/destinations', { skipAuth: false, targetPath: '/whapi/destinations' }],
+  ['/api/whapi/webhook', { skipAuth: true, targetPath: '/whapi/webhook' }],
 ]);
 
 // --- session auth, delegated to auth-service (Phase 9 cutover) ---
@@ -395,10 +414,20 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { service: 'gateway', timestamp: new Date().toISOString(), upstreams: results });
   }
 
+  const pathnameOnly = req.url.split('?')[0];
+
   if (req.url.startsWith('/api/analytics/')) {
     return proxyToService(req, res, requestId, {
       name: 'analytics', baseUrl: ANALYTICS_SERVICE_URL, breaker: analyticsBreaker,
       prefix: /^\/api\/analytics/, requireRole: 'SUPERADMIN',
+      unavailableCode: 'ANALYTICS_UNAVAILABLE', unavailableMessage: 'Analytics are temporarily unavailable.',
+    });
+  }
+
+  if (pathnameOnly === '/api/superadmin/ai-usage') {
+    return proxyToService(req, res, requestId, {
+      name: 'analytics', baseUrl: ANALYTICS_SERVICE_URL, breaker: analyticsBreaker,
+      targetPath: '/ai-usage', requireRole: 'SUPERADMIN',
       unavailableCode: 'ANALYTICS_UNAVAILABLE', unavailableMessage: 'Analytics are temporarily unavailable.',
     });
   }
@@ -410,8 +439,6 @@ const server = http.createServer(async (req, res) => {
       unavailableCode: 'ADMIN_SERVICE_UNAVAILABLE', unavailableMessage: 'Admin service is temporarily unavailable.',
     });
   }
-
-  const pathnameOnly = req.url.split('?')[0];
 
   // auth-service (Phase 9, this round). /api/auth/me now returns role +
   // account status too (auth-service's /me reads its own already-verified
@@ -425,6 +452,41 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  if (SUPERADMIN_ADMIN_ROUTES.has(pathnameOnly)) {
+    return proxyToService(req, res, requestId, {
+      name: 'admin', baseUrl: ADMIN_SERVICE_URL, breaker: adminBreaker,
+      targetPath: SUPERADMIN_ADMIN_ROUTES.get(pathnameOnly), requireRole: 'SUPERADMIN',
+      unavailableCode: 'ADMIN_SERVICE_UNAVAILABLE', unavailableMessage: 'Admin service is temporarily unavailable.',
+    });
+  }
+
+  const notificationMatch = pathnameOnly.match(/^\/api\/superadmin\/notifications\/([^/]+)$/);
+  if (notificationMatch) {
+    return proxyToService(req, res, requestId, {
+      name: 'admin', baseUrl: ADMIN_SERVICE_URL, breaker: adminBreaker,
+      targetPath: `/notifications/${notificationMatch[1]}`, requireRole: 'SUPERADMIN',
+      unavailableCode: 'ADMIN_SERVICE_UNAVAILABLE', unavailableMessage: 'Admin service is temporarily unavailable.',
+    });
+  }
+
+  const sessionMatch = pathnameOnly.match(/^\/api\/superadmin\/sessions\/([^/]+)$/);
+  if (sessionMatch) {
+    return proxyToService(req, res, requestId, {
+      name: 'admin', baseUrl: ADMIN_SERVICE_URL, breaker: adminBreaker,
+      targetPath: `/sessions/${sessionMatch[1]}`, requireRole: 'SUPERADMIN',
+      unavailableCode: 'ADMIN_SERVICE_UNAVAILABLE', unavailableMessage: 'Admin service is temporarily unavailable.',
+    });
+  }
+
+  const publishActionMatch = pathnameOnly.match(/^\/api\/superadmin\/publishing\/([^/]+)\/(retry|draft)$/);
+  if (publishActionMatch) {
+    return proxyToService(req, res, requestId, {
+      name: 'admin', baseUrl: ADMIN_SERVICE_URL, breaker: adminBreaker,
+      targetPath: `/publishing/${publishActionMatch[1]}/${publishActionMatch[2]}`, requireRole: 'SUPERADMIN',
+      unavailableCode: 'ADMIN_SERVICE_UNAVAILABLE', unavailableMessage: 'Admin service is temporarily unavailable.',
+    });
+  }
+
   // Superadmin user-management (list/detail/suspend/reactivate/moderation
   // flag-clear) — these do NOT go directly to user-service (brief: "Do not
   // expose internal user APIs to browser directly"). They go through
@@ -433,7 +495,7 @@ const server = http.createServer(async (req, res) => {
   // auth-domain route (sends a real OTP), untouched, falling through to
   // proxyToWeb below.
   const isSuperadminUserMgmt = (pathnameOnly === '/api/superadmin/users'
-      || (/^\/api\/superadmin\/users\//.test(pathnameOnly) && !pathnameOnly.endsWith('/reset-access')))
+      || /^\/api\/superadmin\/users\//.test(pathnameOnly))
     || /^\/api\/superadmin\/moderation\/users\//.test(pathnameOnly);
   if (isSuperadminUserMgmt) {
     return proxyToService(req, res, requestId, {
@@ -480,10 +542,19 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (WHATSAPP_ROUTES.has(pathnameOnly)) {
-    const { skipAuth } = WHATSAPP_ROUTES.get(pathnameOnly);
+    const { skipAuth, targetPath } = WHATSAPP_ROUTES.get(pathnameOnly);
     return proxyToService(req, res, requestId, {
       name: 'integrations-whatsapp', baseUrl: INTEGRATIONS_SERVICE_URL, breaker: whatsappBreaker,
-      prefix: /^\/api/, forwardCookie: true, skipAuth,
+      prefix: /^\/api/, targetPath, forwardCookie: true, skipAuth,
+      unavailableCode: 'INTEGRATIONS_UNAVAILABLE', unavailableMessage: 'Platform connection is temporarily unavailable.',
+    });
+  }
+
+  const whatsappGroupMatch = pathnameOnly.match(/^\/api\/whatsapp\/groups\/(.+)$/);
+  if (whatsappGroupMatch) {
+    return proxyToService(req, res, requestId, {
+      name: 'integrations-whatsapp', baseUrl: INTEGRATIONS_SERVICE_URL, breaker: whatsappBreaker,
+      targetPath: `/whatsapp/groups/${whatsappGroupMatch[1]}`, forwardCookie: true,
       unavailableCode: 'INTEGRATIONS_UNAVAILABLE', unavailableMessage: 'Platform connection is temporarily unavailable.',
     });
   }
@@ -527,10 +598,35 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  const stagedPublishMediaMatch = pathnameOnly.match(/^\/api\/(instagram|whapi)\/media\/([^/]+)$/);
+  if (stagedPublishMediaMatch) {
+    return proxyToService(req, res, requestId, {
+      name: 'publishing-media', baseUrl: PUBLISHING_SERVICE_URL, breaker: publishingBreaker,
+      targetPath: `/${stagedPublishMediaMatch[1]}/media/${stagedPublishMediaMatch[2]}`, skipAuth: true, forwardCookie: false,
+      unavailableCode: 'PUBLISHING_UNAVAILABLE', unavailableMessage: 'Publishing media is temporarily unavailable.',
+    });
+  }
+
   if (req.url.startsWith('/api/media-assets')) {
     return proxyToService(req, res, requestId, {
       name: 'media', baseUrl: MEDIA_SERVICE_URL, breaker: mediaBreaker,
       prefix: /^\/api/, forwardCookie: false,
+      unavailableCode: 'MEDIA_UNAVAILABLE', unavailableMessage: 'Media service is temporarily unavailable.',
+    });
+  }
+
+  if (pathnameOnly === '/api/editor-draft') {
+    return proxyToService(req, res, requestId, {
+      name: 'user', baseUrl: USER_SERVICE_URL, breaker: userBreaker,
+      targetPath: '/editor-draft', forwardCookie: false,
+      unavailableCode: 'USER_SERVICE_UNAVAILABLE', unavailableMessage: 'Draft storage is temporarily unavailable.',
+    });
+  }
+
+  if (pathnameOnly === '/api/ffmpeg/logo') {
+    return proxyToService(req, res, requestId, {
+      name: 'media', baseUrl: MEDIA_SERVICE_URL, breaker: mediaBreaker,
+      targetPath: '/branded-video', forwardCookie: false,
       unavailableCode: 'MEDIA_UNAVAILABLE', unavailableMessage: 'Media service is temporarily unavailable.',
     });
   }

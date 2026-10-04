@@ -1,10 +1,9 @@
 // Faithful port of src/lib/post-store.ts, PLUS a real atomic claim
 // (claimDueJob) replacing the original claimDuePosts()+updatePostById()
 // pair, which had a genuine TOCTOU race — see the migration comment in
-// src/lib/db.ts for why. scrubUserPostAccounts() is NOT ported here: it's
-// already served by the monolith's own /api/internal/scrub-post-accounts
-// (built for integrations-service's disconnect routes last round) — no
-// reason to duplicate it a second time for this round.
+// src/lib/db.ts for why. scrubUserPostAccounts() lives here too: scheduler
+// owns scheduled_posts, so integrations-service disconnect cleanup should
+// not call back into the frontend app.
 
 import { readFileSync, existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -100,6 +99,35 @@ export function createPostStore(pool, legacyFilePath) {
       await ensureLegacyImported();
       const { rows } = await pool.query('DELETE FROM scheduled_posts WHERE id = $1 AND user_id = $2 RETURNING id', [id, userId]);
       return rows.length > 0;
+    },
+
+    async scrubUserPostAccounts(userId, platform, providerUserId) {
+      await ensureLegacyImported();
+      const { rows } = await pool.query(`SELECT ${SELECT_COLUMNS} FROM scheduled_posts WHERE user_id = $1`, [userId]);
+      let scrubbed = 0;
+      for (const row of rows) {
+        const accounts = row.payload?.accounts;
+        if (!Array.isArray(accounts)) continue;
+        let changed = false;
+        const nextAccounts = accounts.map((account) => {
+          if (account?.platform !== platform) return account;
+          if (providerUserId && account.userId && account.userId !== providerUserId) return account;
+          if (!('accessToken' in account) && !('userId' in account)) return account;
+          const { accessToken: _drop, userId: _dropId, ...rest } = account;
+          void _drop; void _dropId;
+          changed = true;
+          return rest;
+        });
+        if (!changed) continue;
+        scrubbed++;
+        await pool.query('UPDATE scheduled_posts SET payload = $2, updated_at = $3 WHERE id = $1 AND user_id = $4', [
+          row.id,
+          JSON.stringify({ ...row.payload, accounts: nextAccounts }),
+          new Date().toISOString(),
+          userId,
+        ]);
+      }
+      return scrubbed;
     },
 
     // --- System reads: Superadmin / worker only, never user-facing ---

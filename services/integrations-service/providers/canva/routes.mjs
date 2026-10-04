@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { parseCookies } from '../../packages/cookies/index.mjs';
+import { internalFetchHeaders } from '../../packages/service-auth/index.mjs';
 import { startReturn, finishReturn, clearReturnCookie } from '../../src/oauth-return.mjs';
 import * as canva from './canva.mjs';
 import { createHandoffStore } from './handoffs.mjs';
@@ -12,6 +13,8 @@ const JWKS = createRemoteJWKSet(new URL('https://api.canva.com/rest/v1/connect/k
 const MIN_DIM = 40;
 const MAX_DIM = 8000;
 const MAX_AREA = 25_000_000;
+const MEDIA_SERVICE_URL = process.env.MEDIA_SERVICE_URL || 'http://media-service:4004';
+const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
 
 function json(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -208,6 +211,58 @@ export function createCanvaRouter(pool) {
         console.error('[integrations-service] Canva create-blank error:', error instanceof Error ? error.message : error);
         if (error instanceof canva.CanvaError) return json(res, canvaErrorStatus(error.code), { error: { code: error.code, message: error.message } });
         return json(res, 500, { error: { code: 'CANVA_CREATE_DESIGN_FAILED', message: 'Failed to create Canva design' } });
+      }
+    }
+
+    // --- POST /export ("Import from Canva") ---
+    if (pathname === '/export' && req.method === 'POST') {
+      const userId = requireActor(req);
+      if (!userId) return json(res, 401, { error: 'Unauthorized' });
+      try {
+        const { readyId } = await readJsonBody(req);
+        if (!readyId || typeof readyId !== 'string') {
+          return json(res, 400, { error: { code: 'CANVA_IMPORT_FAILED', message: 'readyId is required' } });
+        }
+
+        const designId = await handoffs.peekReadyDesign(userId, readyId);
+        if (!designId) {
+          return json(res, 404, { error: { code: 'CANVA_IMPORT_FAILED', message: 'This Canva design is no longer available to import - try Edit in Canva again' } });
+        }
+
+        const { accessToken, refreshed } = await canva.getValidAccessToken({
+          accessToken: cookies.canva_access_token,
+          refreshToken: cookies.canva_refresh_token,
+          expiresAt: cookies.canva_expires_at,
+        });
+        const imageBuffer = await canva.exportDesignAsPng(accessToken, designId);
+        await handoffs.takeReadyDesign(userId, readyId);
+
+        let asset = null;
+        try {
+          const mediaRes = await fetch(`${MEDIA_SERVICE_URL}/internal/assets`, {
+            method: 'POST',
+            headers: internalFetchHeaders(INTERNAL_SECRET, requestId, { 'content-type': 'application/json' }),
+            body: JSON.stringify({
+              userId,
+              filename: `canva-${designId}.png`,
+              mime: 'image/png',
+              bytesBase64: imageBuffer.toString('base64'),
+              source: 'CANVA_IMPORT',
+            }),
+          });
+          const mediaData = await mediaRes.json().catch(() => ({}));
+          if (mediaRes.ok && mediaData.asset) asset = { id: mediaData.asset.id, filename: mediaData.asset.filename };
+          else console.error('[integrations-service] Canva export media persistence failed:', mediaData);
+        } catch (persistErr) {
+          console.error('[integrations-service] Canva export media persistence failed:', persistErr instanceof Error ? persistErr.message : persistErr);
+        }
+
+        if (refreshed) canva.setTokenCookies(res, refreshed);
+        return json(res, 200, { image: `data:image/png;base64,${imageBuffer.toString('base64')}`, success: true, asset });
+      } catch (error) {
+        console.error('[integrations-service] Canva export error:', error instanceof Error ? error.message : error);
+        if (error instanceof canva.CanvaError) return json(res, canvaErrorStatus(error.code), { error: { code: error.code, message: error.message } });
+        return json(res, 500, { error: { code: 'CANVA_EXPORT_FAILED', message: 'Failed to export design from Canva' } });
       }
     }
 

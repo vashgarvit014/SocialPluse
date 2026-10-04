@@ -1,7 +1,8 @@
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
-import { requireSuperadmin } from '@/lib/auth/roles';
 import { callAdminService } from '@/lib/admin-client';
+import { callGateway } from '@/lib/gateway-client';
 import SuperadminShell from './shell';
 import './theme.css';
 
@@ -25,7 +26,9 @@ export default async function SuperadminLayout({ children }: { children: React.R
       </div>
     );
   }
-  const { user } = await requireSuperadmin();
+  const session = await callGateway<{ user: { id: string; name: string; email: string; role: string } }>('/api/superadmin/auth/check');
+  if (!session.ok) redirect('/superadmin/login');
+  const { user } = session.data;
 
   const summary = await callAdminService<{
     counts: { pending: number };

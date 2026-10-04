@@ -12,6 +12,8 @@ import { createConnectionsStore, toSummary, fingerprintQr } from './connections.
 
 const GATE_BASE = process.env.WHAPI_API_BASE || 'https://gate.whapi.cloud';
 const MANAGER_BASE = process.env.WHATSAPP_PARTNER_API_BASE || 'https://manager.whapi.cloud';
+const GRAPH = 'https://graph.facebook.com/v21.0';
+const INFO_FIELDS = 'subject,description,participants,join_approval_mode,suspended,creation_timestamp,total_participant_count';
 
 function normalizeBase(url) {
   const clean = url.trim().replace(/\/+$/, '');
@@ -46,6 +48,66 @@ function maskEmail(email) {
 
 function clientMessage() {
   return 'WhatsApp connection could not be completed. Please try connecting again.';
+}
+
+function officialConfig() {
+  if (process.env.WHATSAPP_ENABLED === 'false') return null;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN || '';
+  if (!phoneNumberId || !accessToken) return null;
+  return { phoneNumberId, accessToken };
+}
+
+function whatsAppError(status, body, context) {
+  let detail = '';
+  try {
+    const parsed = JSON.parse(body);
+    detail = parsed?.error?.message || '';
+    if (parsed?.error?.type === 'OAuthException' || status === 401) {
+      return { code: 'WHATSAPP_AUTH_EXPIRED', message: `WhatsApp authentication expired during ${context}. Regenerate the access token.` };
+    }
+  } catch { /* fall through to status mapping */ }
+  if (status === 403) {
+    return { code: 'WHATSAPP_PERMISSION_DENIED', message: `WhatsApp denied permission during ${context} (403). Check the token's permissions and the number's Official Business Account status.` };
+  }
+  if (status === 429) {
+    return { code: 'WHATSAPP_RATE_LIMIT', message: 'WhatsApp rate limit reached (429). Please wait and try again.' };
+  }
+  const suffix = detail ? ` ${detail.slice(0, 250)}` : '';
+  return { code: 'WHATSAPP_REQUEST_FAILED', message: `WhatsApp request failed during ${context} (${status}).${suffix}` };
+}
+
+async function waFetch(path, accessToken, init) {
+  return fetch(`${GRAPH}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      ...(init?.headers || {}),
+    },
+  });
+}
+
+function requireOfficialConfig() {
+  const config = officialConfig();
+  if (!config) {
+    const err = new Error('WhatsApp is not configured. Add WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN to integrations-service env.');
+    err.code = 'WHATSAPP_NOT_CONFIGURED';
+    err.status = 401;
+    throw err;
+  }
+  return config;
+}
+
+async function graphJson(res, context) {
+  if (!res.ok) {
+    const raw = await res.text().catch(() => '');
+    const mapped = whatsAppError(res.status, raw, context);
+    mapped.status = res.status === 429 ? 429 : 502;
+    mapped.rawBody = raw;
+    throw Object.assign(new Error(mapped.message), mapped);
+  }
+  return res.json().catch(() => ({}));
 }
 
 export function createWhatsAppService(pool) {
@@ -367,5 +429,157 @@ export function createWhatsAppService(pool) {
     }));
   }
 
-  return { getWhatsAppStatus, pollWhatsAppConnection, createWhatsAppConnectionSession, disconnectWhatsApp, cancelPendingQr, getWhatsAppCommunities };
+  async function listOfficialGroups({ limit = '25', after } = {}) {
+    const config = requireOfficialConfig();
+    const params = new URLSearchParams({ limit: String(limit || '25') });
+    if (after) params.set('after', String(after));
+    const data = await graphJson(await waFetch(`/${config.phoneNumberId}/groups?${params.toString()}`, config.accessToken), 'listing groups');
+    return { success: true, groups: data.data || [], paging: data.paging || null };
+  }
+
+  async function createOfficialGroup({ subject, description, joinApprovalMode }) {
+    const config = requireOfficialConfig();
+    if (!subject || !String(subject).trim()) {
+      const err = new Error('A group subject (name) is required.');
+      err.code = 'WHATSAPP_SUBJECT_REQUIRED';
+      err.status = 400;
+      throw err;
+    }
+    const data = await graphJson(await waFetch(`/${config.phoneNumberId}/groups`, config.accessToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        subject: String(subject).trim().slice(0, 128),
+        ...(description ? { description: String(description).slice(0, 2048) } : {}),
+        ...(joinApprovalMode ? { join_approval_mode: joinApprovalMode } : {}),
+      }),
+    }), 'group creation');
+    return { success: true, groupId: data.id };
+  }
+
+  async function getOfficialGroup(groupId) {
+    const config = requireOfficialConfig();
+    const data = await graphJson(await waFetch(`/${encodeURIComponent(groupId)}?fields=${INFO_FIELDS}`, config.accessToken), 'fetching group info');
+    return { success: true, group: data };
+  }
+
+  async function updateOfficialGroup(groupId, { subject, description }) {
+    const config = requireOfficialConfig();
+    if (!subject && !description) {
+      const err = new Error('Provide a subject and/or description to update.');
+      err.code = 'WHATSAPP_NO_CHANGES';
+      err.status = 400;
+      throw err;
+    }
+    await graphJson(await waFetch(`/${encodeURIComponent(groupId)}`, config.accessToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        ...(subject ? { subject: String(subject).slice(0, 128) } : {}),
+        ...(description ? { description: String(description).slice(0, 2048) } : {}),
+      }),
+    }), 'updating group settings');
+    return { success: true };
+  }
+
+  async function deleteOfficialGroup(groupId) {
+    const config = requireOfficialConfig();
+    await graphJson(await waFetch(`/${encodeURIComponent(groupId)}`, config.accessToken, { method: 'DELETE' }), 'deleting group');
+    return { success: true };
+  }
+
+  async function getOfficialInviteLink(groupId) {
+    const config = requireOfficialConfig();
+    const data = await graphJson(await waFetch(`/${encodeURIComponent(groupId)}/invite_link`, config.accessToken), 'fetching invite link');
+    return { success: true, inviteLink: data.invite_link };
+  }
+
+  async function resetOfficialInviteLink(groupId) {
+    const config = requireOfficialConfig();
+    const data = await graphJson(await waFetch(`/${encodeURIComponent(groupId)}/invite_link`, config.accessToken, {
+      method: 'POST',
+      body: JSON.stringify({ messaging_product: 'whatsapp' }),
+    }), 'resetting invite link');
+    return { success: true, inviteLink: data.invite_link };
+  }
+
+  async function sendOfficialGroupMessage(groupId, { message }) {
+    const config = requireOfficialConfig();
+    if (!message || !String(message).trim()) {
+      const err = new Error('A message body is required.');
+      err.code = 'WHATSAPP_MESSAGE_REQUIRED';
+      err.status = 400;
+      throw err;
+    }
+    const data = await graphJson(await waFetch(`/${config.phoneNumberId}/messages`, config.accessToken, {
+      method: 'POST',
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'group',
+        to: groupId,
+        type: 'text',
+        text: { preview_url: true, body: String(message) },
+      }),
+    }), 'sending group message');
+    return { success: true, messageId: data.messages?.[0]?.id };
+  }
+
+  async function removeOfficialParticipants(groupId, { participants }) {
+    const config = requireOfficialConfig();
+    if (!Array.isArray(participants) || participants.length === 0) {
+      const err = new Error('A non-empty participants array (phone numbers or WhatsApp user IDs) is required.');
+      err.code = 'WHATSAPP_PARTICIPANTS_REQUIRED';
+      err.status = 400;
+      throw err;
+    }
+    if (participants.length > 8) {
+      const err = new Error('Meta caps participant removal at 8 per request - split into multiple calls.');
+      err.code = 'WHATSAPP_TOO_MANY_PARTICIPANTS';
+      err.status = 400;
+      throw err;
+    }
+    await graphJson(await waFetch(`/${encodeURIComponent(groupId)}/participants`, config.accessToken, {
+      method: 'DELETE',
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        participants: participants.map((user) => ({ user })),
+      }),
+    }), 'removing group participants');
+    return { success: true };
+  }
+
+  async function sendOfficialMessage({ to, message }) {
+    const config = requireOfficialConfig();
+    if (!to || !message || !String(message).trim()) {
+      const err = new Error('Both "to" (phone number, E.164 format e.g. +15551234567) and "message" are required.');
+      err.code = 'WHATSAPP_FIELDS_REQUIRED';
+      err.status = 400;
+      throw err;
+    }
+    try {
+      const data = await graphJson(await waFetch(`/${config.phoneNumberId}/messages`, config.accessToken, {
+        method: 'POST',
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to,
+          type: 'text',
+          text: { preview_url: true, body: String(message) },
+        }),
+      }), 'sending message');
+      return { success: true, messageId: data.messages?.[0]?.id };
+    } catch (error) {
+      const raw = error?.rawBody || '';
+      if (/re-?engagement|24.?hour|131047/i.test(raw)) {
+        error.code = 'WHATSAPP_OUTSIDE_SERVICE_WINDOW';
+        error.message = 'This number has not messaged your business recently, so a plain text message cannot be sent (WhatsApp\'s 24-hour customer service window rule). Use an approved message template instead, or have them message you first.';
+      }
+      throw error;
+    }
+  }
+
+  return {
+    getWhatsAppStatus, pollWhatsAppConnection, createWhatsAppConnectionSession, disconnectWhatsApp, cancelPendingQr, getWhatsAppCommunities,
+    listOfficialGroups, createOfficialGroup, getOfficialGroup, updateOfficialGroup, deleteOfficialGroup,
+    getOfficialInviteLink, resetOfficialInviteLink, sendOfficialGroupMessage, removeOfficialParticipants, sendOfficialMessage,
+  };
 }

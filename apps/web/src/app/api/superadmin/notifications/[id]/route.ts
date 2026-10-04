@@ -1,12 +1,8 @@
-import { NextResponse } from 'next/server';
-import { requireApiSuperadmin } from '@/lib/auth/roles';
-import { callAdminService } from '@/lib/admin-client';
+import { proxyToGateway } from '@/lib/gateway-proxy';
 
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireApiSuperadmin();
-  if (session instanceof NextResponse) return session;
-  const { id } = await params;
-  const result = await callAdminService(`/notifications/${id}`, { method: 'PATCH' });
-  if (!result.ok) return NextResponse.json({ error: 'Admin service is temporarily unavailable.' }, { status: 503 });
-  return NextResponse.json(result.data);
-}
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: Request) { return proxyToGateway(request); }
+export async function POST(request: Request) { return proxyToGateway(request); }
+export async function PATCH(request: Request) { return proxyToGateway(request); }
+export async function DELETE(request: Request) { return proxyToGateway(request); }

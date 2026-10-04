@@ -1,4 +1,5 @@
 import { relTime, badge } from '../ui';
+import { callAdminService as callAdminGateway } from '@/lib/admin-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,8 +8,6 @@ export const dynamic = 'force-dynamic';
 // reads from admin-service, which proxies to user-service's
 // GET /internal/moderation/queue (the exact same SQL, moved to the service
 // that owns `users`'/moderation columns and `moderation_events`).
-const ADMIN_SERVICE_URL = process.env.ADMIN_SERVICE_URL || 'http://admin-service:4009';
-const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
 const FLAG_REASON = 'REPEATED_PROHIBITED_SEXUAL_CONTENT';
 function severityForCount(count: number): 'WARNING' | 'HIGH' | 'CRITICAL' {
   if (count >= 5) return 'CRITICAL';
@@ -49,15 +48,9 @@ function StatTile({ label, value, tone }: { label: string; value: number; tone?:
  * from moderation_events), so this is a Superadmin-only cross-user view by
  * design — no user-facing route reaches it.
  */
-async function callAdminService(path: string) {
-  try {
-    const res = await fetch(`${ADMIN_SERVICE_URL}${path}`, { headers: { 'x-internal-secret': INTERNAL_SECRET }, cache: 'no-store' });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    // admin-service unreachable — degrade gracefully, never a raw 500.
-    return null;
-  }
+async function callAdminService(path: string): Promise<Record<string, unknown> | null> {
+  const res = await callAdminGateway(path);
+  return res.ok ? (res.data as Record<string, unknown>) : null;
 }
 
 export default async function SuperadminModerationPage() {

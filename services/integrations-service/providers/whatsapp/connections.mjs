@@ -123,6 +123,28 @@ export function createConnectionsStore(pool) {
       return { ok: true, row };
     },
 
+    async resolveByProviderRef({ channelId, sessionId }) {
+      if (channelId) {
+        const row = await queryOne(
+          `SELECT ${COLUMNS} FROM whatsapp_connections
+            WHERE provider_channel_id = $1 AND status = 'WAITING_FOR_SCAN'
+            ORDER BY qr_created_at DESC NULLS LAST LIMIT 1`,
+          [channelId],
+        );
+        if (row) return row;
+      }
+      if (sessionId) {
+        const row = await queryOne(
+          `SELECT ${COLUMNS} FROM whatsapp_connections
+            WHERE provider_session_id = $1 AND status = 'WAITING_FOR_SCAN'
+            ORDER BY qr_created_at DESC NULLS LAST LIMIT 1`,
+          [sessionId],
+        );
+        if (row) return row;
+      }
+      return null;
+    },
+
     async markPolled(userId) {
       await pool.query(`UPDATE whatsapp_connections SET last_polled_at = $2 WHERE user_id = $1`, [userId, new Date().toISOString()]);
     },

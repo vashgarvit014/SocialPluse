@@ -19,8 +19,8 @@ name: social-media-manager
 #
 # DB: PostgreSQL runs as its own container ("db", reachable at db:5432 only
 # from inside this compose network — never published to the host, never
-# public). The app connects via DATABASE_URL from .env.local. See
-# src/lib/db.ts for the connection/migration code.
+# public). Backend services connect directly; frontend apps go through the
+# gateway/service boundary.
 
 services:
   socialpulse:
@@ -42,49 +42,13 @@ services:
       # Host 3000 -> container 3000. If host 3000 is taken, change to "3001:3000"
       # and point Cloudflare Tunnel to http://localhost:3001 instead.
       - "${HOST_PORT:-3000}:3000"
-    # Secrets injected at runtime, never baked into image
-    env_file:
-      - .env.local
-      # Fallback: if .env.production exists it will be merged if you switch the line above.
-      # Keep .env.local as primary so local + prod share the same file for now.
     environment:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
       # Ensure public URL is also available at runtime (server-side reads)
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://socialpulse.dotstark.tech}
-      # DATABASE_URL uses the Docker service name "db", not localhost — inside
-      # this container, "localhost" would mean the app container itself, not
-      # the DB container. Built from the same POSTGRES_* vars as the db
-      # service below (both come from .env.local via env_file) so there is
-      # exactly one place credentials are set, not two.
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      # Phase 11: /api/scheduler/check no longer claims/publishes locally —
-      # it proxies to scheduler-service, the sole authoritative claimer, to
-      # eliminate the TOCTOU double-publish race documented in
-      # MIGRATION-NOTES.md. INTERNAL_SERVICE_SECRET already comes from
-      # .env.local via env_file above.
-      SCHEDULER_SERVICE_URL: http://scheduler-service:4007
-      # Phase 11: /api/ffmpeg/logo, /api/media/alt, /api/vary-image no
-      # longer execute business logic locally — see each route's own
-      # comment and MIGRATION-NOTES.md Phase 11.
-      MEDIA_SERVICE_URL: http://media-service:4004
-      AI_SERVICE_URL: http://ai-service:4003
-    volumes:
-      # ----- Persistence: MUST survive container recreation (bind mounts) -----
-      # Host files are the source of truth; container writes are preserved on host.
-      # If a host file does not exist yet, run: touch scheduled-posts.json linkedin-tokens.json facebook-tokens.json canva-sessions.json whatsapp-events.log whapi-events.log && mkdir -p .instagram-media .media-assets
-      - ./scheduled-posts.json:/app/scheduled-posts.json
-      - ./linkedin-tokens.json:/app/linkedin-tokens.json
-      - ./facebook-tokens.json:/app/facebook-tokens.json
-      - ./canva-sessions.json:/app/canva-sessions.json
-      - ./.instagram-media:/app/.instagram-media
-      - ./.media-assets:/app/.media-assets
-      - ./whatsapp-events.log:/app/whatsapp-events.log
-      - ./whapi-events.log:/app/whapi-events.log
-      # NOTE: no more socialpulse.db bind mount here — auth/OTP data now lives
-      # in the "db" (PostgreSQL) service below, persisted via the
-      # postgres_data named volume, not a host file.
+      GATEWAY_URL: http://gateway:8080
     depends_on:
       db:
         condition: service_healthy
@@ -319,6 +283,8 @@ services:
       WEB_UPSTREAM: http://socialpulse:3000
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      MEDIA_SERVICE_URL: http://media-service:4004
+      SCHEDULER_SERVICE_URL: http://scheduler-service:4007
       # Canva (Phase 3B — real OAuth lifecycle, ported faithfully from
       # src/lib/canva.ts; see services/integrations-service/providers/canva).
       CANVA_CLIENT_ID: ${CANVA_CLIENT_ID}
@@ -359,9 +325,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3002
-      AUTH_SERVICE_URL: http://auth-service:4011
-      ADMIN_SERVICE_URL: http://admin-service:4009
-      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      GATEWAY_URL: http://gateway:8080
     depends_on:
       auth-service:
         condition: service_started

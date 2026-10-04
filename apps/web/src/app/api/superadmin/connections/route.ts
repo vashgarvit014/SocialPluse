@@ -1,10 +1,8 @@
-import { NextResponse } from 'next/server';
-import { requireApiSuperadmin } from '@/lib/auth/roles';
-import { getConnectionsOverview } from '@/lib/auth/connections';
+import { proxyToGateway } from '@/lib/gateway-proxy';
 
-export async function GET() {
-  const session = await requireApiSuperadmin();
-  if (session instanceof NextResponse) return session;
+export const dynamic = 'force-dynamic';
 
-  return NextResponse.json({ connections: getConnectionsOverview() });
-}
+export async function GET(request: Request) { return proxyToGateway(request); }
+export async function POST(request: Request) { return proxyToGateway(request); }
+export async function PATCH(request: Request) { return proxyToGateway(request); }
+export async function DELETE(request: Request) { return proxyToGateway(request); }

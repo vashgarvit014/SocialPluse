@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { avatarColor, initials, absTime, relTime, badge } from '../../ui';
 import UserActions from './user-actions';
 import ModerationPanel from './moderation-panel';
+import { callAdminService as callAdminGateway } from '@/lib/admin-client';
 
 // Phase 11 cleanup: this page used to call findUserById/listAuthEventsForUser/
 // getUserModerationSummary/queryOne directly against Postgres from inside
@@ -13,24 +14,12 @@ import ModerationPanel from './moderation-panel';
 // (same precedent as admin-service's own /audit-logs route). Never fetches
 // or displays password_hash/otp/session token/SMTP/Meta credentials — none
 // of these DTOs carry those fields to begin with.
-const ADMIN_SERVICE_URL = process.env.ADMIN_SERVICE_URL || 'http://admin-service:4009';
-const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function callAdminService(path: string) {
-  try {
-    const res = await fetch(`${ADMIN_SERVICE_URL}${path}`, {
-      headers: { 'x-internal-secret': INTERNAL_SECRET },
-      cache: 'no-store',
-    });
-    if (!res.ok) return { ok: false as const, status: res.status };
-    return { ok: true as const, data: await res.json() };
-  } catch {
-    // admin-service unreachable — distinct from a real 404, so the page
-    // can show "temporarily unavailable" rather than wrongly claiming the
-    // account doesn't exist.
-    return { ok: false as const, status: 0 };
-  }
+  const res = await callAdminGateway(path);
+  if (!res.ok) return { ok: false as const, status: res.status };
+  return { ok: true as const, data: res.data as Record<string, unknown> };
 }
 
 export default async function SuperadminUserDetailPage({ params }: { params: Promise<{ id: string }> }) {

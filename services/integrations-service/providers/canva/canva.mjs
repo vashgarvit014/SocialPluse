@@ -174,6 +174,34 @@ export async function createBlankDesign(accessToken, size, title) {
   return { id: design.id, editUrl: design.urls.edit_url };
 }
 
+export async function exportDesignAsPng(accessToken, designId) {
+  const res = await fetch(`${API_BASE}/exports`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ design_id: designId, format: { type: 'png' } }),
+  });
+  if (!res.ok) {
+    console.error('[Canva] export job creation failed:', res.status);
+    throw new CanvaError('CANVA_EXPORT_FAILED', 'Failed to start exporting the Canva design');
+  }
+  const { job } = await res.json();
+
+  let downloadUrl;
+  try {
+    downloadUrl = await pollJob(`${API_BASE}/exports/${job.id}`, accessToken, (j) => j.urls?.[0]);
+  } catch (err) {
+    console.error('[Canva] export job failed:', err);
+    throw new CanvaError('CANVA_EXPORT_FAILED', 'Canva could not finish exporting the design');
+  }
+
+  const imageRes = await fetch(downloadUrl);
+  if (!imageRes.ok) throw new CanvaError('CANVA_EXPORT_FAILED', 'Failed to download the exported design');
+  const buf = Buffer.from(await imageRes.arrayBuffer());
+  const pngMagic = buf[0] === 0x89 && buf[1] === 0x50;
+  console.log(`[Canva] exported design ${designId}: ${Math.round(buf.length / 1024)}KB png=${pngMagic}${buf.length < 5120 ? ' (SUSPICIOUSLY SMALL - likely blank canvas)' : ''}`);
+  return buf;
+}
+
 async function pollJob(url, accessToken, extract, { intervalMs = 1500, timeoutMs = 60000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

@@ -1,4 +1,4 @@
-import { getConnectionsOverview } from '@/lib/auth/connections';
+import { callGateway } from '@/lib/gateway-client';
 import { relTime, badge } from '../ui';
 
 const PLATFORM_BG: Record<string, string> = {
@@ -8,7 +8,17 @@ const PLATFORM_BG: Record<string, string> = {
 const PLATFORM_SHORT: Record<string, string> = { Facebook: 'f', Instagram: 'IG', LinkedIn: 'in', 'Whapi (WhatsApp groups)': 'W', Canva: 'C' };
 
 export default async function SuperadminConnectionsPage() {
-  const connections = await getConnectionsOverview();
+  const result = await callGateway<{
+    connections: Array<{
+      name: string;
+      status: 'CONNECTED' | 'NOT_CONNECTED' | 'NOT_TRACKABLE';
+      account: string | null;
+      detail: string;
+      lastPublishAt: string | null;
+      connectedUsers: number;
+    }>;
+  }>('/api/superadmin/connections');
+  const connections = result.ok ? result.data.connections : [];
 
   return (
     <>

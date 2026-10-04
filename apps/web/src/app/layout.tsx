@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description: "AI-powered social media content creation and LinkedIn publishing",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"

@@ -50,6 +50,14 @@ function requireActor(req) {
   const userId = req.headers['x-actor-user-id'];
   return typeof userId === 'string' && userId.length > 0 ? userId : null;
 }
+function dataUrlToBuffer(dataUrl) {
+  const match = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new Error('Invalid data URL');
+  const mime = match[1];
+  const buffer = Buffer.from(match[2], 'base64');
+  const ext = mime.includes('png') ? 'png' : mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : mime.includes('mp4') ? 'mp4' : mime.includes('webm') ? 'webm' : 'bin';
+  return { buffer, ext };
+}
 
 // Builds a web-standard Request from the raw Node request so we can reuse
 // the platform's own multipart parser (request.formData()) instead of
@@ -134,6 +142,84 @@ const server = http.createServer(async (req, res) => {
       }
     }
     return send(res, failed.length > 0 && uploaded.length === 0 ? 400 : 200, { uploaded, failed });
+  }
+
+  // POST /branded-video — browser-facing compatibility shape for
+  // /api/ffmpeg/logo via the gateway. The frontend app no longer parses
+  // media bytes or calls this service with its own internal secret; gateway
+  // authenticates the user and supplies x-actor-user-id.
+  if (url.pathname === '/branded-video' && req.method === 'POST') {
+    const userId = requireActor(req);
+    if (!userId) return send(res, 401, { error: 'Unauthorized' });
+    try {
+      let videoBuffer = null;
+      let videoExt = 'mp4';
+      let logoBuffer = null;
+      let logoExt = 'png';
+      let position = 'bottom-right';
+      let scale = '0.18';
+      let opacity = '1';
+
+      const contentType = req.headers['content-type'] || '';
+      if (String(contentType).includes('multipart/form-data')) {
+        const form = await toWebRequest(req).formData();
+        const v = form.get('video');
+        const l = form.get('logo');
+        const v2 = form.get('videoUrl');
+        const l2 = form.get('logoUrl');
+        if (v instanceof File && typeof v.arrayBuffer === 'function') {
+          videoBuffer = Buffer.from(await v.arrayBuffer());
+          videoExt = v.name?.split('.').pop() || 'mp4';
+        } else if (typeof v2 === 'string' && v2) {
+          const dec = dataUrlToBuffer(v2);
+          videoBuffer = dec.buffer;
+          videoExt = dec.ext;
+        }
+        if (l instanceof File && typeof l.arrayBuffer === 'function') {
+          logoBuffer = Buffer.from(await l.arrayBuffer());
+          logoExt = l.name?.split('.').pop() || 'png';
+        } else if (typeof l2 === 'string' && l2) {
+          const dec = dataUrlToBuffer(l2);
+          logoBuffer = dec.buffer;
+          logoExt = dec.ext;
+        }
+        const p = form.get('position');
+        const s = form.get('scale');
+        const o = form.get('opacity');
+        if (typeof p === 'string' && p) position = p;
+        if (typeof s === 'string' && s) scale = s;
+        if (typeof o === 'string' && o) opacity = o;
+      } else {
+        const chunks = [];
+        for await (const chunk of req) chunks.push(chunk);
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        if (!body.videoUrl || !body.logoUrl) return send(res, 400, { error: 'videoUrl and logoUrl required' });
+        const vDec = dataUrlToBuffer(body.videoUrl);
+        const lDec = dataUrlToBuffer(body.logoUrl);
+        videoBuffer = vDec.buffer;
+        videoExt = vDec.ext;
+        logoBuffer = lDec.buffer;
+        logoExt = lDec.ext;
+        if (body.position) position = body.position;
+        if (body.scale) scale = String(body.scale);
+        if (body.opacity) opacity = String(body.opacity);
+      }
+
+      if (!videoBuffer || !logoBuffer) return send(res, 400, { error: 'Missing video or logo' });
+      const { videoBuffer: out, asset } = await createBrandedVideo({
+        userId, videoBuffer, videoExt, logoBuffer, logoExt, position, scale, opacity,
+      }, store);
+      return send(res, 200, {
+        success: true,
+        videoUrl: `data:video/mp4;base64,${out.toString('base64')}`,
+        size: out.length,
+        asset: asset ? { id: asset.id, filename: asset.filename } : null,
+      });
+    } catch (e) {
+      const status = (e && typeof e === 'object' && e.status) || 500;
+      log.error({ requestId, event: 'branded_video_failed', message: e instanceof Error ? e.message : 'unknown' });
+      return send(res, status, { error: e instanceof Error ? e.message : 'ffmpeg failed' });
+    }
   }
 
   // GET /assets/:id — bytes, owner-only.

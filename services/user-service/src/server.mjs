@@ -53,6 +53,16 @@ function requireActor(req) {
   return typeof userId === 'string' && userId.length > 0 ? userId : null;
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_DRAFT_BYTES = 25_000_000;
+
+function isStorableDraft(draft) {
+  if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return false;
+  try {
+    return JSON.stringify(draft).length <= MAX_DRAFT_BYTES;
+  } catch {
+    return false;
+  }
+}
 
 const server = http.createServer(async (req, res) => {
   const requestId = req.headers['x-request-id'] || randomUUID();
@@ -93,6 +103,36 @@ const server = http.createServer(async (req, res) => {
       const user = await userStore.findUserById(userId);
       if (!user) return send(res, 404, { error: 'User not found.' });
       return send(res, 200, { user: { id: user.id, name: user.name, email: user.email } });
+    }
+
+    if (url.pathname === '/editor-draft' && req.method === 'GET') {
+      const userId = requireActor(req);
+      if (!userId) return send(res, 401, { error: 'Unauthorized' });
+      const { rows } = await poolProxy.query('SELECT draft FROM editor_drafts WHERE user_id = $1', [userId]);
+      const draft = rows[0]?.draft;
+      return send(res, 200, { draft: draft && typeof draft === 'object' && !Array.isArray(draft) ? draft : null });
+    }
+
+    if (url.pathname === '/editor-draft' && req.method === 'PUT') {
+      const userId = requireActor(req);
+      if (!userId) return send(res, 401, { error: 'Unauthorized' });
+      const body = await readJsonBody(req);
+      const draft = body?.draft;
+      if (!isStorableDraft(draft)) return send(res, 413, { error: 'Draft is missing or exceeds the 25MB limit.' });
+      await poolProxy.query(
+        `INSERT INTO editor_drafts (user_id, draft, updated_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id) DO UPDATE SET draft = EXCLUDED.draft, updated_at = EXCLUDED.updated_at`,
+        [userId, JSON.stringify(draft), new Date().toISOString()],
+      );
+      return send(res, 200, { success: true });
+    }
+
+    if (url.pathname === '/editor-draft' && req.method === 'DELETE') {
+      const userId = requireActor(req);
+      if (!userId) return send(res, 401, { error: 'Unauthorized' });
+      await poolProxy.query('DELETE FROM editor_drafts WHERE user_id = $1', [userId]);
+      return send(res, 200, { success: true });
     }
 
     // GET /internal/users?search=&status=&limit=&offset= — list, for

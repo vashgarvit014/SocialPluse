@@ -1,5 +1,7 @@
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { readFile, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Pool } from 'pg';
 import { createLogger } from '../packages/logger/index.mjs';
 import { verifyInternalSecret } from '../packages/service-auth/index.mjs';
@@ -76,6 +78,55 @@ function withTimeout(promise, ms) {
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error('Provider request timed out')), ms)),
   ]);
+}
+const WHAPI_MEDIA_CONTENT_TYPE = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  webp: 'image/webp',
+  mp4: 'video/mp4',
+  pdf: 'application/pdf',
+};
+const STAGED_MEDIA_ID = /^[a-f0-9]{48}\.(png|jpg|webp|mp4|pdf)$/;
+
+async function serveStagedMedia(req, res, root, id, contentType) {
+  if (!STAGED_MEDIA_ID.test(id)) {
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+    return;
+  }
+  const file = join(root, id);
+  let bytes;
+  let info;
+  try {
+    [bytes, info] = await Promise.all([readFile(file), stat(file)]);
+  } catch {
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+    return;
+  }
+  const headers = {
+    'Content-Type': contentType,
+    'Content-Length': String(info.size),
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Accept-Ranges': 'bytes',
+  };
+  const range = req.headers.range;
+  if (typeof range === 'string') {
+    const match = /^bytes=(\d+)-(\d*)$/.exec(range);
+    const start = match ? Number(match[1]) : -1;
+    const end = match?.[2] ? Number(match[2]) : bytes.length - 1;
+    if (start < 0 || start > end || end >= bytes.length) {
+      res.writeHead(416, { 'Content-Range': `bytes */${bytes.length}` });
+      res.end();
+      return;
+    }
+    res.writeHead(206, { ...headers, 'Content-Length': String(end - start + 1), 'Content-Range': `bytes ${start}-${end}/${bytes.length}` });
+    res.end(bytes.subarray(start, end + 1));
+    return;
+  }
+  res.writeHead(200, headers);
+  res.end(bytes);
 }
 
 async function handleLinkedIn(req, res, requestId) {
@@ -229,11 +280,22 @@ const server = http.createServer(async (req, res) => {
     if (req.url === '/health') {
       return send(res, 200, { service: 'publishing-service', status: 'ok', timestamp: new Date().toISOString() });
     }
+    const url = new URL(req.url, 'http://internal');
+    const instagramMedia = url.pathname.match(/^\/instagram\/media\/([^/]+)$/);
+    if (instagramMedia && req.method === 'GET') {
+      const id = instagramMedia[1];
+      return serveStagedMedia(req, res, INSTAGRAM_MEDIA_ROOT, id, id.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg');
+    }
+    const whapiMedia = url.pathname.match(/^\/whapi\/media\/([^/]+)$/);
+    if (whapiMedia && req.method === 'GET') {
+      const id = whapiMedia[1];
+      const ext = id.split('.').pop();
+      return serveStagedMedia(req, res, WHAPI_MEDIA_ROOT, id, WHAPI_MEDIA_CONTENT_TYPE[ext] || 'application/octet-stream');
+    }
     if (!verifyInternalSecret(req, INTERNAL_SECRET)) {
       return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
     }
 
-    const url = new URL(req.url, 'http://internal');
     if (req.method !== 'POST') return send(res, 404, { code: 'NOT_FOUND', message: 'No such publishing-service route.' });
 
     if (url.pathname === '/linkedin') return await handleLinkedIn(req, res, requestId);

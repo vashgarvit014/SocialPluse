@@ -1,25 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { requireApiSession } from '@/lib/auth/api';
+import { proxyToGateway } from '@/lib/gateway-proxy';
 
-// Phase 11 cleanup: this route no longer calls the NVIDIA vision API or
-// uses sharp itself — moved to ai-service (services/ai-service/src/
-// alt-text.mjs), genuine AI-provider business logic the Phase 7
-// ai-service extraction never covered. Pure proxy now.
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai-service:4003';
+export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
-  const session = await requireApiSession();
-  if (session instanceof NextResponse) return session;
-  const body = await request.json().catch(() => ({}));
-  const res = await fetch(`${AI_SERVICE_URL}/alt-text`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET || '',
-      'x-actor-user-id': session.userId,
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
-}
+export async function GET(request: Request) { return proxyToGateway(request); }
+export async function POST(request: Request) { return proxyToGateway(request); }
+export async function PATCH(request: Request) { return proxyToGateway(request); }
+export async function DELETE(request: Request) { return proxyToGateway(request); }
