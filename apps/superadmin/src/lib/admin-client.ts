@@ -6,6 +6,15 @@ import 'server-only';
 // this (or an equivalent call to auth-service/user-service), never
 // straight to Postgres. See MIGRATION-NOTES.md for the full audit this
 // replaces.
+//
+// Byte-identical to apps/web/src/lib/admin-client.ts and to
+// packages/api-client/index.ts (the documented canonical source) — see
+// that package's README for why this stays a real local copy rather than
+// an import: Next.js's per-app standalone Docker build (build context
+// scoped to apps/superadmin, not the repo root) cannot resolve a `file:`
+// dependency pointing outside that context without a bigger Dockerfile/
+// build-context restructuring, which this round judged too risky to do
+// on a live container without its own dedicated, tested pass.
 const ADMIN_SERVICE_URL = process.env.ADMIN_SERVICE_URL || 'http://admin-service:4009';
 const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
 
@@ -30,8 +39,6 @@ export async function callAdminService<T = unknown>(
     if (!res.ok) return { ok: false, status: res.status, data: null };
     return { ok: true, status: res.status, data: (await res.json()) as T };
   } catch {
-    // admin-service unreachable — never throw out of an SSR render or an
-    // API route; every caller gets a clean "unavailable" result instead.
     return { ok: false, status: 0, data: null };
   }
 }

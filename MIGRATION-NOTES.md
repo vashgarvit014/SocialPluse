@@ -1928,3 +1928,113 @@ supersocialpulse-config.yml`'s `service:` line to point at
 `socialpulse-superadmin-app`, and removing `src/app/superadmin/**` from
 `apps/web`. Both are the actual cutover step this phase deliberately
 stopped short of.
+
+## Phase 14 — Superadmin cutover, route removal, and legacy cleanup
+
+The two items deliberately deferred at the end of the restructure phase
+were executed as their own staged, verified cutover.
+
+### Cutover (live)
+
+- `~/.cloudflared/supersocialpulse-config.yml`'s `service:` line changed
+  from `http://socialpulse:3000` to
+  `http://socialpulse-superadmin-app:3002`. `~/.cloudflared/config.yml`
+  (the main site) was never touched.
+- `cloudflared-superadmin` restarted to pick up the new ingress target.
+- Verified live: `https://supersocialpulse.dotstark.tech` now serves
+  `apps/superadmin`, confirmed via a real disposable Superadmin session
+  over the actual HTTPS domain (not `docker exec`/internal network, as
+  in the prior phase's testing) — login, role enforcement, tampered/
+  missing cookie rejection, and a real write action all re-verified
+  against the live domain. `https://socialpulse.dotstark.tech` confirmed
+  unaffected throughout.
+
+### Old Superadmin routes removed from `apps/web`
+
+Deleted (now served only by `apps/superadmin`):
+`src/app/superadmin/{audit-logs,auth-activity,logs,moderation,page.tsx,
+publishing,sessions,settings,users,system-health}`.
+
+Kept in `apps/web` (explicit decision, not an oversight — no
+`apps/superadmin` equivalent exists yet): `ai-usage/page.tsx` and
+`connections/page.tsx`, both of which still import direct-DB monolith
+libs (`@/lib/ai-usage`, `@/lib/auth/connections`). This is a pre-existing
+gap, not introduced by this phase, and the supporting shell/login/theme
+files needed to render those two pages were kept alongside them.
+`apps/web/src/app/api/superadmin/**` and `apps/web/src/app/api/auth/**`
+(backend compatibility API routes, still used by the gateway) were not
+touched.
+
+### Shared packages (Stage 6)
+
+Extracted the one genuinely duplicated piece of logic found —
+`callAdminService`, byte-identical across `apps/web` and
+`apps/superadmin` (27 call sites) — into `packages/api-client/index.ts`.
+Wiring both apps to actually import it (`file:` dependency +
+`transpilePackages`) was tried for real and failed at `next build`:
+`output: 'standalone'` Docker images build with a context scoped to the
+app's own directory (`context: ./apps/web` / `./apps/superadmin`), so a
+sibling `packages/` directory is outside what Docker ever copies in —
+`npm install` silently no-ops the unresolvable local path. Reverted
+cleanly; both apps keep their own working copy of the code, with
+`packages/api-client` as the documented canonical reference. The real
+fix (rebuilding both Dockerfiles to build from the repo root, the
+pattern `services/*` already use) is scoped as its own future change,
+not bundled into a cleanup pass. `packages/{ui,shared-types,validation}`
+remain scaffolds for the same reason — each README documents the same
+constraint rather than claiming a fake extraction.
+
+### Legacy cleanup
+
+Deleted (proven dead, zero real readers):
+- `apps/web/src/app/api/publish-linkedin/route.ts` — zero callers.
+- `apps/web/src/app/api/internal/verify-session/route.ts` — the
+  monolith's own copy of this route; nothing calls it directly anymore
+  (only auth-service's equivalent endpoint, called by the gateway and by
+  `apps/superadmin/src/lib/session.ts`, is ever actually used).
+
+Explicitly kept (re-verified as still genuinely referenced, correcting
+an earlier Phase 10 assumption that two of these were fully dead):
+- `scheduled-posts.json` — read by `apps/web/src/lib/post-store.ts` and
+  `services/scheduler-service/src/server.mjs`.
+- `facebook-tokens.json` / `linkedin-tokens.json` — actively read by
+  `infrastructure/scripts/claim-legacy-connections.mjs`, a still-present
+  manual migration tool. Not dead; Phase 10's classification of these
+  two was wrong and is corrected here.
+- `canva-sessions.json` — a near-miss. Initially judged dead (a single
+  stale OAuth PKCE correlation entry, zero code readers) and deleted,
+  but it is bind-mounted by host path in `docker-compose.yml`
+  (`./canva-sessions.json:/app/canva-sessions.json`) for the live
+  `socialpulse` container. Deleting it broke that bind mount — Docker
+  silently created a *directory* at the missing path on the next
+  `up -d`, which then failed container init entirely
+  (`error mounting ... not a directory`), taking
+  `socialpulse.dotstark.tech` down with a real `502` for the duration of
+  the fix. Corrected immediately: removed the stray directory, recreated
+  the file with its genuinely-empty placeholder content
+  (`{"pending":{},"ready":{},"oauth":{}}`), redeployed, confirmed `200`
+  on both live domains. Kept going forward — "proven dead by grep" is not
+  sufficient when a file is also a bind-mount target; `docker-compose.yml`
+  mounts, not just code references, have to be checked before deleting
+  any repo-root file.
+
+### Tests (all real, against the live stack)
+
+- `docker compose build socialpulse` after the two route deletions —
+  clean build, no missing-module errors.
+- Both removed routes confirmed `404` post-deploy
+  (`/api/publish-linkedin`, `/api/internal/verify-session`).
+- Full regression: both live domains `200` after cutover, after route
+  removal, and after the `canva-sessions.json` incident and fix.
+- `docker ps` across all 15 containers (10 services + gateway + 2 apps +
+  db + 2 tunnels) — all healthy after the full sequence.
+
+### Incident
+
+One real, brief production incident this phase: `socialpulse.dotstark.tech`
+returned `502` for the few minutes between deleting `canva-sessions.json`
+and restoring it as a real file. Root cause and fix documented above.
+No data was lost (the file's content was a single disposable OAuth
+correlation entry, already confirmed to have zero live readers); the
+incident was entirely about the bind mount's host-path requirement, not
+about the file's content being needed.
