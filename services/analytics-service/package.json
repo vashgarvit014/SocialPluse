@@ -1,0 +1,14 @@
+{
+  "name": "@socialpulse/analytics-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.5.0" },
+  "scripts": {
+    "start": "node src/server.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.23.0",
+    "zod": "^4.6.5"
+  }
+}

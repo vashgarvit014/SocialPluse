@@ -25,7 +25,12 @@ name: social-media-manager
 services:
   socialpulse:
     build:
-      context: .
+      # Repository restructure: the app moved to apps/web/ (unchanged
+      # otherwise — same Dockerfile content, same COPY . . semantics, same
+      # /app internal layout at runtime). Every bind-mount host path below
+      # stays relative to THIS file's own location (still the repo root),
+      # not to the build context.
+      context: ./apps/web
       dockerfile: Dockerfile
       # NEXT_PUBLIC_APP_URL is baked into the client bundle at build time.
       # Must be the public HTTPS URL so Instagram media staging works.
@@ -54,6 +59,17 @@ services:
       # service below (both come from .env.local via env_file) so there is
       # exactly one place credentials are set, not two.
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Phase 11: /api/scheduler/check no longer claims/publishes locally —
+      # it proxies to scheduler-service, the sole authoritative claimer, to
+      # eliminate the TOCTOU double-publish race documented in
+      # MIGRATION-NOTES.md. INTERNAL_SERVICE_SECRET already comes from
+      # .env.local via env_file above.
+      SCHEDULER_SERVICE_URL: http://scheduler-service:4007
+      # Phase 11: /api/ffmpeg/logo, /api/media/alt, /api/vary-image no
+      # longer execute business logic locally — see each route's own
+      # comment and MIGRATION-NOTES.md Phase 11.
+      MEDIA_SERVICE_URL: http://media-service:4004
+      AI_SERVICE_URL: http://ai-service:4003
     volumes:
       # ----- Persistence: MUST survive container recreation (bind mounts) -----
       # Host files are the source of truth; container writes are preserved on host.
@@ -110,6 +126,290 @@ services:
     # for local debugging, run `docker exec -it socialpulse-db psql ...`
     # (see README/deliverables) rather than publishing the port.
 
+  # --- Microservices pilot (additive; does not touch the routes above) ---
+  # Both new services join the implicit "default" network like every other
+  # service here (no explicit `networks:` needed — see the `networks:`
+  # override at the bottom of this file, which just renames that implicit
+  # network to "socialpulse-internal" rather than restructuring who's on it).
+  # Neither is reachable from Cloudflare/the public tunnel; only "gateway"
+  # publishes a host port, and it's a NEW port, not the one the tunnel uses.
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: services/analytics-service/Dockerfile
+    container_name: socialpulse-analytics
+    restart: unless-stopped
+    environment:
+      PORT: 4008
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    container_name: socialpulse-auth
+    restart: unless-stopped
+    # SESSION_SECRET, OTP_HASH_SECRET, MAILJET_SMTP_*, MAIL_FROM,
+    # META_WHATSAPP_*, SUPERADMIN_HOSTNAME(S), SUPERADMIN_ORIGIN,
+    # PUBLIC_APP_HOSTNAMES come from .env.local directly — same env_file
+    # approach the monolith itself and ai-service already use for secrets.
+    env_file:
+      - .env.local
+    environment:
+      PORT: 4011
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
+    container_name: socialpulse-users
+    restart: unless-stopped
+    environment:
+      PORT: 4010
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  admin-service:
+    build:
+      context: .
+      dockerfile: services/admin-service/Dockerfile
+    container_name: socialpulse-admin
+    restart: unless-stopped
+    # Phase 12: system-health's env-presence checks need visibility into the
+    # same provider/SMTP/WhatsApp vars the monolith already reads from
+    # .env.local — same env_file approach as auth-service/ai-service.
+    # Nothing here is a live provider call, only "is this var set".
+    env_file:
+      - .env.local
+    environment:
+      PORT: 4009
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      USER_SERVICE_URL: http://user-service:4010
+      AUTH_SERVICE_URL: http://auth-service:4011
+      SCHEDULER_SERVICE_URL: http://scheduler-service:4007
+    depends_on:
+      db:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      auth-service:
+        condition: service_started
+      scheduler-service:
+        condition: service_started
+
+  media-service:
+    build:
+      context: .
+      dockerfile: services/media-service/Dockerfile
+    container_name: socialpulse-media
+    restart: unless-stopped
+    environment:
+      PORT: 4004
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      # Active root = the SAME host directory the monolith bind-mounts below
+      # (not the media_data named volume yet — see top-level `volumes:`).
+      MEDIA_ROOT: /app/.media-assets
+    volumes:
+      - ./.media-assets:/app/.media-assets
+      # Provisioned, not yet active (MEDIA_ROOT points elsewhere above).
+      - media_data:/data/media
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: services/ai-service/Dockerfile
+    container_name: socialpulse-ai
+    restart: unless-stopped
+    # AI provider keys (POLLINATIONS_*, INCEPTION_*, NVIDIA_*) come from
+    # .env.local directly rather than being listed one-by-one as ${VAR}
+    # substitutions (which would also require duplicating each into the
+    # top-level .env compose-interpolation file) — same env_file approach
+    # the monolith itself uses for its own secrets.
+    env_file:
+      - .env.local
+    environment:
+      PORT: 4003
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      MEDIA_SERVICE_URL: http://media-service:4004
+      USER_SERVICE_URL: http://user-service:4010
+    depends_on:
+      db:
+        condition: service_healthy
+      media-service:
+        condition: service_started
+      user-service:
+        condition: service_started
+
+  scheduler-service:
+    build:
+      context: .
+      dockerfile: services/scheduler-service/Dockerfile
+    container_name: socialpulse-scheduler
+    restart: unless-stopped
+    environment:
+      PORT: 4007
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      PUBLISHING_SERVICE_URL: http://publishing-service:4006
+      LEGACY_POSTS_FILE: /app/scheduled-posts.json
+    volumes:
+      # Read-only: the one-shot legacy importer only ever reads this file
+      # (same file the monolith itself never writes back to either).
+      - ./scheduled-posts.json:/app/scheduled-posts.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      publishing-service:
+        condition: service_started
+
+  publishing-service:
+    build:
+      context: .
+      dockerfile: services/publishing-service/Dockerfile
+    container_name: socialpulse-publishing
+    restart: unless-stopped
+    environment:
+      PORT: 4006
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://socialpulse.dotstark.tech}
+      # Shared Whapi deployment token — same single-channel model as
+      # integrations-service's WhatsApp connection logic.
+      WHAPI_API_BASE: ${WHAPI_API_BASE}
+      WHAPI_API_TOKEN: ${WHAPI_API_TOKEN}
+      INSTAGRAM_MEDIA_ROOT: /app/.instagram-media
+      WHAPI_MEDIA_ROOT: /app/.whapi-media
+    volumes:
+      # Same real directories the monolith's own publish/media-serving
+      # routes already use — not forked copies (same reasoning as
+      # media-service's .media-assets mount).
+      - ./.instagram-media:/app/.instagram-media
+      - ./.whapi-media:/app/.whapi-media
+    depends_on:
+      db:
+        condition: service_healthy
+
+  integrations-service:
+    build:
+      context: .
+      dockerfile: services/integrations-service/Dockerfile
+    container_name: socialpulse-integrations
+    restart: unless-stopped
+    environment:
+      PORT: 4005
+      WEB_UPSTREAM: http://socialpulse:3000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+      # Canva (Phase 3B — real OAuth lifecycle, ported faithfully from
+      # src/lib/canva.ts; see services/integrations-service/providers/canva).
+      CANVA_CLIENT_ID: ${CANVA_CLIENT_ID}
+      CANVA_CLIENT_SECRET: ${CANVA_CLIENT_SECRET}
+      CANVA_REDIRECT_URI: ${CANVA_REDIRECT_URI}
+      # LinkedIn (Phase 3B, this round).
+      LINKEDIN_CLIENT_ID: ${LINKEDIN_CLIENT_ID}
+      LINKEDIN_CLIENT_SECRET: ${LINKEDIN_CLIENT_SECRET}
+      LINKEDIN_REDIRECT_URI: ${LINKEDIN_REDIRECT_URI}
+      # Facebook (Phase 3B, this round).
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
+      FACEBOOK_REDIRECT_URI: ${FACEBOOK_REDIRECT_URI}
+      FACEBOOK_LOGIN_CONFIG_ID: ${FACEBOOK_LOGIN_CONFIG_ID}
+      # WhatsApp/Whapi (Phase 3B, this round). Shared-channel mode only —
+      # WHATSAPP_PARTNER_* intentionally NOT required/passed; this deployment
+      # has none configured, same as the monolith today.
+      WHAPI_API_BASE: ${WHAPI_API_BASE}
+      WHAPI_API_TOKEN: ${WHAPI_API_TOKEN}
+    depends_on:
+      db:
+        condition: service_healthy
+      socialpulse:
+        condition: service_started
+
+  # Repository restructure — new, independent Next.js app for the
+  # Superadmin console (see MIGRATION-NOTES.md). Deliberately NOT exposed
+  # to the host and NOT referenced by either cloudflared tunnel yet — it
+  # is built/tested standalone over the internal Docker network only.
+  # supersocialpulse.dotstark.tech's tunnel still points at
+  # http://socialpulse:3000 (apps/web's copy of the Superadmin pages,
+  # unchanged) until an explicit, separate cutover.
+  socialpulse-superadmin-app:
+    build:
+      context: ./apps/superadmin
+      dockerfile: Dockerfile
+    container_name: socialpulse-superadmin-app
+    restart: unless-stopped
+    environment:
+      PORT: 3002
+      AUTH_SERVICE_URL: http://auth-service:4011
+      ADMIN_SERVICE_URL: http://admin-service:4009
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+    depends_on:
+      auth-service:
+        condition: service_started
+      admin-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/superadmin/login"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  gateway:
+    build:
+      context: .
+      dockerfile: infrastructure/gateway/Dockerfile
+    container_name: socialpulse-gateway
+    restart: unless-stopped
+    ports:
+      # New port, deliberately not 3000/443 — Cloudflare still points only at
+      # the "socialpulse" container. This lets the gateway + failure-isolation
+      # pattern be tested live without any tunnel/DNS change.
+      - "${GATEWAY_PORT:-8088}:8080"
+    environment:
+      PORT: 8080
+      WEB_UPSTREAM: http://socialpulse:3000
+      ANALYTICS_SERVICE_URL: http://analytics-service:4008
+      ADMIN_SERVICE_URL: http://admin-service:4009
+      MEDIA_SERVICE_URL: http://media-service:4004
+      PUBLISHING_SERVICE_URL: http://publishing-service:4006
+      SCHEDULER_SERVICE_URL: http://scheduler-service:4007
+      AI_SERVICE_URL: http://ai-service:4003
+      USER_SERVICE_URL: http://user-service:4010
+      AUTH_SERVICE_URL: http://auth-service:4011
+      INTEGRATIONS_SERVICE_URL: http://integrations-service:4005
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+    depends_on:
+      - socialpulse
+      - analytics-service
+      - admin-service
+      - integrations-service
+      - media-service
+      - publishing-service
+      - scheduler-service
+      - ai-service
+      - user-service
+      - auth-service
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: socialpulse-tunnel
@@ -145,3 +445,22 @@ services:
 # summary before ever running that.
 volumes:
   postgres_data:
+  # Provisioned per the migration plan for media-service's eventual
+  # authoritative storage root. NOT yet the active root — see
+  # MIGRATION-NOTES.md: media-service currently bind-mounts the same
+  # ./.media-assets host directory the monolith already uses, so there is
+  # zero data-migration risk this round. Switching the active root to this
+  # volume is a deliberate later step, not a side effect of this extraction.
+  media_data:
+
+# Deliberately NOT renaming the default network to "socialpulse-internal"
+# here, even though that's the name the migration plan calls for: every
+# existing service (including both cloudflared tunnels) already has a live
+# container attached to "social-media-manager_default", and a network rename
+# forces Compose to recreate every container on it to reconnect — i.e. it
+# would restart the live tunnels, which "no Cloudflare changes" rules out.
+# analytics-service and gateway still get Docker DNS resolution of db/
+# socialpulse for free by joining this same implicit default network (no
+# `networks:` key set on either service above) — only the network's literal
+# name differs from the plan's proposed one. Revisit the rename in a
+# maintenance window if the literal name ever matters.

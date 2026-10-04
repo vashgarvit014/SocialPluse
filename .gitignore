@@ -2,6 +2,10 @@
 
 # dependencies
 /node_modules
+# Root-anchored above only covers the repo root — apps/web and
+# apps/superadmin each have their own node_modules once `npm install`
+# runs there. Unanchored so it matches at any depth.
+node_modules
 /.pnp
 .pnp.*
 .yarn/*

@@ -1,0 +1,626 @@
+/* SocialPulse Superadmin login — visual system for the mascot / glass card /
+   door scene. Every rule is scoped under .sa-page (or prefixed .sa-) so
+   nothing here can leak into the rest of the app, and the global stylesheet's
+   `input { background: white !important }` is beaten by specificity rather
+   than by editing that sheet. */
+
+.sa-page {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px 40px;
+  position: relative;
+  overflow-x: hidden;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 8%, rgba(56, 110, 190, 0.26), transparent 62%),
+    radial-gradient(ellipse 45% 40% at 50% 46%, rgba(48, 120, 255, 0.10), transparent 70%),
+    linear-gradient(180deg, #0f1724 0%, #070c14 100%);
+  color: #fff;
+  font-family: var(--font-sa-sans), Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.sa-glow {
+  position: absolute;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  background: rgba(48, 120, 255, 0.12);
+  filter: blur(100px);
+  pointer-events: none;
+  top: 8%;
+}
+
+.sa-wrap {
+  width: min(100%, 560px);
+  position: relative;
+  z-index: 2;
+  padding-top: 96px;
+}
+
+/* ---------- mascot (state-driven) ---------- */
+
+.sa-mascot {
+  position: absolute;
+  top: -46px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 182px;
+  height: 182px;
+  z-index: 5;
+  /* the whole-character movement */
+  animation: saFloat 5.5s ease-in-out infinite;
+}
+
+.sa-mascot svg { display: block; overflow: visible; }
+
+/* Paws are the load-bearing part of this design: they rest on the card edge
+   and rise to cover the eyes whenever a hidden password is on screen.
+   transform-box: fill-box makes each part scale/rotate about its own centre
+   instead of the SVG origin. */
+.sa-m-paw,
+.sa-m-head,
+.sa-m-eye,
+.sa-m-pupil,
+.sa-m-brow,
+.sa-m-ear,
+.sa-m-mouth {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform .42s cubic-bezier(.34, 1.3, .5, 1), opacity .3s ease;
+}
+
+.sa-m-eye--left  { transform-origin: 78px 90px; }
+.sa-m-eye--right { transform-origin: 122px 90px; }
+
+.sa-m-paw--left  { transform-origin: 64px 150px; }
+.sa-m-paw--right { transform-origin: 136px 150px; }
+
+.sa-m-brow--left  { transform-origin: 77px 74px; }
+.sa-m-brow--right { transform-origin: 123px 74px; }
+
+.sa-m-cheek { fill: rgba(122, 160, 214, .45); filter: blur(2px); transition: opacity .3s ease; }
+.sa-m-cheek--left { transform-box: fill-box; transform-origin: center; }
+.sa-m-cheek--right { transform-box: fill-box; transform-origin: center; }
+
+/* --- neutral: relaxed, half-lidded, paws resting on the card --- */
+.sa-mascot[data-state="neutral"] .sa-m-eye { transform: scaleY(.5); }
+.sa-mascot[data-state="neutral"] .sa-m-mouth--happy { opacity: 0; }
+
+/* --- email focus: eyes widen and look down at the field, paws perk up --- */
+.sa-mascot[data-state="emailFocus"] .sa-m-eye { transform: scaleY(1.08); }
+.sa-mascot[data-state="emailFocus"] .sa-m-pupil { transform: translateY(3px); }
+.sa-mascot[data-state="emailFocus"] .sa-m-paw--left { transform: translate(-4px, -10px); }
+.sa-mascot[data-state="emailFocus"] .sa-m-paw--right { transform: translate(4px, -10px); }
+.sa-mascot[data-state="emailFocus"] .sa-m-head { transform: rotate(-2.2deg) translateY(2px); }
+.sa-mascot[data-state="emailFocus"] .sa-m-ear--left { transform: rotate(-6deg); }
+.sa-mascot[data-state="emailFocus"] .sa-m-ear--right { transform: rotate(6deg); }
+
+/* --- password hidden: paws rise ONTO the eyes and cover them ---
+   The paws are authored at cx 64 / 136, y 150. The eyes sit at cx 78 / 122,
+   y 90, so the travel is (+14, -60) and (-14, -60) — not the larger offsets
+   that would push them past the sides of the head. */
+.sa-mascot[data-state="passwordHidden"] .sa-m-paw--left { transform: translate(14px, -60px) rotate(-8deg); }
+.sa-mascot[data-state="passwordHidden"] .sa-m-paw--right { transform: translate(-14px, -60px) rotate(8deg); }
+.sa-mascot[data-state="passwordHidden"] .sa-m-eye { transform: scaleY(.06); opacity: 0; }
+.sa-mascot[data-state="passwordHidden"] .sa-m-cheek { opacity: .9; }
+.sa-mascot[data-state="passwordHidden"] .sa-m-head { transform: translateY(3px) rotate(0deg); }
+
+/* --- password visible: paws drop aside and the mascot peeks past them --- */
+.sa-mascot[data-state="passwordVisible"] .sa-m-paw--left { transform: translate(-24px, -26px) rotate(-20deg); }
+.sa-mascot[data-state="passwordVisible"] .sa-m-paw--right { transform: translate(24px, -26px) rotate(20deg); }
+.sa-mascot[data-state="passwordVisible"] .sa-m-eye { transform: scaleY(1.12); }
+.sa-mascot[data-state="passwordVisible"] .sa-m-pupil { transform: translateY(2px); }
+.sa-mascot[data-state="passwordVisible"] .sa-m-head { transform: translateY(4px) rotate(1.5deg); }
+
+/* --- success: paws drop, eyes bright, whole mascot bounces --- */
+.sa-mascot[data-state="success"] { animation: saBounce .7s ease; }
+.sa-mascot[data-state="success"] .sa-m-paw--left { transform: translate(-8px, 4px) rotate(-6deg); }
+.sa-mascot[data-state="success"] .sa-m-paw--right { transform: translate(8px, 4px) rotate(6deg); }
+.sa-mascot[data-state="success"] .sa-m-eye { transform: scaleY(1.05); }
+.sa-mascot[data-state="success"] .sa-m-mouth--rest { opacity: 0; }
+.sa-mascot[data-state="success"] .sa-m-mouth--happy { opacity: 1; }
+.sa-mascot[data-state="success"] .sa-m-cheek { opacity: 1; }
+
+/* --- error: small head shake, brows pull down, no success flourish --- */
+.sa-mascot[data-state="error"] { animation: saShake .5s ease; }
+.sa-mascot[data-state="error"] .sa-m-eye { transform: scaleY(.72); }
+.sa-mascot[data-state="error"] .sa-m-brow--left { transform: rotate(-14deg) translateY(1px); }
+.sa-mascot[data-state="error"] .sa-m-brow--right { transform: rotate(14deg) translateY(1px); }
+.sa-mascot[data-state="error"] .sa-m-mouth--rest { transform: translateY(2px) rotate(180deg); }
+.sa-mascot[data-state="error"] .sa-m-mouth--happy { opacity: 0; }
+
+@keyframes saFloat {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-3px); }
+}
+
+@keyframes saBounce {
+  0%   { transform: translateX(-50%) translateY(0) rotate(0deg); }
+  22%  { transform: translateX(-50%) translateY(-12px) rotate(-2deg); }
+  45%  { transform: translateX(-50%) translateY(0) rotate(2deg); }
+  68%  { transform: translateX(-50%) translateY(-6px) rotate(-1.2deg); }
+  100% { transform: translateX(-50%) translateY(0) rotate(0deg); }
+}
+
+@keyframes saShake {
+  0%, 100% { transform: translateX(-50%) rotate(0deg); }
+  20% { transform: translateX(-50%) translateX(-6px) rotate(-3.5deg); }
+  45% { transform: translateX(-50%) translateX(5px) rotate(3deg); }
+  70% { transform: translateX(-50%) translateX(-3px) rotate(-1.6deg); }
+}
+
+/* ---------- glass card ---------- */
+
+.sa-card {
+  position: relative;
+  padding: 46px 44px 34px;
+  background: rgba(20, 28, 44, 0.76);
+  border: 1px solid rgba(140, 160, 190, 0.3);
+  border-radius: 34px;
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  box-shadow: 0 34px 78px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ---------- copy ---------- */
+
+.sa-title {
+  text-align: center;
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(90deg, #6fb0ff, #b991ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 6px;
+}
+
+.sa-sub {
+  text-align: center;
+  font-size: 15.5px;
+  color: #9aa6ba;
+  margin-bottom: 26px;
+}
+
+.sa-sub strong { color: #c7d3e6; font-weight: 600; }
+
+.sa-error {
+  text-align: center;
+  color: #ff9d9d;
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+.sa-error:empty { margin-bottom: 0; }
+
+.sa-notice {
+  text-align: center;
+  color: #8fb6ea;
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+
+.sa-hint {
+  text-align: center;
+  font-size: 13.5px;
+  color: #9aa6ba;
+  margin-bottom: 18px;
+}
+
+/* ---------- fields ---------- */
+
+.sa-field { position: relative; margin-bottom: 16px; }
+
+.sa-field label {
+  position: absolute;
+  top: 11px;
+  left: 20px;
+  color: #8fa9cf;
+  font-size: 12.5px;
+  font-weight: 600;
+  z-index: 1;
+  pointer-events: none;
+  transition: top 0.18s ease, font-size 0.18s ease, color 0.18s ease;
+}
+
+/* Class-based, not type-based: the globalsheet's
+   `input { background-color: white !important }` wins against a bare element
+   selector, and `input[type=…]` silently matches nothing if a field ever
+   drops its type attribute. .sa-input is explicit and cannot regress. */
+.sa-page input.sa-input {
+  width: 100%;
+  height: 66px;
+  border: 1px solid rgba(145, 165, 195, 0.24) !important;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.045) !important;
+  color: #f2f6fc !important;
+  outline: none;
+  padding: 26px 20px 8px 20px;
+  font-size: 16.5px;
+  font-family: inherit;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.sa-page input.sa-input.is-password { padding-top: 22px; }
+
+.sa-page input.sa-input::placeholder { color: #8a93a4 !important; }
+
+.sa-page input.sa-input:focus {
+  border-color: rgba(103, 170, 255, 0.85) !important;
+  background: rgba(255, 255, 255, 0.075) !important;
+  box-shadow: 0 0 0 3px rgba(70, 145, 255, 0.18), 0 0 26px rgba(70, 145, 255, 0.14);
+}
+
+.sa-page input:focus ~ .sa-eye { color: #cfe0f5; }
+
+.sa-eye {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: #7d8ba3;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  transition: color 0.18s ease, background 0.18s ease;
+  padding: 0;
+}
+
+.sa-eye:hover { color: #b9cbe4; background: rgba(255, 255, 255, 0.06); }
+.sa-eye:focus-visible { outline: 2px solid rgba(103, 170, 255, 0.7); outline-offset: 1px; }
+.sa-eye svg { width: 21px; height: 21px; }
+
+.sa-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: #8a93a4;
+}
+
+/* ---------- options row ---------- */
+
+.sa-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 4px 0 24px;
+  gap: 12px;
+}
+
+.sa-link {
+  color: #a9c8ff;
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 600;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+
+.sa-link:hover { color: #cfe0f5; }
+.sa-link.muted { color: #8b98ad; }
+.sa-link.muted:hover { color: #c7d3e6; }
+
+/* ---------- channels ---------- */
+
+.sa-channels { display: flex; flex-direction: column; gap: 10px; }
+
+.sa-channel {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(140, 160, 190, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.sa-channel:hover:not(:disabled) { border-color: rgba(103, 170, 255, 0.6); background: rgba(255, 255, 255, 0.08); }
+.sa-channel:disabled { cursor: default; opacity: 0.7; }
+.sa-channel span { font-weight: 400; color: #9aa6ba; }
+
+/* ---------- sign-in button + door scene ---------- */
+
+.sa-btn {
+  width: 100%;
+  height: 72px;
+  border: 0;
+  border-radius: 19px;
+  background: linear-gradient(115deg, #2f86ef 0%, #2266c7 100%);
+  color: #fff;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 32px rgba(36, 111, 227, 0.28);
+  font-family: inherit;
+  display: block;
+  transition: box-shadow 0.2s ease, transform 0.12s ease;
+}
+
+.sa-btn:hover:not(:disabled) { box-shadow: 0 14px 40px rgba(36, 111, 227, 0.4); }
+.sa-btn:active:not(:disabled) { transform: translateY(1px); }
+.sa-btn:disabled { cursor: default; }
+
+.sa-btn__label {
+  position: absolute;
+  left: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 18.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.sa-door {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 64px;
+  height: 56px;
+  perspective: 170px;
+  perspective-origin: 62% 50%;
+}
+
+.sa-door__frame {
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(6, 12, 24, 0.72), rgba(10, 18, 34, 0.5));
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.55);
+}
+
+.sa-door__frame::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.sa-door__panel {
+  position: absolute;
+  width: 56px;
+  height: 48px;
+  right: 3px;
+  top: 3px;
+  transform-origin: right center;
+  transform: rotateY(0deg);
+  background: linear-gradient(100deg, #cfe6ff 0%, #6ba6e8 60%, #3f7cc9 100%);
+  border-radius: 6px;
+  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.45);
+  z-index: 2;
+}
+
+.sa-door__panel::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+}
+
+.sa-door__panel::after {
+  content: "";
+  position: absolute;
+  top: 24px;
+  left: 6px;
+  width: 5px;
+  height: 5px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.35);
+}
+
+.sa-person {
+  position: absolute;
+  left: -15px;
+  bottom: 6px;
+  width: 22px;
+  height: 40px;
+  opacity: 0;
+  z-index: 3;
+  transform: translateX(0);
+}
+
+.sa-person__head {
+  width: 9px;
+  height: 9px;
+  background: #fff;
+  border-radius: 50%;
+  display: block;
+  margin: 0 auto;
+}
+
+.sa-person__body {
+  width: 4px;
+  height: 18px;
+  background: #fff;
+  display: block;
+  margin: 1px auto;
+  border-radius: 2px;
+}
+
+.sa-person__legs { position: relative; display: block; width: 14px; margin: 0 auto; }
+
+.sa-person__legs::before,
+.sa-person__legs::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 12px;
+  background: #fff;
+  border-radius: 2px;
+  transform-origin: top;
+}
+
+.sa-person__legs::before { left: 3px; transform: rotate(20deg); }
+.sa-person__legs::after { right: 3px; transform: rotate(-20deg); }
+
+/* --- state machine, driven entirely by React classNames --- */
+
+.sa-btn.dooropen .sa-door__panel { transform: rotateY(72deg); }
+.sa-btn.dooropen .sa-person { opacity: 1; }
+
+.sa-btn.walking .sa-person { animation: saWalkThrough 0.68s linear forwards; }
+
+@keyframes saWalkThrough {
+  0%   { transform: translateX(0); opacity: 1; }
+  72%  { opacity: 1; }
+  100% { transform: translateX(46px); opacity: 0; }
+}
+
+.sa-btn.walking .sa-person__legs::before { animation: saLeg1 0.21s linear infinite alternate; }
+.sa-btn.walking .sa-person__legs::after { animation: saLeg2 0.21s linear infinite alternate; }
+
+@keyframes saLeg1 { from { transform: rotate(30deg); } to { transform: rotate(-30deg); } }
+@keyframes saLeg2 { from { transform: rotate(-30deg); } to { transform: rotate(30deg); } }
+
+/* ---------- otp ---------- */
+
+.sa-otp { display: flex; justify-content: center; margin-bottom: 24px; }
+
+.sa-page input.sa-otp-box input,
+.sa-page .sa-otp input {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #f2f6fc !important;
+  border: 1px solid rgba(145, 165, 195, 0.28) !important;
+  border-radius: 14px;
+}
+
+.sa-wait { color: #5f6c82; font-size: 12.5px; font-weight: 700; }
+
+/* ---------- footer ---------- */
+
+.sa-foot {
+  text-align: center;
+  margin-top: 22px;
+  color: #6b7688;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.sa-foot svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+.sa-foot-alt { margin-top: 12px; }
+
+/* ---------- dev-only animation test ---------- */
+
+.sa-test {
+  display: block;
+  margin: 14px auto 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px dashed rgba(140, 160, 190, 0.45);
+  color: #9fb3d0;
+  border-radius: 10px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.sa-test:hover { background: rgba(255, 255, 255, 0.1); color: #cfe0f5; }
+
+/* dev-only mascot state switchboard (?animationDebug=1) */
+.sa-debug {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.sa-debug__btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(140, 160, 190, 0.3);
+  color: #9fb3d0;
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.sa-debug__btn[data-active="true"] { background: rgba(47, 134, 239, 0.35); color: #fff; border-color: rgba(103, 170, 255, 0.8); }
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 620px) {
+  .sa-page { padding: 32px 16px 28px; }
+  .sa-wrap { padding-top: 82px; }
+
+  .sa-card { padding: 40px 22px 28px; border-radius: 26px; }
+
+  .sa-title { font-size: 33px; }
+  .sa-sub { font-size: 14px; margin-bottom: 22px; }
+
+  .sa-mascot { transform: translateX(-50%) scale(0.84); transform-origin: top center; }
+  .sa-mascot[data-state="success"] { animation: saBounceMobile .7s ease; }
+
+  @keyframes saBounceMobile {
+    0%   { transform: translateX(-50%) scale(0.84) translateY(0) rotate(0deg); }
+    22%  { transform: translateX(-50%) scale(0.84) translateY(-12px) rotate(-2deg); }
+    45%  { transform: translateX(-50%) scale(0.84) translateY(0) rotate(2deg); }
+    68%  { transform: translateX(-50%) scale(0.84) translateY(-6px) rotate(-1.2deg); }
+    100% { transform: translateX(-50%) scale(0.84) translateY(0) rotate(0deg); }
+  }
+
+  .sa-btn { height: 66px; }
+  .sa-btn__label { left: 22px; font-size: 17px; }
+  .sa-door { right: 14px; transform: translateY(-50%) scale(0.9); }
+}
+
+/* Only applies when the OS actually asks for reduced motion — not a global
+   kill switch, and scoped to this page's decoration only. Paw travel is
+   preserved (it is information, not decoration); only the idle float, bounce
+   and shake are suppressed. */
+@media (prefers-reduced-motion: reduce) {
+  .sa-mascot,
+  .sa-mascot[data-state="success"],
+  .sa-mascot[data-state="error"] { animation: none; }
+
+  .sa-m-paw, .sa-m-head, .sa-m-eye, .sa-m-pupil,
+  .sa-m-brow, .sa-m-ear, .sa-m-mouth { transition-duration: .01ms; }
+
+  .sa-btn.walking .sa-person,
+  .sa-btn.walking .sa-person__legs::before,
+  .sa-btn.walking .sa-person__legs::after { animation: none; }
+  .sa-btn.walking .sa-person { opacity: 0; }
+
+  .sa-door__panel, .sa-btn, .sa-eye, .sa-field label,
+  .sa-page input.sa-input { transition: none; }
+}
