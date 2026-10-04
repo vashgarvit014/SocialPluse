@@ -47,6 +47,37 @@ const SUPERADMIN_AUTH_PAGE = '/superadmin/login';
 // correct origin. localhost (3000/3001) is deliberately in NEITHER set, so
 // local development is unaffected.
 
+// Next appends its own bookkeeping query params to navigations it issues
+// internally — `__rsc` on every RSC payload request (client-side
+// router.push/refresh, Link prefetch, a browser restore), plus `__next_live_*`
+// and friends. Those requests pass through here like any other, so blindly
+// reusing `pathname + search` as a post-login callbackUrl can capture one:
+//
+//   /login-signup?callbackUrl=%2Fdashboard%3F__rsc%3D9CZB7WcOp-mKV0Jv
+//
+// The client then pushes that literal string after a successful OTP verify.
+// A URL carrying `__rsc` is an RSC *payload* request, not a route change, so
+// the navigation silently no-ops and the login card sits on "Verifying…"
+// forever with no error. Strip every dunder-prefixed (Next-reserved) param so
+// only the user's real query string survives the bounce.
+function callbackPathname(pathname: string, search: string): string {
+  if (!search) return pathname;
+  const params = new URLSearchParams(search);
+  let changed = false;
+  for (const key of [...params.keys()]) {
+    if (key.startsWith('__')) {
+      params.delete(key);
+      changed = true;
+    }
+  }
+  const rest = params.toString();
+  // Nothing was stripped -> hand back the original query string untouched.
+  // Returning bare `pathname` here would silently drop the user's real params
+  // (e.g. ?tab=posts) on every ordinary bounce.
+  if (!changed) return `${pathname}${search}`;
+  return rest ? `${pathname}?${rest}` : pathname;
+}
+
 export default async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const host = normalizeHost(request.headers.get('host'));
@@ -168,7 +199,7 @@ export default async function proxy(request: NextRequest) {
       // ever fail — the callbackUrl is preserved so they return to the page
       // they wanted after signing in.
       const target = new URL(SUPERADMIN_AUTH_PAGE, request.url);
-      target.searchParams.set('callbackUrl', pathname + search);
+      target.searchParams.set('callbackUrl', callbackPathname(pathname, search));
       return NextResponse.redirect(target);
     }
     return NextResponse.next({ request: { headers } });
@@ -176,7 +207,7 @@ export default async function proxy(request: NextRequest) {
 
   if (isProtected && !session) {
     const target = new URL(AUTH_PAGE, request.url);
-    target.searchParams.set('callbackUrl', pathname + search);
+    target.searchParams.set('callbackUrl', callbackPathname(pathname, search));
     return NextResponse.redirect(target);
   }
 

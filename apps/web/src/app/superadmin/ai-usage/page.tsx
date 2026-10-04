@@ -1,4 +1,30 @@
-import { getAiUsageStats } from '@/lib/ai-usage';
+import { callGateway } from '@/lib/gateway-client';
+
+// Read through the gateway like every other admin page (see
+// ../connections/page.tsx). This page used to call lib/ai-usage -> lib/db
+// (raw SQL on ai_usage_log) directly, which broke two rules at once: it put
+// backend data access inside the frontend app, and it could never work,
+// because the `socialpulse` container is deliberately never given
+// DATABASE_URL — so getAiUsageStats() threw and the page 500'd. The gateway
+// route is SUPERADMIN-gated; any failure (including the endpoint not being
+// implemented yet) degrades to the empty state the UI already renders.
+type AiUsage = {
+  contentGenerations: number;
+  imageGenerations: number;
+  failedGenerations: number;
+  todayRequests: number;
+  dailyCounts: Array<{ date: string; count: number }>;
+  providers: Array<{ type: string; provider: string; total: number; failed: number }>;
+};
+
+const EMPTY: AiUsage = {
+  contentGenerations: 0,
+  imageGenerations: 0,
+  failedGenerations: 0,
+  todayRequests: 0,
+  dailyCounts: [],
+  providers: [],
+};
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub: string }) {
   return (
@@ -11,12 +37,14 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
 }
 
 export default async function SuperadminAiUsagePage() {
-  const stats = await getAiUsageStats(14);
+  const result = await callGateway<AiUsage>('/api/superadmin/ai-usage');
+  const stats = result.ok ? result.data : EMPTY;
+  const hasData = stats.dailyCounts.length > 0 || stats.providers.length > 0;
   const maxDaily = Math.max(1, ...stats.dailyCounts.map(d => d.count));
 
   return (
     <>
-      {!stats.hasData && (
+      {!hasData && (
         <div style={{ padding: '12px 14px', borderRadius: 11, background: 'var(--sf)', border: '1px solid var(--bd)', color: 'var(--mu)', fontSize: 12.5 }}>
           <span style={{ fontWeight: 700, color: 'var(--tx)' }}>No usage recorded yet.</span> Content/image generation usage is tracked from the moment this was added — nothing is backfilled.
         </div>

@@ -143,9 +143,16 @@ export default function SettingsClient({ name, email }: { name: string; email: s
         body: JSON.stringify({ challengeId }),
       });
       const data = await res.json();
-      setEmailMsg(res.ok
-        ? { ok: true, text: 'A new code was sent.' }
-        : { ok: false, text: typeof data.error === 'string' ? data.error : 'Could not resend the code.' });
+      if (!res.ok) {
+        setEmailMsg({ ok: false, text: typeof data.error === 'string' ? data.error : 'Could not resend the code.' });
+        return;
+      }
+      // resendChallenge() rotates the code in place under the SAME
+      // challengeId, so the previously typed digits are now dead. Clearing
+      // them stops the Verify button from being left enabled with a code
+      // that can only ever fail.
+      setCode('');
+      setEmailMsg({ ok: true, text: 'A new code was sent.' });
     } catch {
       setEmailMsg({ ok: false, text: 'Network error. Please try again.' });
     } finally {

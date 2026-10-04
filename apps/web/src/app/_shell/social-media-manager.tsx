@@ -1344,14 +1344,15 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     if (!silent) setIsCheckingDue(false);
   };
 
-  // Auto-publish: poll every 60s and on tab visible. Manual "Check now" stays.
-  // Auto polls are silent (no toast/spinner) — internal only.
-  useEffect(() => {
-    const id = setInterval(() => { if (!document.hidden) void checkDuePosts(true); }, 60_000);
-    const onVisible = () => { if (!document.hidden) void checkDuePosts(true); };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
-  }, []);
+  // Due-post execution is deliberately NOT driven from the browser. It is
+  // owned exclusively by scheduler-service's own 15s worker, which claims due
+  // rows atomically (FOR UPDATE SKIP LOCKED). The 60s + visibilitychange poll
+  // that used to live here called POST /api/scheduler/check, which the gateway
+  // gates to SUPERADMIN — so for every regular user it was a guaranteed 403
+  // every minute that could never publish anything, while leaving a
+  // client-controlled dispatch path into the executor. Removed on purpose; the
+  // SUPERADMIN-only "Check now" button still calls checkDuePosts(), because an
+  // explicit operator action is legitimate.
 
   useEffect(() => {
     if (!timePickerOpen) return;

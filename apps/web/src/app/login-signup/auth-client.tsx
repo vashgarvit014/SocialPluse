@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { ZodType } from 'zod';
@@ -198,6 +198,25 @@ function useCountdown(targetIso: string | null) {
   return targetIso ? msLeft : 0;
 }
 
+// Strips Next-internal query params from a callbackUrl before it is used as a
+// post-verify redirect target. proxy.ts already does this when it builds the
+// bounce, but an old bookmark, a hand-edited link, or a URL cached before that
+// fix can still carry one — most importantly `__rsc`, which marks a URL as an
+// RSC *payload* request. router.push() to such a URL does not change the route,
+// so the card would sit on "Verifying…" forever. See callbackPathname() in
+// src/proxy.ts for the same reasoning at the source.
+function safeCallbackUrl(raw: string): string {
+  const queryStart = raw.indexOf('?');
+  if (queryStart === -1) return raw;
+  const path = raw.slice(0, queryStart);
+  const params = new URLSearchParams(raw.slice(queryStart + 1));
+  for (const key of [...params.keys()]) {
+    if (key.startsWith('__')) params.delete(key);
+  }
+  const rest = params.toString();
+  return rest ? `${path}?${rest}` : path;
+}
+
 export default function AuthClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -227,6 +246,14 @@ export default function AuthClient() {
   const [maskedDestination, setMaskedDestination] = useState('');
   const [resendAvailableAt, setResendAvailableAt] = useState<string | null>(null);
   const [otp, setOtp] = useState('');
+  const otpVerifyInFlightRef = useRef(false);
+  const otpVerifiedRef = useRef(false);
+  const redirectWatchdogRef = useRef<number | null>(null);
+
+  // Never leave a pending forced-navigation timer behind.
+  useEffect(() => () => {
+    if (redirectWatchdogRef.current !== null) window.clearTimeout(redirectWatchdogRef.current);
+  }, []);
 
   // Forgot-password identifier + reset-new-password
   const [forgotIdentifier, setForgotIdentifier] = useState('');
@@ -236,6 +263,11 @@ export default function AuthClient() {
   const [resetTouched, setResetTouched] = useState<Partial<Record<string, boolean>>>({});
 
   const resendMsLeft = useCountdown(resendAvailableAt);
+
+  useEffect(() => {
+    otpVerifyInFlightRef.current = false;
+    otpVerifiedRef.current = false;
+  }, [challengeId]);
 
   const markTouched = (field: string) => setTouched(t => ({ ...t, [field]: true }));
   const setFieldError = (field: string, message: string | undefined) =>
@@ -377,17 +409,28 @@ export default function AuthClient() {
   };
 
   const verifyOtp = async (code: string) => {
-    if (code.length !== 6 || submitting) return;
+    if (code.length !== 6 || submitting || otpVerifyInFlightRef.current || otpVerifiedRef.current) return;
+    otpVerifyInFlightRef.current = true;
     setError(''); setSubmitting(true);
     try {
       const { ok, data } = await postJson('/api/auth/otp/verify', { challengeId, otp: code });
+      if (otpVerifiedRef.current) return;
       if (!ok) { setError(data.error || 'Verification failed.'); setOtp(''); return; }
 
+      otpVerifiedRef.current = true;
       if (data.canResetPassword) {
+        // The challenge is consumed, but we are NOT leaving the page — we
+        // advance to the new-password form. `submitting` has to be released
+        // here or that form's submit button (`disabled={submitting}`) stays
+        // disabled forever and the reset can never be completed. The
+        // `finally` below deliberately does not clear it on the success path,
+        // because the login/signup branches rely on it to freeze the UI while
+        // the redirect is in flight.
+        setSubmitting(false);
         setStep('reset-password');
         return;
       }
-      const target = callbackUrl && callbackUrl.startsWith('/') && !callbackUrl.startsWith('//') ? callbackUrl : (data.redirect || '/dashboard');
+      const target = callbackUrl && callbackUrl.startsWith('/') && !callbackUrl.startsWith('//') ? safeCallbackUrl(callbackUrl) : (data.redirect || '/dashboard');
       // A SUPERADMIN who verified on the public site is handed the admin
       // ORIGIN (absolute), because /superadmin only exists on the admin
       // subdomain. router.push() is for same-origin client navigation; an
@@ -396,12 +439,34 @@ export default function AuthClient() {
         window.location.assign(target);
         return;
       }
+      // router.push() to the URL we are already on is a no-op, which would
+      // leave the card frozen on "Verifying…" with no way out. A real
+      // navigation guarantees the proxy re-runs (it bounces an
+      // already-authenticated /login-signup to /dashboard).
+      if (target === `${window.location.pathname}${window.location.search}`) {
+        window.location.assign(target);
+        return;
+      }
       router.push(target);
       router.refresh();
+      // router.push() is fire-and-forget: nothing reports back if it fails to
+      // change the route, and on the success path `submitting` is deliberately
+      // never released (see the finally below), so the card would sit on
+      // "Verifying…" with no error and no way out. If the SPA navigation has
+      // not happened shortly, force a real document navigation to the same
+      // place. A user must never be stranded here after a successful verify.
+      redirectWatchdogRef.current = window.setTimeout(() => {
+        redirectWatchdogRef.current = null;
+        window.location.assign(target);
+      }, 6000);
     } catch {
+      if (otpVerifiedRef.current) return;
       setError('Could not reach the server. Please try again.');
     } finally {
-      setSubmitting(false);
+      if (!otpVerifiedRef.current) {
+        otpVerifyInFlightRef.current = false;
+        setSubmitting(false);
+      }
     }
   };
 
@@ -417,6 +482,8 @@ export default function AuthClient() {
       if (!ok) { setError(data.error || 'Could not resend the code.'); return; }
       setResendAvailableAt(data.resendAvailableAt);
       setOtp('');
+      otpVerifyInFlightRef.current = false;
+      otpVerifiedRef.current = false;
       setInfo('A new code has been sent.');
     } catch {
       setError('Could not reach the server. Please try again.');

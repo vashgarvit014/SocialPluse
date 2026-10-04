@@ -332,7 +332,13 @@ async function insertPost(id, userId, status, content) {
 
 async function runCleanup() {
   const { spawnSync } = await import('node:child_process');
-  const res = spawnSync('node', ['scripts/cleanup-expired-media.mjs', '--json'], {
+  // Resolve the cleanup script relative to THIS file, not the cwd. The old
+  // relative path ('scripts/cleanup-expired-media.mjs') only happened to exist
+  // when the suite was run from infrastructure/, so from the documented
+  // invocation (`npm run test:isolation` in apps/web, cwd=apps/web) every
+  // cleanup assertion failed with MODULE_NOT_FOUND instead of testing anything.
+  const cleanupScript = fileURLToPath(new URL('./cleanup-expired-media.mjs', import.meta.url));
+  const res = spawnSync('node', [cleanupScript, '--json'], {
     env: { ...process.env },
     encoding: 'utf8',
   });

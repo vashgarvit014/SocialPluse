@@ -20,7 +20,8 @@
     "test:whatsapp-qr": "node ../../infrastructure/scripts/verify-whatsapp-qr.mjs",
     "test:whatsapp-ownership": "node ../../infrastructure/scripts/verify-whatsapp-ownership.mjs",
     "test:moderation-classifier": "node --import tsx ../../infrastructure/scripts/verify-moderation-classifier.mjs",
-    "test:moderation:http": "node ../../infrastructure/scripts/verify-moderation.mjs"
+    "test:moderation:http": "node ../../infrastructure/scripts/verify-moderation.mjs",
+    "test:shared-otp-input": "node ../../infrastructure/scripts/verify-shared-otp-input.mjs"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.64.0",
