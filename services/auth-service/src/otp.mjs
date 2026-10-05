@@ -8,6 +8,7 @@ export const OTP_TTL_MINUTES = OTP_TTL_MS / 60_000;
 const MAX_ATTEMPTS = 5;
 const MAX_RESENDS = 5;
 const RESEND_COOLDOWN_MS = 60 * 1000;
+export { RESEND_COOLDOWN_MS };
 
 export function createOtpStore(pool) {
   async function getRow(challengeId) {
@@ -106,6 +107,21 @@ export function createOtpStore(pool) {
       const row = await getRow(challengeId);
       if (!row || row.verified_at || row.invalidated_at) return null;
       return { userId: row.user_id, purpose: row.purpose };
+    },
+
+    // The one challenge a user could still successfully submit against.
+    // createChallenge() invalidates any earlier un-verified challenge for the
+    // same user+purpose, so this is what a repeat request must NOT clobber.
+    async findActiveChallenge({ userId, purpose }) {
+      const { rows } = await pool.query(
+        `SELECT * FROM otp_challenges
+          WHERE user_id = $1 AND purpose = $2
+            AND verified_at IS NULL AND invalidated_at IS NULL
+            AND expires_at > $3
+          ORDER BY created_at DESC LIMIT 1`,
+        [userId, purpose, new Date().toISOString()],
+      );
+      return rows[0] || null;
     },
   };
 }

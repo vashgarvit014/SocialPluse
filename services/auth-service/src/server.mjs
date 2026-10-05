@@ -6,7 +6,7 @@ import { createLogger } from '../packages/logger/index.mjs';
 import { parseCookies } from '../packages/cookies/index.mjs';
 import { createUsersRepo, normalizeEmail } from './users.mjs';
 import { createUserSessionsRepo } from './user-sessions.mjs';
-import { createOtpStore } from './otp.mjs';
+import { createOtpStore, RESEND_COOLDOWN_MS } from './otp.mjs';
 import { createSessionManager, SESSION_COOKIE } from './session.mjs';
 import { setPendingAuth, getPendingAuth, clearPendingAuth, PENDING_AUTH_COOKIE } from './pending-auth.mjs';
 import { createRateLimiter } from './rate-limit.mjs';
@@ -310,6 +310,27 @@ const server = http.createServer(async (req, res) => {
       if (!destination) return send(res, 400, { error: 'WhatsApp is not available for this account — no mobile number on file. Please use Email.' });
       const destinationValid = channel === 'EMAIL' ? isValidEmailFormat(destination) : isValidMobile(destination);
       if (!destinationValid) return send(res, 400, { error: 'This account has no valid destination on file for that channel. Please contact support.' });
+
+      // Idempotent within the resend cooldown. createChallenge() invalidates
+      // any earlier un-verified challenge for this user+purpose, so a repeat
+      // request (double-click, a second tab, going back to pick a channel
+      // again) used to silently void the code already sitting in the user's
+      // inbox and mail a replacement — leaving them to guess which of several
+      // emails was current, and failing with "incorrect code". Reuse the live
+      // challenge instead and send nothing.
+      const active = await otpStore.findActiveChallenge({ userId: user.id, purpose: pending.purpose });
+      if (active) {
+        const sinceLastSent = Date.now() - new Date(active.last_sent_at).getTime();
+        if (sinceLastSent < RESEND_COOLDOWN_MS) {
+          return send(res, 200, {
+            success: true,
+            reused: true,
+            challengeId: active.id,
+            expiresAt: active.expires_at,
+            resendAvailableAt: new Date(new Date(active.last_sent_at).getTime() + RESEND_COOLDOWN_MS).toISOString(),
+          });
+        }
+      }
 
       const { challenge, otp } = await otpStore.createChallenge({ userId: user.id, channel, destination, purpose: pending.purpose });
       const delivery = await deliverOtp({ channel, destination, otp, purpose: pending.purpose, isSuperadmin: user.role === 'SUPERADMIN' });
