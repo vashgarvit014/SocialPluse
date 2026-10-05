@@ -18,8 +18,13 @@ node_modules
 /coverage
 
 # next.js
-/.next/
+# Unanchored on purpose: `/.next/` only ever matched the repo-root .next, so
+# apps/web/.next and apps/superadmin/.next stayed tracked and every build
+# churned ~200 committed artefact files.
+.next/
+**/.next/
 /out/
+**/out/
 
 # production
 /build
