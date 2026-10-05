@@ -1,7 +1,9 @@
 // Faithful port of src/lib/auth/delivery/index.ts.
 import { OTP_TTL_MINUTES } from '../otp.mjs';
-import { sendOtpEmail } from './email.mjs';
+import { sendOtpEmail, warmUpEmailTransport } from './email.mjs';
 import { sendWhatsAppOtp } from './whatsapp-otp.mjs';
+
+export { warmUpEmailTransport };
 
 export async function deliverOtp({ channel, destination, otp, purpose, isSuperadmin }) {
   if (channel === 'EMAIL') {

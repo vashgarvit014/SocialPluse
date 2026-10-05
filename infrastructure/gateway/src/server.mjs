@@ -27,7 +27,13 @@ const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://user-service:40
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:4011';
 const INTEGRATIONS_SERVICE_URL = process.env.INTEGRATIONS_SERVICE_URL || 'http://integrations-service:4005';
 const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
-const SERVICE_TIMEOUT_MS = 5000;
+// Was 5000. /otp/request and /password/forgot send a real email inline, and
+// this deployment's SMTP relay measures ~6.5s for a cold handshake and
+// ~2-3s warm. At 5s the gateway aborted first and returned a bare 503, so the
+// browser never received a challengeId even though the mail arrived — the user
+// got an email they could not use. Healthy services answer in milliseconds, so
+// this only bounds how long a genuinely hung upstream is tolerated.
+const SERVICE_TIMEOUT_MS = 15000;
 
 const log = createLogger('gateway');
 

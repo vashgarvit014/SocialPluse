@@ -13,7 +13,7 @@ import { createRateLimiter } from './rate-limit.mjs';
 import { createAuditLogger, clientIp } from './audit.mjs';
 import { createDal } from './dal.mjs';
 import { hashPassword, verifyPassword } from './password.mjs';
-import { deliverOtp } from './delivery/index.mjs';
+import { deliverOtp, warmUpEmailTransport } from './delivery/index.mjs';
 import { sendPasswordChangedEmail } from './delivery/email.mjs';
 import { isValidEmailFormat } from './format-rules.mjs';
 import { isValidMobile, normalizeMobile, maskEmail, maskMobile } from './mobile.mjs';
@@ -665,6 +665,9 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) return send(res, 500, { code: 'AUTH_SERVICE_ERROR', message: 'Internal error.' });
   }
 });
+
+// Pay the SMTP connect+TLS handshake now, not inside the first user's request.
+warmUpEmailTransport();
 
 server.listen(PORT, () => log.info({ event: 'listening', port: PORT }));
 

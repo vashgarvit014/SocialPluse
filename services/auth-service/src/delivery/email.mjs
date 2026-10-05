@@ -21,15 +21,39 @@ function escapeHtml(value) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// Nodemailer's defaults are deliberately generous (connectionTimeout 120s,
+// greetingTimeout 30s, socketTimeout 600s). Because deliverOtp() awaits
+// sendMail() inside the request handler, an unresponsive relay could tie up an
+// auth request for MINUTES. Measured against this deployment: the first
+// handshake costs ~6.5s and a warm one ~2.3s, which is why these are bounded
+// below the gateway's upstream budget rather than left unbounded.
+const SMTP_TIMEOUTS = { connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 8000 };
+
 function getTransport(config) {
   const key = `${config.host}:${config.port}:${config.user}`;
   if (cachedTransport && cachedConfigKey === key) return cachedTransport;
   cachedTransport = nodemailer.createTransport({
     host: config.host, port: config.port, secure: config.port === 465,
     auth: { user: config.user, pass: config.pass },
+    ...SMTP_TIMEOUTS,
   });
   cachedConfigKey = key;
   return cachedTransport;
+}
+
+// Opens the SMTP connection + TLS handshake at boot instead of inside the
+// first user's request. Without this the very first OTP request of a deploy
+// pays the full ~6.5s handshake, which alone can overrun the gateway's
+// upstream timeout and surface to the user as a bare 503.
+export function warmUpEmailTransport() {
+  const config = getConfig();
+  if (!config) return;
+  getTransport(config)
+    .verify()
+    .then(() => { console.log('[auth/email] SMTP transport warmed'); })
+    .catch((error) => {
+      console.error('[auth/email] SMTP warm-up failed (will retry on first send):', error instanceof Error ? error.message : 'unknown error');
+    });
 }
 
 const PURPOSE_COPY = {
