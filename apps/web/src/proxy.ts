@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SESSION_COOKIE, readSessionFromCookieValue } from '@/lib/auth/session';
 import {
   canonicalPathname,
   isPublicHost,
@@ -35,6 +34,48 @@ const PROTECTED_PREFIXES = [
 const AUTH_PAGE = '/login-signup';
 const SUPERADMIN_AUTH_PAGE = '/superadmin/login';
 
+// Declared locally rather than imported from lib/auth/session on purpose.
+// That module verifies the cookie with HS256 using SESSION_SECRET, which the
+// `socialpulse` container deliberately does NOT receive (the frontend holds no
+// auth secrets). Every call therefore threw "SESSION_SECRET is not set", the
+// catch returned null, and this proxy concluded there was no session for
+// EVERY request — so every protected page 307'd to /login-signup even with a
+// perfectly valid session cookie. That is why a successful OTP verification
+// was immediately followed by a bounce straight back to the login form.
+//
+// Verifying the cookie needs the secret; ASKING does not. See
+// verifySessionCookie() below and the identical pattern already proven in
+// apps/superadmin/src/lib/session.ts. Keeping the literal here also drops the
+// lib/auth/user-sessions -> pg import chain out of the middleware bundle.
+const SESSION_COOKIE = 'sp_session';
+
+const GATEWAY_URL = process.env.GATEWAY_URL || 'http://gateway:8080';
+
+/**
+ * Asks auth-service (through the gateway) whether a session cookie is valid.
+ *
+ * Returns a truthy value for a live session, null for no/invalid session or
+ * when verification cannot be performed — it always fails CLOSED, so a gateway
+ * outage can never grant access. Only called when a cookie is actually
+ * present, so anonymous traffic costs no extra round trip.
+ */
+async function verifySessionCookie(cookieValue: string | undefined): Promise<{ id: string; role: string; status: string } | null> {
+  if (!cookieValue) return null;
+  try {
+    const res = await fetch(`${GATEWAY_URL}/api/auth/me`, {
+      headers: { cookie: `${SESSION_COOKIE}=${cookieValue}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const user = data?.user;
+    if (!user?.id) return null;
+    return { id: user.id, role: user.role, status: user.status || 'ACTIVE' };
+  } catch {
+    return null;
+  }
+}
+
 // Hostname serving the Superadmin interface as a dedicated entry point. On that
 // host "/" IS the Superadmin login — the page is rendered there directly, not
 // bounced with a redirect, so the address bar shows only the clean domain.
@@ -65,7 +106,16 @@ function callbackPathname(pathname: string, search: string): string {
   const params = new URLSearchParams(search);
   let changed = false;
   for (const key of [...params.keys()]) {
-    if (key.startsWith('__')) {
+    // Next.js marks its own RSC payload requests with `_rsc` (ONE leading
+    // underscore — confirmed against node_modules/next 16.3.2, which is what a
+    // router.push()/refresh() from the login card produces), and reserves
+    // dunder / _next-prefixed params. Those must go: a URL carrying `_rsc` is
+    // a payload request rather than a route change, so pushing to it is a
+    // silent no-op and the login card freezes on "Verifying…" forever.
+    //
+    // Matched by name, not by "any leading underscore", so a legitimate user
+    // param like ?_tab=1 survives the bounce.
+    if (key === '_rsc' || key.startsWith('__') || key.startsWith('_next')) {
       params.delete(key);
       changed = true;
     }
@@ -125,7 +175,7 @@ export default async function proxy(request: NextRequest) {
   // a signed-in Superadmin reaching "/" lands on the dashboard instead.
   if (isSuperadminHost && (pathname === '/' || pathname === '')) {
     const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
-    if (await readSessionFromCookieValue(sessionCookie)) {
+    if (await verifySessionCookie(sessionCookie)) {
       const dash = new URL('/superadmin', request.url);
       return NextResponse.redirect(dash);
     }
@@ -181,7 +231,7 @@ export default async function proxy(request: NextRequest) {
   const normPath = pathname.endsWith('/') && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
   const isSuperadminAuthPage = normPath === '/superadmin/login';
 
-  const session = await readSessionFromCookieValue(request.cookies.get(SESSION_COOKIE)?.value);
+  const session = await verifySessionCookie(request.cookies.get(SESSION_COOKIE)?.value);
 
   // x-pathname lets the /superadmin layout know which child is rendering so
   // it can skip the SUPERADMIN gate (and the sidebar shell) for exactly the

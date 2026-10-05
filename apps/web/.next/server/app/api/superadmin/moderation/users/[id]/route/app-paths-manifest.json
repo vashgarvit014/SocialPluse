@@ -1,0 +1,3 @@
+{
+  "/api/superadmin/moderation/users/[id]/route": "app/api/superadmin/moderation/users/[id]/route.js"
+}

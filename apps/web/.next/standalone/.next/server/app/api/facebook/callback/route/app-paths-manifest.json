@@ -1,0 +1,3 @@
+{
+  "/api/facebook/callback/route": "app/api/facebook/callback/route.js"
+}

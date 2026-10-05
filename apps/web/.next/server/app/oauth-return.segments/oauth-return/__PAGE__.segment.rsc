@@ -1,0 +1,27 @@
+1:"$Sreact.fragment"
+2:I[47257,["/_next/static/chunks/3fntmmi971322.js"],"ClientPageRoot"]
+3:I[62923,["/_next/static/chunks/3fntmmi971322.js","/_next/static/chunks/0paw0fikn1qbi.js"],"default"]
+6:I[97367,["/_next/static/chunks/3fntmmi971322.js"],"OutletBoundary"]
+7:"$Sreact.suspense"
+b:I[97367,["/_next/static/chunks/3fntmmi971322.js"],"ViewportBoundary"]
+c:I[97367,["/_next/static/chunks/3fntmmi971322.js"],"MetadataBoundary"]
+d:I[27201,["/_next/static/chunks/3fntmmi971322.js"],"IconMark"]
+f:I[39756,["/_next/static/chunks/3fntmmi971322.js"],"default"]
+10:I[37457,["/_next/static/chunks/3fntmmi971322.js"],"default"]
+13:I[22016,["/_next/static/chunks/3fntmmi971322.js","/_next/static/chunks/22i43cg4l4-dq.js"],""]
+:HL["/_next/static/chunks/0fot03bocqi6e.css","style"]
+a:X
+12:X
+12:C
+0:{"buildId":"OP4GepjdOsZqnemriO4qA","data":[{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"Component":"$3","serverProvidedParams":{"searchParams":{},"params":{},"promises":["$@4","$@5"]}}],[["$","script","script-0",{"src":"/_next/static/chunks/0paw0fikn1qbi.js","async":true}]],["$","$L6",null,{"children":["$","$7",null,{"name":"Next.MetadataOutlet","children":"$@8"}]}]]}],"isPartial":"$@9","staleTime":"$a","varyParams":null},{"rsc":["$","$1","h",{"children":[null,["$","$Lb",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]}],["$","div",null,{"hidden":true,"children":["$","$Lc",null,{"children":["$","$7",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"Social Media Manager Dashboard"}],["$","meta","1",{"name":"description","content":"AI-powered social media content creation and LinkedIn publishing"}],["$","link","2",{"rel":"icon","href":"/favicon.ico?favicon.2vob68tjqpejf.ico","sizes":"256x256","type":"image/x-icon"}],["$","$Ld","3",{}]]}]}]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}],"isPartial":"$@e","staleTime":"$a","varyParams":null},{"rsc":["$","$1","c",{"children":[null,["$","$Lf",null,{"parallelRouterKey":"children","template":["$","$L10",null,{}]}]]}],"isPartial":"$@11","staleTime":"$a","varyParams":"$12"},{"rsc":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/0fot03bocqi6e.css","precedence":"next"}],["$","script","script-0",{"src":"/_next/static/chunks/3fntmmi971322.js","async":true}]],["$","html",null,{"lang":"en","className":"geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-module__8Li5zG__variable h-full antialiased","children":["$","body",null,{"className":"min-h-full flex flex-col","children":["$","$Lf",null,{"parallelRouterKey":"children","template":["$","$L10",null,{}],"notFound":[["$","main",null,{"style":{"minHeight":"100vh","display":"flex","alignItems":"center","justifyContent":"center","padding":24,"fontFamily":"var(--font-geist-sans), -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif","background":"linear-gradient(160deg, #f8fafc 0%, #eef2ff 55%, #f5f3ff 100%)"},"children":["$","div",null,{"style":{"width":"100%","maxWidth":440,"textAlign":"center"},"children":[["$","div",null,{"style":{"width":76,"height":76,"margin":"0 auto 22px","borderRadius":22,"background":"linear-gradient(135deg, #7C3AED, #8B5CF6)","color":"#fff","fontSize":26,"fontWeight":800,"display":"flex","alignItems":"center","justifyContent":"center","boxShadow":"0 12px 30px rgba(124, 58, 237, 0.28)"},"children":"404"}],["$","h1",null,{"style":{"margin":"0 0 10px","fontSize":26,"fontWeight":800,"letterSpacing":"-0.02em","color":"#0F172A"},"children":"This page could not be found."}],["$","p",null,{"style":{"margin":"0 0 26px","fontSize":14,"lineHeight":1.65,"color":"#64748B"},"children":"The page you are looking for doesn't exist or may have been moved."}],["$","div",null,{"style":{"display":"flex","gap":10,"justifyContent":"center","flexWrap":"wrap"},"children":[["$","$L13",null,{"href":"/","style":{"padding":"11px 22px","borderRadius":11,"fontSize":13,"fontWeight":700,"textDecoration":"none","color":"#fff","background":"linear-gradient(135deg, #7C3AED, #8B5CF6)"},"children":"Back to Home"}],["$","$L13",null,{"href":"/login-signup","style":{"padding":"11px 22px","borderRadius":11,"fontSize":13,"fontWeight":700,"textDecoration":"none","color":"#334155","background":"#fff","border":"1px solid #E2E8F0"},"children":"Go to Login"}]]}]]}]}],[]]}]}]}]]}],"isPartial":"$@14","staleTime":"$a","varyParams":null}],"isUpgradeableISRFallback":false,"a":"$@15","rootVaryParams":null,"needsRuntimeRequest":"$@16"}
+4:{}
+5:"$0:data:0:rsc:props:children:0:props:serverProvidedParams:params"
+8:null
+a:300
+16:true
+a:C
+15:0
+e:"$undefined"
+11:"$undefined"
+14:"$undefined"
+9:"$undefined"

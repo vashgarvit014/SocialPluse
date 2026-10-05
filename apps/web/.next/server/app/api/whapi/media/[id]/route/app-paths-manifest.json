@@ -1,0 +1,3 @@
+{
+  "/api/whapi/media/[id]/route": "app/api/whapi/media/[id]/route.js"
+}

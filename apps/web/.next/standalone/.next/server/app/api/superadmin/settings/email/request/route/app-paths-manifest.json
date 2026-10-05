@@ -1,0 +1,3 @@
+{
+  "/api/superadmin/settings/email/request/route": "app/api/superadmin/settings/email/request/route.js"
+}
