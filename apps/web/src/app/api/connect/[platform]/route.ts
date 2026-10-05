@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RETURN_COOKIE } from '@/lib/oauth-return';
+import { sameOriginRedirect } from '@/lib/same-origin-redirect';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,14 +12,20 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pla
     return NextResponse.json({ error: 'Invalid connection request' }, { status: 400 });
   }
   if (platform === 'whatsapp') {
-    const target = new URL('/oauth-return', request.url);
-    target.searchParams.set('editor_return', id);
-    target.searchParams.set('provider', platform);
-    target.searchParams.set('error', 'WhatsApp uses server configuration; OAuth is not implemented.');
-    return NextResponse.redirect(target);
+    // Relative Location, not new URL('/oauth-return', request.url) — see
+    // src/lib/same-origin-redirect.ts. Building it from request.url produced
+    // https://0.0.0.0:3000/... and ERR_SSL_PROTOCOL_ERROR in the browser.
+    const target = new URLSearchParams({
+      editor_return: id,
+      provider: platform,
+      error: 'WhatsApp uses server configuration; OAuth is not implemented.',
+    });
+    return sameOriginRedirect(`/oauth-return?${target.toString()}`);
   }
-  const target = new URL(`/api/${platform}/auth`, request.url);
-  const response = NextResponse.redirect(target);
+  // Same fix as above: this is the entry point EVERY platform connection goes
+  // through, so building it from request.url broke LinkedIn, Facebook,
+  // Instagram and Canva at once.
+  const response = sameOriginRedirect(`/api/${platform}/auth`);
   response.cookies.set(RETURN_COOKIE, JSON.stringify({ id, platform }), {
     httpOnly: true,
     secure: request.nextUrl.protocol === 'https:',
