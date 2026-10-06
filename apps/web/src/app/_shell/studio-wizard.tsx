@@ -569,22 +569,75 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   const [dragOverSlideId, setDragOverSlideId] = useState<string | null>(null);
   const [showSlidePicker, setShowSlidePicker] = useState(false);
   const [showRegenPicker, setShowRegenPicker] = useState(false);
-  // Step 3 generation-panel progress (presentation only). The interval runs
-  // solely while the REAL content request is in flight; completion and
-  // failure come from p.isGeneratingContent / p.content, never the timer.
-  const [genPhase, setGenPhase] = useState(0);
+  // Synchronized generation progress (Step 3). The REAL request flag is the
+  // single source of truth: progress eases toward a 90% ceiling while the
+  // request is pending (fast early, asymptotic later, never 100% early),
+  // finishes smoothly to 100% only after the response arrives, and content
+  // reveals only in 'success'. Failures stop honestly with retry.
+  type GenStage = 'idle' | 'generating' | 'finishing' | 'success' | 'error';
+  const [genStage, setGenStage] = useState<GenStage>('idle');
   const [genPct, setGenPct] = useState(0);
+  const genPctRef = useRef(0);
+  const genRaf = useRef<number | null>(null);
+  const genHold = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasGenBusy = useRef(false);
+  const stopGenLoop = () => {
+    if (genRaf.current !== null) cancelAnimationFrame(genRaf.current);
+    genRaf.current = null;
+    if (genHold.current !== null) { clearTimeout(genHold.current); genHold.current = null; }
+  };
   useEffect(() => {
-    if (!p.isGeneratingContent) return;
-    setGenPhase(0);
-    setGenPct(2);
-    const t0 = Date.now();
-    const id = setInterval(() => {
-      const el = Date.now() - t0;
-      setGenPhase(Math.min(3, Math.floor(el / 2200)));
-      setGenPct(prev => Math.min(92, Math.floor(prev + 2 + Math.random() * 4)));
-    }, 500);
-    return () => clearInterval(id);
+    const busy = p.isGeneratingContent;
+    if (busy && !wasGenBusy.current) {
+      // Real request started: reset and ease toward the ceiling.
+      // pct(t) = 90 * (1 - e^(-t/3225ms)): ~12% @0.5s, ~24% @1s, ~40% @2s,
+      // ~55% @3s, ~70% @5s, ~82% @8s, asymptotic to 90% on long waits.
+      stopGenLoop();
+      genPctRef.current = 0;
+      setGenPct(0);
+      setGenStage('generating');
+      const t0 = performance.now();
+      const tick = () => {
+        const el = Math.max(0, performance.now() - t0);
+        const v = 90 * (1 - Math.exp(-el / 3225));
+        genPctRef.current = v;
+        setGenPct(v);
+        genRaf.current = requestAnimationFrame(tick);
+      };
+      genRaf.current = requestAnimationFrame(tick);
+    }
+    if (!busy && wasGenBusy.current) {
+      // Real response arrived (or the request failed): finish or stop.
+      stopGenLoop();
+      if (p.generationError || !p.content.trim()) {
+        setGenStage('error');
+      } else {
+        setGenStage('finishing');
+        const from = genPctRef.current;
+        const f0 = performance.now();
+        const dur = 600;
+        const step = () => {
+          const t = Math.min(1, Math.max(0, (performance.now() - f0) / dur));
+          const e = 1 - Math.pow(1 - t, 3);
+          const v = from + (100 - from) * e;
+          genPctRef.current = v;
+          setGenPct(v);
+          if (t < 1) {
+            genRaf.current = requestAnimationFrame(step);
+          } else {
+            setGenPct(100);
+            genPctRef.current = 100;
+            genHold.current = setTimeout(() => setGenStage('success'), 280);
+          }
+        };
+        genRaf.current = requestAnimationFrame(step);
+      }
+    }
+    wasGenBusy.current = busy;
+    return () => { stopGenLoop(); };
+    // Intentionally keyed on the request flag only: completion is evaluated
+    // from the fresh render's content/error at the moment the flag flips.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.isGeneratingContent]);
   // Inline hashtag composer (Step 3). Appends to the caption through the
   // exact same per-platform write-back path as the chip toggles.
@@ -714,6 +767,10 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   // so added tags stay visible and removable without a second state.
   const captionTags = (p.content.match(/#[A-Za-z0-9_]+/g) || []).map(t => t.slice(1));
   const chipTags: string[] = Array.from(new Set([...activeTags.map((t: unknown) => String(t)), ...captionTags]));
+  // Generation phase follows progress: 0–25 / 25–50 / 50–75 / 75–100 map to
+  // the four stages; completion is handled separately by genPct >= 100.
+  const genPhaseShown = Math.min(3, Math.max(0, Math.floor(genPct / 25)));
+  const genPhaseShownSafe = GEN_PHASES[genPhaseShown] || GEN_PHASES[3];
   const sentences = p.content ? p.content.split(/[.!?]+/).filter(s => s.trim()).length : 0;
 
   const saveDraft = p.saveFullDraft;
@@ -1232,7 +1289,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <button onClick={() => p.setGenerationError('')} style={{ border: 'none', background: 'none', color: '#B91C1C', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: '0 2px' }}>×</button>
                 </div>
               )}
-              {p.isGeneratingContent ? (
+              {(genStage === 'generating' || genStage === 'finishing') ? (
                 <div style={{ border: '1.5px solid #E4DBFF', borderRadius: 16, background: 'linear-gradient(180deg,#FBFAFF,#F6F1FF)', padding: '18px 20px', marginTop: 14, position: 'relative', overflow: 'hidden' }}>
                   <span className="sp-spark" style={{ left: '20%', top: '30%' }} />
                   <span className="sp-spark" style={{ left: '45%', top: '70%', animationDelay: '.7s' }} />
@@ -1242,19 +1299,19 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     <span className="sp-orb" aria-hidden="true" />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 14.5, fontWeight: 800, color: C.ink }}>✨ SocialPulse AI</div>
-                      <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginTop: 2 }}>{GEN_PHASES[genPhase][0]}</div>
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{GEN_PHASES[genPhase][1]}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginTop: 2 }}>{genPhaseShownSafe[0]}</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{genPhaseShownSafe[1]}</div>
                     </div>
-                    <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: C.primaryDark, flexShrink: 0 }}>{genPct}%</div>
+                    <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: C.primaryDark, flexShrink: 0 }}>{Math.floor(genPct)}%</div>
                   </div>
-                  <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={genPct} aria-label="Generation progress" style={{ height: 7, borderRadius: 99, background: '#E7E0FA', overflow: 'hidden', marginTop: 14 }}>
+                  <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(genPct)} aria-label="Generation progress" style={{ height: 7, borderRadius: 99, background: '#E7E0FA', overflow: 'hidden', marginTop: 14 }}>
                     <div className="sp-pfill" style={{ width: `${genPct}%` }} />
                   </div>
                   <div className="sp-gen-stages">
                     {GEN_PHASES.map((ph, i) => (
-                      <div key={ph[0]} className={i === genPhase ? 'sp-stage-on' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, fontSize: 12.5, fontWeight: 600, color: i < genPhase ? '#059669' : i === genPhase ? C.ink : C.faint, border: '1.5px solid transparent', ...(i === genPhase ? { backgroundColor: '#fff', borderColor: '#DDD0FA', boxShadow: '0 2px 10px rgba(124,58,237,0.12)' } : {}) }}>
-                        <span className="sp-stage-dot" style={i < genPhase ? { backgroundColor: '#059669' } : {}} />
-                        <span>{i < genPhase ? '✓ ' : ''}{ph[0]}</span>
+                      <div key={ph[0]} className={i === genPhaseShown ? 'sp-stage-on' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, fontSize: 12.5, fontWeight: 600, color: i < genPhaseShown || genPct >= 100 ? '#059669' : i === genPhaseShown ? C.ink : C.faint, border: '1.5px solid transparent', ...(i === genPhaseShown && genPct < 100 ? { backgroundColor: '#fff', borderColor: '#DDD0FA', boxShadow: '0 2px 10px rgba(124,58,237,0.12)' } : {}) }}>
+                        <span className="sp-stage-dot" style={i < genPhaseShown || genPct >= 100 ? { backgroundColor: '#059669' } : {}} />
+                        <span>{i < genPhaseShown || genPct >= 100 ? '✓ ' : ''}{ph[0]}</span>
                       </div>
                     ))}
                   </div>
@@ -1265,6 +1322,18 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     <div className="sp-skel" style={{ width: '86%' }} />
                     <div className="sp-skel" style={{ width: '64%' }} />
                   </div>
+                  {genStage === 'finishing' && genPct >= 100 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 12, fontWeight: 700, color: '#059669' }}>
+                      <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#ECFDF5', border: '1px solid #A7F3D0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>✓</span>
+                      Content ready
+                    </div>
+                  )}
+                </div>
+              ) : genStage === 'error' ? (
+                <div style={{ border: '1.5px solid #FECACA', borderRadius: 16, backgroundColor: '#FEF2F2', padding: '18px 20px', marginTop: 14 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: '#B91C1C' }}>Generation failed</div>
+                  <div style={{ fontSize: 12.5, color: '#7F1D1D', marginTop: 4, lineHeight: 1.6 }}>{p.generationError || 'The AI service did not respond. Your previous content (if any) is untouched.'}</div>
+                  <button onClick={() => { if (!p.isGeneratingContent && canGenContent) p.generateContent(); }} disabled={p.isGeneratingContent || !canGenContent} title={!canGenContent ? genContentBlocker : 'Try generating again'} style={{ marginTop: 12, minHeight: 42, padding: '10px 22px', borderRadius: 11, fontSize: 12.5, fontWeight: 800, border: 'none', cursor: (p.isGeneratingContent || !canGenContent) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', background: (p.isGeneratingContent || !canGenContent) ? '#E8EAF1' : 'linear-gradient(135deg,#7C3AED,#A855F7)', color: (p.isGeneratingContent || !canGenContent) ? '#B6BDCC' : '#fff' }}>↻ Retry</button>
                 </div>
               ) : !p.content.trim() ? (
                 <div style={{ border: '2px dashed #C4B5FD', borderRadius: 16, backgroundColor: '#FAF8FF', padding: 40, textAlign: 'center' }}>
