@@ -347,6 +347,16 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   // canvas and opened deliberately by the hamburger.
   const [isNarrow, setIsNarrow] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Phone breakpoint: below 700px the sidebar becomes an off-canvas drawer.
+  // Tablet (700–1023px) keeps a 72px icon rail (see railMode below) instead.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 699px)');
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)');
     const sync = () => {
@@ -366,6 +376,10 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   }, [mobileNavOpen, isNarrow]);
   // Any tab change is navigation: close the drawer behind it.
   useEffect(() => { setMobileNavOpen(false); }, [activeTab]);
+  // Drawer overlay (phone, or tablet via hamburger) vs icon rail (tablet).
+  // Desktop (>=1024px, !isNarrow) follows sidebarCollapsed exactly as before.
+  const drawerOpen = isNarrow && mobileNavOpen;
+  const railMode = !drawerOpen && (sidebarCollapsed || (isNarrow && !isMobile));
   const [draggedMediaId, setDraggedMediaId] = useState<string | null>(null);
   const [dragOverMediaId, setDragOverMediaId] = useState<string | null>(null);
 
@@ -3168,6 +3182,9 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           .sp-hdr-status-text { display: none; }
           .sp-hdr-right { gap: 8px; }
         }
+        @media (max-width: 480px) {
+          .sp-hdr-sub { display: none; }
+        }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
@@ -3185,8 +3202,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
 
-      {/* Sidebar - collapsible slidebar */}
-      {isNarrow && mobileNavOpen && (
+      {/* Sidebar - collapsible slidebar (icon rail on tablet, drawer on phone) */}
+      {drawerOpen && (
         <div
           onClick={() => setMobileNavOpen(false)}
           aria-hidden="true"
@@ -3194,14 +3211,14 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         />
       )}
       <aside style={{
-        width: isNarrow ? '248px' : (sidebarCollapsed ? '72px' : '248px'),
-        transform: isNarrow && !mobileNavOpen ? 'translateX(-100%)' : 'translateX(0)',
+        width: drawerOpen ? '248px' : (isMobile ? '248px' : (railMode ? '72px' : '248px')),
+        transform: isMobile && !mobileNavOpen ? 'translateX(-100%)' : 'translateX(0)',
         transition: 'transform 0.25s cubic-bezier(0.4,0,0.2,1), width 0.3s cubic-bezier(0.4,0,0.2,1)',
         backgroundColor: '#0f172a', color: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, position: 'fixed', height: '100vh', zIndex: 10, boxShadow: '4px 0 24px rgba(0,0,0,0.15)', overflow: 'hidden', overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: '#334155 transparent' }}>
-        <div style={{ padding: sidebarCollapsed ? '20px 12px' : '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: '12px', justifyContent: sidebarCollapsed ? 'center' : 'space-between' }}>
+        <div style={{ padding: railMode ? '20px 12px' : '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: '12px', justifyContent: railMode ? 'center' : 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
             <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #6366f1, #a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 700, flexShrink: 0 }}>SP</div>
-            {!sidebarCollapsed && (
+            {!railMode && (
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>SocialPulse</div>
                 <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap' }}>Content Manager</div>
@@ -3210,7 +3227,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           </div>
           <button
             onClick={() => (isNarrow ? setMobileNavOpen(v => !v) : setSidebarCollapsed(v => !v))}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={isNarrow ? (drawerOpen ? 'Close navigation menu' : 'Open navigation menu') : (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
             style={{ width: '28px', height: '28px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.06)', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', flexShrink: 0, transition: 'all 0.2s' }}
             onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
             onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#94a3b8'; }}
@@ -3220,7 +3237,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         </div>
 
         <nav style={{ flex: 1, padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '2px', overflowY: 'auto' }}>
-          {!sidebarCollapsed && <div style={{ padding: '0 16px', marginBottom: '10px', fontSize: '10px', fontWeight: 600, color: '#475569', textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>Main</div>}
+          {!railMode && <div style={{ padding: '0 16px', marginBottom: '10px', fontSize: '10px', fontWeight: 600, color: '#475569', textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>Main</div>}
           {[
             { icon: '📊', label: 'Dashboard', tab: 'dashboard' as const },
             { icon: '✏️', label: 'Content Studio', tab: 'studio' as const },
@@ -3235,34 +3252,34 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               <button
                 key={item.label}
                 onClick={() => goToTab(item.tab)}
-                title={sidebarCollapsed ? item.label : undefined}
+                title={railMode ? item.label : undefined}
                 style={{
-                  padding: sidebarCollapsed ? '12px' : '10px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: active ? 700 : 500,
+                  padding: railMode ? '12px' : '10px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: active ? 700 : 500,
                   color: active ? '#fff' : '#94a3b8',
                   cursor: 'pointer', border: 'none',
                   background: active && isStudio ? 'linear-gradient(135deg, #7C3AED, #8B5CF6)' : active ? 'rgba(124,58,237,0.18)' : 'transparent',
                   boxShadow: active && isStudio ? '0 3px 12px rgba(124,58,237,0.35)' : 'none',
-                  display: 'flex', alignItems: 'center', gap: sidebarCollapsed ? '0' : '12px', width: '100%', textAlign: 'left', justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                  display: 'flex', alignItems: 'center', gap: railMode ? '0' : '12px', width: '100%', textAlign: 'left', justifyContent: railMode ? 'center' : 'flex-start',
                   fontFamily: 'inherit', transition: 'all 0.2s',
                 }}
                 onMouseEnter={e => { if (!active) { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#e2e8f0'; } }}
                 onMouseLeave={e => { if (!active) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#94a3b8'; } }}
               >
-                <span style={{ fontSize: '16px' }}>{item.icon}</span> {!sidebarCollapsed && item.label}
+                <span style={{ fontSize: '16px' }}>{item.icon}</span> {!railMode && item.label}
               </button>
             );
           })}
         </nav>
 
-        <div style={{ padding: sidebarCollapsed ? '12px 8px' : '16px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', position: 'relative' }}>
+        <div style={{ padding: railMode ? '12px 8px' : '16px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', position: 'relative' }}>
           <button
             onClick={() => setProfileMenuOpen(v => !v)}
-            style={{ display: 'flex', alignItems: 'center', gap: '10px', justifyContent: sidebarCollapsed ? 'center' : 'flex-start', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', justifyContent: railMode ? 'center' : 'flex-start', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
           >
             <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 600, flexShrink: 0, color: '#fff' }}>
               {(currentUser?.name || '?').charAt(0).toUpperCase()}
             </div>
-            {!sidebarCollapsed && (
+            {!railMode && (
               <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                 <div style={{ fontSize: '13px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.name || 'Loading…'}</div>
                 <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.email || ''}</div>
@@ -3272,7 +3289,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           {profileMenuOpen && (
             <>
               <div onClick={() => setProfileMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />
-              <div style={{ position: 'absolute', bottom: '100%', left: sidebarCollapsed ? '8px' : '20px', right: sidebarCollapsed ? '8px' : '20px', marginBottom: '8px', backgroundColor: '#fff', borderRadius: '10px', boxShadow: '0 12px 32px rgba(0,0,0,0.18)', border: '1px solid #e2e8f0', overflow: 'hidden', zIndex: 20 }}>
+              <div style={{ position: 'absolute', bottom: '100%', left: railMode ? '8px' : '20px', right: railMode ? '8px' : '20px', marginBottom: '8px', backgroundColor: '#fff', borderRadius: '10px', boxShadow: '0 12px 32px rgba(0,0,0,0.18)', border: '1px solid #e2e8f0', overflow: 'hidden', zIndex: 20 }}>
                 <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9' }}>
                   <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.name}</div>
                   <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.email}</div>
@@ -3284,7 +3301,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               </div>
             </>
           )}
-          {!sidebarCollapsed && <div style={{ marginTop: '12px', padding: '14px 12px', borderRadius: '12px', background: 'linear-gradient(135deg, #7C3AED, #8B5CF6)', display: 'flex', flexDirection: 'column', gap: '4px', boxShadow: '0 4px 14px rgba(124,58,237,0.3)' }}>
+          {!railMode && <div style={{ marginTop: '12px', padding: '14px 12px', borderRadius: '12px', background: 'linear-gradient(135deg, #7C3AED, #8B5CF6)', display: 'flex', flexDirection: 'column', gap: '4px', boxShadow: '0 4px 14px rgba(124,58,237,0.3)' }}>
             <span style={{ fontSize: '10px', fontWeight: 800, color: 'rgba(255,255,255,0.75)', letterSpacing: '0.08em' }}>AI-POWERED</span>
             <span style={{ fontSize: '13px', fontWeight: 800, color: '#fff', lineHeight: 1.3 }}>Social Media<br />Made Simple</span>
             <button onClick={() => goToTab('studio')} style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', border: 'none', backgroundColor: 'rgba(255,255,255,0.18)', color: '#fff', fontSize: '11px', fontWeight: 700, cursor: 'pointer', borderWidth: 0 }}>Try Studio →</button>
@@ -3310,7 +3327,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         minWidth: 0,
         width: 'auto',
         maxWidth: '100%',
-        marginLeft: isNarrow ? '0' : (sidebarCollapsed ? '72px' : '248px'),
+        marginLeft: isMobile ? '0' : (railMode ? '72px' : '248px'),
         display: 'flex',
         flexDirection: 'column',
         minHeight: '100vh',
@@ -3333,7 +3350,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block', boxShadow: '0 0 0 3px rgba(16,185,129,0.15)' }} />
                 {topBarInfo[activeTab].title}
               </div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '1px', fontWeight: 400 }}>{topBarInfo[activeTab].subtitle}</div>
+              <div className="sp-hdr-sub" style={{ fontSize: '12px', color: '#64748b', marginTop: '1px', fontWeight: 400 }}>{topBarInfo[activeTab].subtitle}</div>
             </div>
           </div>
           <div className="sp-hdr-right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

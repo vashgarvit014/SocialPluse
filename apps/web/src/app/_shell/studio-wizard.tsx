@@ -245,14 +245,16 @@ function WizardStepper({ step, go }: { step: number; go: (n: number) => void }) 
       }}
     >
       <style>{`
-        .sp-stepper-rail { scrollbar-width: none; -ms-overflow-style: none; }
+        .sp-stepper-rail { scrollbar-width: none; -ms-overflow-style: none; scroll-snap-type: x proximity; }
         .sp-stepper-rail::-webkit-scrollbar { display: none; }
+        .sp-stepper-rail > div { scroll-snap-align: center; }
+        .sp-step-label { font-size: clamp(11px, 1vw, 14px) !important; white-space: nowrap; }
         .sp-step-arrow:not(:disabled):hover { transform: scale(1.05); box-shadow: 0 0 16px rgba(139,92,246,0.45); }
         .sp-step-arrow:focus-visible, .sp-step-item:focus-visible { outline: 2px solid #A855F7; outline-offset: 2px; }
         .sp-step-circle { width: 42px; height: 42px; font-size: 14px; }
         @media (max-width: 768px) {
           .sp-step-circle { width: 36px !important; height: 36px !important; font-size: 12px !important; }
-          .sp-step-label { font-size: 12.5px !important; }
+          .sp-stepper { padding: 14px 16px 12px; }
         }
         @keyframes spStepPop { 0% { transform: scale(0.92); } 55% { transform: scale(1.05); } 100% { transform: scale(1); } }
         @keyframes spCheckIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
@@ -717,14 +719,25 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   );
 
   return (
-    <div className="sp-wiz-root" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 20, flex: 1, alignItems: 'stretch', minHeight: 'calc(100vh - 64px)', maxWidth: 1120, width: '100%', minWidth: 0, margin: '0 auto' }}>
+    <div className="sp-wiz-root" style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(10px, 1.5vw, 14px)', padding: 'clamp(12px, 2vw, 20px)', flex: 1, alignItems: 'stretch', minHeight: 'calc(100vh - 64px)', maxWidth: 1180, width: '100%', minWidth: 0, margin: '0 auto' }}>
       <style>{`
         .sp-wiz-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         .sp-wiz-prev { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 14px; align-items: start; }
         .sp-wiz-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
         .sp-wiz-title2 { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
         .sp-wiz-media2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; align-items: stretch; }
-        .sp-s1-grid { display: grid; grid-template-columns: minmax(0,1fr) 336px; gap: 12px; align-items: start; }
+        .sp-s1-grid { display: grid; gap: clamp(10px, 1.5vw, 18px); align-items: start; }
+        /* Desktop >=1200: editor ~73% / helper ~27%. Laptop 900–1199: same
+           two columns, tighter. Tablet/mobile <900: single column — helper
+           cards flow below the editor in DOM order. */
+        @media (min-width: 1200px) { .sp-s1-grid { grid-template-columns: minmax(0,2.2fr) minmax(260px,0.8fr); } }
+        @media (min-width: 900px) and (max-width: 1199px) { .sp-s1-grid { grid-template-columns: minmax(0,1.8fr) minmax(240px,0.8fr); } }
+        @media (max-width: 899px) { .sp-s1-grid { grid-template-columns: 1fr; } }
+        /* Laptop: reduce Step 1 card padding so the UI never looks zoomed-out. */
+        @media (min-width: 900px) and (max-width: 1199px) { .sp-s1-card { padding: 20px 18px !important; } }
+        @media (max-width: 699px) { .sp-s1-card { padding: 18px 14px !important; border-radius: 16px !important; } }
+        /* Mobile single column: helper aside stacks below the editor. */
+        @media (max-width: 899px) { .sp-s1-grid > aside { position: static; } }
         .sp-s1-ta { transition: border-color 0.18s, box-shadow 0.18s, background-color 0.18s; }
         .sp-s1-ta:focus { border-color: #7C3AED !important; box-shadow: 0 0 0 4px rgba(124,58,237,0.14) !important; background-color: #fff !important; }
         .sp-s1-pill { transition: all 0.16s; }
@@ -734,8 +747,28 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-s1-drop:focus-visible { outline: 2px solid #A855F7; outline-offset: 2px; }
         .sp-cloud { animation: spCloudFloat 4.5s ease-in-out infinite; transition: transform .18s ease; }
         @keyframes spCloudFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
-        .sp-topic-slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
-        @media (max-width: 560px) { .sp-topic-slots { grid-template-columns: repeat(2, 1fr); } }
+        /* Image slots: 4 columns desktop, 2 columns tablet, auto-fit on mobile
+           (2 columns at phone widths, 1 column only when extremely narrow). */
+        .sp-topic-slots { display: grid; gap: 10px; margin-top: 10px; grid-template-columns: repeat(4, 1fr); }
+        @media (min-width: 700px) and (max-width: 899px) { .sp-topic-slots { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 699px) { .sp-topic-slots { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); } }
+        /* Mobile social card: smaller badges, shorter travel, same containment. */
+        @media (max-width: 700px) {
+          .sp-soc { width: 44px; height: 44px; }
+          .sp-soc-visual { height: 188px; }
+          .sp-robot { width: 62px; height: 62px; margin-left: -31px; margin-top: -31px; font-size: 32px; }
+          .sp-orbit { width: 120px; height: 120px; margin-left: -60px; margin-top: -60px; }
+          @keyframes spDriftLi { 0%,100% { transform: translate(0,0) rotate(-3deg); } 50% { transform: translate(5px,6px) rotate(3deg); } }
+          @keyframes spDriftIg { 0%,100% { transform: translate(0,0) rotate(3deg); } 50% { transform: translate(-5px,6px) rotate(-3deg); } }
+          @keyframes spFloatY { 0%,100% { transform: translateY(-3px); } 50% { transform: translateY(4px); } }
+          @keyframes spFloatDiag { 0%,100% { transform: translate(-2px,-2px); } 50% { transform: translate(4px,4px); } }
+        }
+        /* Step 1 nav: Next goes full-width with a 44px+ touch target on phones. */
+        @media (max-width: 699px) {
+          .sp-step-nav { flex-direction: column; align-items: stretch !important; }
+          .sp-step-nav .sp-next { width: 100%; min-height: 48px; }
+        }
+        .sp-wiz-root img { max-width: 100%; }
         /* --- Step 1 inspiration card: zoned social animation (visual zone is
                position:relative + overflow:hidden; icons are absolutely
                positioned INSIDE it with small translate ranges so they can
@@ -767,7 +800,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-ai-arrive { animation: spAiArrive 600ms ease both; }
         @keyframes spAiArrive { from { opacity: 0.35; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
         @media (prefers-reduced-motion: reduce) { .sp-ai-arrive { animation: none; } }
-        @media (max-width: 1024px) { .sp-s1-grid, .sp-s2-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 1024px) { .sp-s2-grid { grid-template-columns: 1fr; } }
         @media (max-width: 900px) { .sp-wiz-grid2, .sp-wiz-prev, .sp-wiz-media2 { grid-template-columns: 1fr; } }
         @media (max-width: 700px) { .sp-wiz-grid3 { grid-template-columns: 1fr; } }
 
@@ -799,12 +832,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         {currentStep === 1 && (
           <div className="sp-s1-grid">
             {/* ============ LEFT — TOPIC & IDEA CARD ============ */}
-            <div style={{ ...card, borderRadius: 20, padding: '28px 24px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+            <div className="sp-s1-card" style={{ ...card, borderRadius: 20, padding: '28px 24px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 18 }}>
                 <div style={{ width: 48, height: 48, borderRadius: 14, background: '#FEF3C7', border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>💡</div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Topic & Idea</div>
-                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4, lineHeight: 1.6 }}>Describe your post idea, topic, or key message. The more details you provide, the better the results.</div>
+                  <div style={{ fontSize: 'clamp(18px, 2vw, 22px)', fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Topic & Idea</div>
+                  <div style={{ fontSize: 'clamp(12px, 1.2vw, 13px)', color: C.muted, marginTop: 4, lineHeight: 1.6 }}>Describe your post idea, topic, or key message. The more details you provide, the better the results.</div>
                 </div>
               </div>
 
@@ -871,11 +904,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               </div>
               <input ref={p.topicFileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={p.handleTopicUpload} style={{ display: 'none' }} />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 26, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}` }}>
+              <div className="sp-step-nav" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 26, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}` }}>
                 <div style={{ flex: 1 }}>
                   {!hasTopic && <span style={{ fontSize: 12, color: '#92400E', fontWeight: 600 }}>Topic required — describe your post or add a reference image to continue.</span>}
                 </div>
                 <button
+                  className="sp-next"
                   onClick={goNext}
                   disabled={!hasTopic}
                   title={!hasTopic ? 'Enter a topic or add a reference image first' : 'Continue'}
