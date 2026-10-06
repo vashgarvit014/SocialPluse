@@ -724,7 +724,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-wiz-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
         .sp-wiz-title2 { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
         .sp-wiz-media2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; align-items: stretch; }
-        .sp-s1-grid { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 16px; align-items: start; }
+        .sp-s1-grid { display: grid; grid-template-columns: minmax(0,1fr) 336px; gap: 12px; align-items: start; }
         .sp-s1-ta { transition: border-color 0.18s, box-shadow 0.18s, background-color 0.18s; }
         .sp-s1-ta:focus { border-color: #7C3AED !important; box-shadow: 0 0 0 4px rgba(124,58,237,0.14) !important; background-color: #fff !important; }
         .sp-s1-pill { transition: all 0.16s; }
@@ -799,7 +799,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         {currentStep === 1 && (
           <div className="sp-s1-grid">
             {/* ============ LEFT — TOPIC & IDEA CARD ============ */}
-            <div style={{ ...card, borderRadius: 20, padding: '28px 30px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+            <div style={{ ...card, borderRadius: 20, padding: '28px 24px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 18 }}>
                 <div style={{ width: 48, height: 48, borderRadius: 14, background: '#FEF3C7', border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>💡</div>
                 <div style={{ minWidth: 0 }}>
@@ -900,13 +900,13 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <span className="sp-soc" title="WhatsApp" style={{ right: '15%', bottom: 16, backgroundColor: p.platformColors.whatsapp || '#25D366', boxShadow: '0 4px 12px rgba(37,211,102,0.42)', animation: 'spFloatDiag 6s ease-in-out infinite', animationDelay: '1.4s' }}><p.PlatformIcon platform="whatsapp" size={22} /></span>
                   <span className="sp-robot" style={{ animation: 'spBreathe 5.5s ease-in-out infinite' }}>🤖</span>
                 </div>
-                <div style={{ padding: '18px 22px 22px', borderTop: '1px solid rgba(233,213,255,0.7)' }}>
+                <div style={{ padding: '18px 16px 20px', borderTop: '1px solid rgba(233,213,255,0.7)' }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>A great idea leads to great content ✨</div>
                   <div style={{ fontSize: 12, color: '#64748B', marginTop: 8, lineHeight: 1.65 }}>Share your thoughts, add reference images, and let AI bring your ideas to life.</div>
                 </div>
               </div>
 
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
+              <div style={{ ...card, borderRadius: 20, padding: '20px 16px' }}>
                 <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 12 }}>Tips to write a good idea:</div>
                 {['Be specific', 'Mention your audience', 'Include key message', 'Add tone (e.g. professional, casual)', 'Attach reference images'].map(tip => (
                   <div key={tip} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
@@ -916,7 +916,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 ))}
               </div>
 
-              <div style={{ borderRadius: 20, padding: '20px 22px', background: '#FFFBEB', border: '1px solid #FDE68A', display: 'flex', gap: 12 }}>
+              <div style={{ borderRadius: 20, padding: '20px 16px', background: '#FFFBEB', border: '1px solid #FDE68A', display: 'flex', gap: 12 }}>
                 <div style={{ width: 38, height: 38, borderRadius: 12, background: '#FEF3C7', border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>🎯</div>
                 <div>
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: '#92400E' }}>Pro Tip</div>
