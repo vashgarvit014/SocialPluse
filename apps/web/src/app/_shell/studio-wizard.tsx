@@ -1088,43 +1088,34 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 </div>
               </div>
 
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Current Selection</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 4, marginBottom: 12 }}>Here&apos;s what you&apos;ve chosen so far.</div>
+              <div style={{ ...card, borderRadius: 16, padding: '18px 20px', boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Current Selection</div>
+                  <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ border: 'none', background: 'none', color: C.primary, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', padding: '4px 0 4px 8px' }}>Edit</button>
+                </div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2, marginBottom: 12 }}>Your choices for content generation</div>
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: C.faint }}>TONE</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 2 }}>{p.tone}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 4 }}>{p.tone}</div>
                 </div>
-                <div style={{ marginBottom: 10 }}>
+                <div>
                   <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: C.faint }}>PLATFORMS</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 2 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
                     {(['linkedin', 'facebook', 'instagram', 'whatsapp'] as const)
                       .filter(pl => p.selectedPlatforms.includes(pl))
-                      .map(pl => PLATFORM_LABELS[pl] || pl)
-                      .join(', ') || 'No platforms selected'}
+                      .map(pl => (
+                        <span key={pl} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px 4px 4px', borderRadius: 999, backgroundColor: '#F6F1FF', border: '1px solid #E4DBFF', fontSize: 12, fontWeight: 700, color: C.primaryDark }}>
+                          <span style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: p.platformColors[pl] || C.primary, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <p.PlatformIcon platform={pl} size={10} />
+                          </span>
+                          {PLATFORM_LABELS[pl] || pl}
+                        </span>
+                      ))}
+                    {p.selectedPlatforms.length === 0 && (
+                      <span style={{ fontSize: 12, color: C.muted }}>No platforms selected</span>
+                    )}
                   </div>
                 </div>
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: C.faint }}>CONTENT GOAL</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 2 }}>Generate engaging post copy</div>
-                </div>
-                <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ width: '100%', padding: '11px', borderRadius: 11, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.primary}`, backgroundColor: '#fff', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit' }}>Edit choices</button>
-              </div>
-
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 4 }}>Quick Tips</div>
-                {[
-                  'Pick a tone that matches your audience',
-                  'Choose platforms before content generation',
-                  'Keep your message specific',
-                  'You can refine content in the next step',
-                ].map(tip => (
-                  <div key={tip} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '6px 0' }}>
-                    <span style={{ color: C.primary, fontWeight: 800, flexShrink: 0, lineHeight: 1.5 }}>—</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 500, color: '#334155', lineHeight: 1.5 }}>{tip}</span>
-                  </div>
-                ))}
-                <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 12, background: 'linear-gradient(135deg,#F5F0FF,#FCE7F3)', border: '1px solid #E9D5FF', fontSize: 12.5, fontStyle: 'italic', fontWeight: 600, color: C.primaryDark, textAlign: 'center', lineHeight: 1.6 }}>&ldquo;Good content starts with the right tone.&rdquo;</div>
               </div>
             </aside>
           </div>
