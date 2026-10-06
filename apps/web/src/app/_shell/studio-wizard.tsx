@@ -1206,7 +1206,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       </div>
                       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                         <button onClick={() => { try { navigator.clipboard.writeText(p.content); setCopiedText(true); setTimeout(() => setCopiedText(false), 2000); } catch {} }} style={{ padding: '10px 18px', borderRadius: 10, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.border}`, backgroundColor: copiedText ? '#ECFDF5' : '#fff', color: copiedText ? '#059669' : C.ink, cursor: 'pointer', fontFamily: 'inherit' }}>📋 {copiedText ? 'Copied ✓' : 'Copy Text'}</button>
-                        <button onClick={() => setCurrentStep(2)} title="Change tone in Creative Settings" style={{ padding: '10px 18px', borderRadius: 10, fontSize: 12.5, fontWeight: 800, border: '1.5px solid #FDE68A', backgroundColor: '#FFFBEB', color: '#92400E', cursor: 'pointer', fontFamily: 'inherit' }}>💼 Tone: {p.tone}</button>
+                        <button onClick={() => setCurrentStep(2)} title="Change tone in Settings" style={{ padding: '10px 18px', borderRadius: 10, fontSize: 12.5, fontWeight: 800, border: '1.5px solid #FDE68A', backgroundColor: '#FFFBEB', color: '#92400E', cursor: 'pointer', fontFamily: 'inherit' }}>💼 Tone: {p.tone}</button>
                       </div>
                     </div>
                   )}
