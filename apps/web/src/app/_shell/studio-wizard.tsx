@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { StudioWorkspaceProps } from './studio-workspace';
 import type { MediaItem } from './social-media-manager';
 import AiImageLoader from './ai-image-loader';
@@ -101,6 +101,17 @@ function WizardNav({ onBack, backLabel = '← Back', next }: { onBack?: () => vo
 }
 
 // ---------------------------------------------------------------------------
+// Canonical display names for the platform ids already used by
+// selectedPlatforms. Shared by the platform rows and the "Selected for content"
+// summary so a label can never drift between them (deriving it with
+// charAt(0).toUpperCase() rendered "Linkedin" / "Whatsapp").
+const PLATFORM_LABELS: Record<string, string> = {
+  linkedin: 'LinkedIn',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  whatsapp: 'WhatsApp',
+};
+
 // Stepper
 // ---------------------------------------------------------------------------
 const STEPS = [
@@ -115,34 +126,302 @@ const STEPS = [
 ];
 
 function WizardStepper({ step, go }: { step: number; go: (n: number) => void }) {
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const activeRef = useRef<HTMLDivElement | null>(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  const updateArrows = useCallback(() => {
+    const el = railRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setCanLeft(el.scrollLeft > 4);
+    setCanRight(el.scrollLeft < max - 4);
+  }, []);
+
+  const reducedMotion = () =>
+    typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const centerActive = useCallback((instant: boolean) => {
+    // Deterministic scroll math instead of scrollIntoView(): the latter is
+    // affected by CSS scroll-behavior hijacking ('auto' becomes smooth on this
+    // rail), by layout timing, and by clamp edge cases — observed as a fixed
+    // ~145px miss at 768px that no amount of deferral fixed. An explicit
+    // scrollTo target computed from live rects always wins over CSS, and the
+    // browser clamps it correctly at the content edges (where perfect
+    // centering is physically impossible).
+    const el = railRef.current;
+    const item = activeRef.current;
+    if (!el || !item) return;
+    const railBox = el.getBoundingClientRect();
+    const itemBox = item.getBoundingClientRect();
+    const target = el.scrollLeft
+      + (itemBox.left + itemBox.width / 2)
+      - (railBox.left + railBox.width / 2);
+    el.scrollTo({ left: target, behavior: instant || reducedMotion() ? 'instant' : 'smooth' });
+  }, []);
+
+  // scrollIntoView measures layout synchronously, so calling it in the same
+  // task as a viewport resize (or a React commit that is still reflowing) can
+  // center against stale geometry and leave the rail overscrolled. Deferring
+  // past layout settles it. The id is kept so rapid resizes coalesce.
+  const rafRef = useRef<number | null>(null);
+  const scheduleCenter = useCallback((instant: boolean) => {
+    if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current);
+    rafRef.current = window.requestAnimationFrame(() => {
+      rafRef.current = window.requestAnimationFrame(() => {
+        rafRef.current = null;
+        centerActive(instant);
+      });
+    });
+  }, [centerActive]);
+
+  useEffect(() => {
+    updateArrows();
+    const el = railRef.current;
+    if (!el) return;
+    const onScroll = () => updateArrows();
+    // Observe the RAIL's own box, not window resize: a viewport change reflows
+    // the rail, which can leave the active step off center even though the
+    // step never changed. ResizeObserver fires post-layout with fresh
+    // geometry, so the re-center it schedules can never compute against stale
+    // widths (the failure mode of window-resize timing). Scroll position alone
+    // never triggers it, so user-driven scrolling is never yanked back.
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => { scheduleCenter(true); updateArrows(); });
+      ro.observe(el);
+    }
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      ro?.disconnect();
+      if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current);
+    };
+  }, [updateArrows, scheduleCenter]);
+
+  // Center the active step whenever it changes. block:'nearest' guarantees no
+  // vertical page jump; reduced-motion users get an instant jump instead.
+  useEffect(() => {
+    scheduleCenter(false);
+    updateArrows();
+  }, [step, scheduleCenter, updateArrows]);
+
+  const nudge = (dx: number) => {
+    const el = railRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dx, behavior: reducedMotion() ? 'instant' : 'smooth' });
+  };
+
+  const progress = STEPS.length > 1 ? ((step - 1) / (STEPS.length - 1)) * 100 : 0;
+
+  const arrowBtn = (dir: -1 | 1, label: string, enabled: boolean): React.CSSProperties => ({
+    width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 20, fontWeight: 800, lineHeight: 1, color: '#fff',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(139,92,246,0.28)',
+    cursor: enabled ? 'pointer' : 'default',
+    opacity: enabled ? 1 : 0.3,
+    fontFamily: 'inherit', padding: 0,
+    transition: 'transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease',
+  });
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0, overflowX: 'auto', padding: '6px 2px' }}>
-      {STEPS.map((s, i) => {
-        const done = s.n < step;
-        const active = s.n === step;
-        return (
-          <div key={s.n} style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 100 }}>
-            <button
-              onClick={() => { if (s.n < step) go(s.n); }}
-              disabled={s.n > step}
-              style={{ background: 'none', border: 'none', cursor: s.n < step ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 10, padding: 0, fontFamily: 'inherit' }}
-              title={s.n < step ? `Go back to ${s.t}` : s.t}
-            >
-              <span style={{
-                width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, fontWeight: 800,
-                background: done ? '#7C3AED' : active ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#F1F3F9',
-                color: done || active ? '#fff' : '#9AA1B5',
-                border: active ? '3px solid #DDD6FE' : done ? 'none' : '1.5px solid #E8EAF1',
-                boxShadow: active ? '0 4px 16px rgba(124,58,237,0.45)' : done ? '0 2px 8px rgba(124,58,237,0.25)' : 'none',
-              }}>{done ? '✓' : s.n}</span>
-              <span style={{ fontSize: 13, fontWeight: 800, color: active ? '#6D28D9' : done ? C.ink : '#9AA1B5', letterSpacing: '-0.01em' }}>{s.t}</span>
-            </button>
-            {i < STEPS.length - 1 && <span style={{ flex: 1, height: 3, borderRadius: 3, margin: '0 12px', background: s.n < step ? 'linear-gradient(90deg,#7C3AED,#A855F7)' : '#E9ECF3', minWidth: 14 }} />}
+    <div
+      className="sp-stepper"
+      role="navigation"
+      aria-label="Content creation progress"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '18px 24px 14px',
+        minHeight: 118,
+        borderRadius: 999,
+        background: 'linear-gradient(180deg, #111321 0%, #090B15 100%)',
+        border: '1px solid rgba(139,92,246,0.18)',
+        boxShadow: '0 12px 40px rgba(15,23,42,0.18), 0 0 24px rgba(124,58,237,0.10)',
+      }}
+    >
+      <style>{`
+        .sp-stepper-rail { scrollbar-width: none; -ms-overflow-style: none; }
+        .sp-stepper-rail::-webkit-scrollbar { display: none; }
+        .sp-step-arrow:not(:disabled):hover { transform: scale(1.05); box-shadow: 0 0 16px rgba(139,92,246,0.45); }
+        .sp-step-arrow:focus-visible, .sp-step-item:focus-visible { outline: 2px solid #A855F7; outline-offset: 2px; }
+        .sp-step-circle { width: 42px; height: 42px; font-size: 14px; }
+        @media (max-width: 768px) {
+          .sp-step-circle { width: 36px !important; height: 36px !important; font-size: 12px !important; }
+          .sp-step-label { font-size: 12.5px !important; }
+        }
+        @keyframes spStepPop { 0% { transform: scale(0.92); } 55% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        @keyframes spCheckIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+        @media (prefers-reduced-motion: reduce) {
+          .sp-stepper *, .sp-stepper *::before, .sp-stepper *::after { animation: none !important; transition: none !important; }
+          .sp-stepper-rail { scroll-behavior: auto !important; }
+        }
+      `}</style>
+
+      <button
+        type="button"
+        aria-label="Scroll steps left"
+        disabled={!canLeft}
+        onClick={() => nudge(-260)}
+        className="sp-step-arrow"
+        style={arrowBtn(-1, 'Scroll steps left', canLeft)}
+      >
+        ‹
+      </button>
+
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div
+          ref={railRef}
+          className="sp-stepper-rail"
+          style={{
+            display: 'flex', alignItems: 'center',
+            overflowX: 'auto', overflowY: 'hidden',
+            whiteSpace: 'nowrap', scrollBehavior: 'smooth',
+            padding: '6px 2px 2px',
+          }}
+        >
+          {STEPS.map((s, i) => {
+            const done = s.n < step;
+            const active = s.n === step;
+            return (
+              <div
+                key={s.n}
+                ref={active ? activeRef : undefined}
+                style={{ display: 'flex', alignItems: 'center', flexShrink: 0, position: 'relative' }}
+              >
+                {active && (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)',
+                      width: 34, height: 4, borderRadius: 999,
+                      background: 'linear-gradient(90deg,#8B5CF6,#D946EF)',
+                      boxShadow: '0 0 12px rgba(139,92,246,0.8)',
+                    }}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => { if (s.n < step) go(s.n); }}
+                  disabled={s.n > step}
+                  aria-current={active ? 'step' : undefined}
+                  title={s.n < step ? `Go back to ${s.t}` : s.t}
+                  className="sp-step-item"
+                  style={{
+                    background: active ? 'rgba(124,58,237,0.10)' : 'none',
+                    border: 'none',
+                    borderRadius: 18,
+                    padding: active ? '8px 14px' : '8px 10px',
+                    boxShadow: active ? '0 0 20px rgba(139,92,246,0.16)' : 'none',
+                    cursor: s.n < step ? 'pointer' : 'default',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    fontFamily: 'inherit', whiteSpace: 'nowrap',
+                    transition: 'background 200ms ease, box-shadow 200ms ease',
+                  }}
+                >
+                  <span
+                    className="sp-step-circle"
+                    style={{
+                      borderRadius: '50%', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 800,
+                      background: done || active
+                        ? 'linear-gradient(135deg,#7C3AED,#A855F7)'
+                        : '#1E2436',
+                      color: done || active ? '#fff' : 'rgba(226,232,240,0.55)',
+                      border: active
+                        ? 'none'
+                        : done ? 'none' : '1px solid rgba(148,163,184,0.35)',
+                      boxShadow: active
+                        ? '0 0 0 4px rgba(139,92,246,.12), 0 0 20px rgba(139,92,246,.45)'
+                        : done ? '0 0 12px rgba(139,92,246,.25)' : 'none',
+                      animation: active ? 'spStepPop 350ms ease-out' : undefined,
+                    }}
+                  >
+                    {done ? (
+                      <span style={{ display: 'inline-block', animation: 'spCheckIn 300ms ease-out' }}>✓</span>
+                    ) : s.n}
+                  </span>
+                  <span
+                    className="sp-step-label"
+                    style={{
+                      fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em', whiteSpace: 'nowrap',
+                      color: done || active ? '#F8FAFC' : 'rgba(226,232,240,.65)',
+                    }}
+                  >
+                    {s.t}
+                  </span>
+                </button>
+                {i < STEPS.length - 1 && (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: 'relative', flexShrink: 0,
+                      width: 'clamp(22px, 3.5vw, 48px)', height: 3, borderRadius: 3,
+                      margin: '0 8px', background: '#2A3044', overflow: 'hidden',
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: 'absolute', inset: 0,
+                        background: 'linear-gradient(90deg,#7C3AED,#A855F7)',
+                        transform: `scaleX(${s.n < step ? 1 : 0})`,
+                        transformOrigin: 'left center',
+                        transition: 'transform 400ms ease-out',
+                      }}
+                    />
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          role="progressbar"
+          aria-valuemin={1}
+          aria-valuemax={STEPS.length}
+          aria-valuenow={step}
+          aria-label="Wizard progress"
+          style={{ position: 'relative', height: 5, borderRadius: 999, background: '#232839', margin: '0 2px' }}
+        >
+          <div
+            style={{
+              position: 'absolute', left: 0, top: 0, bottom: 0,
+              width: `${progress}%`, borderRadius: 999,
+              background: 'linear-gradient(90deg,#6D28D9,#8B5CF6,#D946EF)',
+              boxShadow: '0 0 10px rgba(139,92,246,0.5)',
+              transition: 'width 400ms ease-out',
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute', right: -6, top: '50%', transform: 'translateY(-50%)',
+                width: 11, height: 11, borderRadius: '50%',
+                background: 'radial-gradient(circle at 35% 35%, #fff 0%, #C4B5FD 45%, #8B5CF6 100%)',
+                boxShadow: '0 0 10px rgba(168,85,247,0.9)',
+                pointerEvents: 'none',
+              }}
+            />
           </div>
-        );
-      })}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        aria-label="Scroll steps right"
+        disabled={!canRight}
+        onClick={() => nudge(260)}
+        className="sp-step-arrow"
+        style={arrowBtn(1, 'Scroll steps right', canRight)}
+      >
+        ›
+      </button>
     </div>
   );
 }
@@ -369,11 +648,17 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   // required (connection is only needed later, to publish). Any selected
   // platform unlocks it, so the button state stays honest.
   const genPlatformSelected = p.selectedPlatforms.length > 0;
+  // Single local alias for the selection list. The platform rows, the
+  // "Selected for content" summary and the Generate button all read the SAME
+  // state through this one reference — no second selection state is introduced,
+  // and it keeps the props bag from being re-read at every use site.
+  const selectedPlatforms = p.selectedPlatforms;
+  const selectedPlatformCount = selectedPlatforms.length;
   const canGenContent = !p.isGeneratingContent && hasTopic && genPlatformSelected;
   const genContentBlocker = !hasTopic
     ? 'Enter a topic first (Step 1)'
     : !genPlatformSelected
-      ? 'Select a platform above first — then Generate Content unlocks'
+      ? 'Select at least one platform.'
       : '';
   const canGenImage = !p.isGeneratingImage && !!p.aspectRatio && !!p.content.trim();
 
@@ -446,6 +731,27 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-s1-pill:hover { border-color: #7C3AED !important; background-color: #F1EBFF !important; color: #6D28D9 !important; transform: translateY(-1px); box-shadow: 0 3px 10px rgba(124,58,237,0.16); }
         .sp-s1-drop { transition: all 0.18s; cursor: pointer; }
         .sp-s1-drop:hover { border-color: #7C3AED !important; background-color: #EDE9FE !important; }
+        .sp-s1-drop:focus-visible { outline: 2px solid #A855F7; outline-offset: 2px; }
+        .sp-cloud { animation: spCloudFloat 4.5s ease-in-out infinite; transition: transform .18s ease; }
+        @keyframes spCloudFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+        .sp-topic-slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
+        @media (max-width: 560px) { .sp-topic-slots { grid-template-columns: repeat(2, 1fr); } }
+        /* --- Step 1 inspiration card: zoned social animation (visual zone is
+               position:relative + overflow:hidden; icons are absolutely
+               positioned INSIDE it with small translate ranges so they can
+               never enter the text zone below) --- */
+        .sp-soc-visual { position: relative; overflow: hidden; height: 212px; }
+        .sp-soc { position: absolute; width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; cursor: default; transition: transform 180ms ease, box-shadow 180ms ease; will-change: transform; }
+        .sp-soc:hover { transform: scale(1.06); }
+        .sp-robot { position: absolute; left: 50%; top: 50%; width: 74px; height: 74px; margin-left: -37px; margin-top: -37px; border-radius: 24px; background: linear-gradient(135deg,#7C3AED,#A855F7); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: 0 10px 28px rgba(124,58,237,.45), inset 0 1px 0 rgba(255,255,255,.35); z-index: 2; }
+        .sp-orbit { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; margin-left: -75px; margin-top: -75px; border: 1.5px dashed rgba(124,58,237,.35); border-radius: 50%; pointer-events: none; animation: spSpinSlow 24s linear infinite; }
+        @keyframes spDriftLi { 0%,100% { transform: translate(0,0) rotate(-3deg); } 50% { transform: translate(9px,10px) rotate(3deg); } }
+        @keyframes spDriftIg { 0%,100% { transform: translate(0,0) rotate(3deg); } 50% { transform: translate(-9px,10px) rotate(-3deg); } }
+        @keyframes spFloatY { 0%,100% { transform: translateY(-5px); } 50% { transform: translateY(6px); } }
+        @keyframes spFloatDiag { 0%,100% { transform: translate(-4px,-4px); } 50% { transform: translate(6px,6px); } }
+        @keyframes spBreathe { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-5px) scale(1.03); } }
+        @keyframes spSpinSlow { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) { .sp-soc, .sp-robot, .sp-orbit, .sp-cloud { animation: none !important; transition: none !important; } }
         .sp-s2-grid { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 16px; align-items: start; }
         .sp-prev-grid { display: grid; grid-template-columns: minmax(0,2.1fr) minmax(300px,1fr); gap: 24px; align-items: start; }
         @media (max-width: 1024px) { .sp-prev-grid { grid-template-columns: 1fr; } }
@@ -492,18 +798,16 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         {/* ================= STEP 1 — IDEA ================= */}
         {currentStep === 1 && (
           <div className="sp-s1-grid">
-            {/* ============ LEFT — MAIN CREATE YOUR POST CARD ============ */}
+            {/* ============ LEFT — TOPIC & IDEA CARD ============ */}
             <div style={{ ...card, borderRadius: 20, padding: '28px 30px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 18 }}>
                 <div style={{ width: 48, height: 48, borderRadius: 14, background: '#FEF3C7', border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>💡</div>
-                <div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Create Your Post</div>
-                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Step 1 of 8: Tell us what you want to create</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Topic & Idea</div>
+                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4, lineHeight: 1.6 }}>Describe your post idea, topic, or key message. The more details you provide, the better the results.</div>
                 </div>
               </div>
 
-              <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Topic & Idea</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 4, marginBottom: 10, lineHeight: 1.6 }}>Describe your post idea, topic, or key message. The more details you provide, the better the results.</div>
               <textarea
                 value={p.prompt}
                 onChange={e => p.setPrompt(e.target.value.slice(0, 2000))}
@@ -532,32 +836,40 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginTop: 24 }}>Reference Images (Optional)</div>
               <div style={{ fontSize: 12, color: C.muted, marginTop: 4, marginBottom: 12 }}>Upload up to 4 images to guide AI and match your vision.</div>
               <div
+                role="button"
+                tabIndex={0}
+                aria-label="Upload reference images"
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); p.topicFileInputRef.current?.click(); } }}
                 onClick={() => p.topicFileInputRef.current?.click()}
                 onDragOver={p.handleDragOver}
                 onDragEnter={e => { e.preventDefault(); p.setDragOverTopic(true); p.setTopicDragOver(true); }}
                 onDragLeave={e => { e.preventDefault(); p.setDragOverTopic(false); p.setTopicDragOver(false); }}
                 onDrop={p.handleTopicDrop}
                 className="sp-s1-drop"
-                style={{ border: `2px dashed ${p.dragOverTopic ? '#7C3AED' : '#C4B5FD'}`, backgroundColor: p.dragOverTopic ? '#EDE9FE' : '#F5F1FF', borderRadius: 16, padding: '30px 20px', textAlign: 'center' }}
+                style={{ position: 'relative', overflow: 'hidden', border: `2px dashed ${p.dragOverTopic ? '#6D28D9' : '#C4B5FD'}`, background: p.dragOverTopic ? '#EDE9FE' : 'linear-gradient(180deg,#FAF8FF 0%,#F5F1FF 100%)', boxShadow: p.dragOverTopic ? '0 0 0 4px rgba(124,58,237,0.16)' : 'none', borderRadius: 16, padding: '30px 20px 26px', textAlign: 'center' }}
               >
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#fff', border: '1px solid #E8EAF1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, margin: '0 auto', boxShadow: '0 4px 14px rgba(124,58,237,0.12)' }}>☁️</div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, marginTop: 12 }}>Drag & drop images here</div>
+                <span aria-hidden="true" style={{ position: 'absolute', top: 16, left: 22, fontSize: 15, opacity: 0.55, pointerEvents: 'none' }}>✨</span>
+                <span aria-hidden="true" style={{ position: 'absolute', top: 20, right: 26, fontSize: 15, opacity: 0.55, pointerEvents: 'none' }}>🖼️</span>
+                <div className="sp-cloud" style={{ width: 52, height: 52, borderRadius: '50%', background: '#fff', border: '1px solid #E8EAF1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, margin: '0 auto', boxShadow: '0 4px 14px rgba(124,58,237,0.12)', transform: p.dragOverTopic ? 'scale(1.1)' : undefined }}>☁️</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, marginTop: 12 }}>{p.dragOverTopic ? 'Drop images to add them' : 'Drag & drop images here'}</div>
                 <div style={{ fontSize: 12.5, color: C.primaryDark, fontWeight: 700, marginTop: 2 }}>or click to upload</div>
                 <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Supports JPG, PNG, WEBP (Max 5MB each)</div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 10 }}>
+              <div className="sp-topic-slots">
                 {p.topicMediaItems.filter(i => i.type === 'image').map(item => (
-                  <div key={item.id} style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, aspectRatio: '1', backgroundColor: '#000' }}>
+                  <div key={item.id} title={item.name} style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, aspectRatio: '1', backgroundColor: '#000', minWidth: 0 }}>
                     <img src={item.url} alt={item.altText || item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                    <button onClick={() => p.removeTopicMedia(item.id)} title="Remove image" style={{ position: 'absolute', top: 5, right: 5, width: 22, height: 22, borderRadius: '50%', backgroundColor: 'rgba(15,23,42,0.78)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                    <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, fontSize: 10, color: '#fff', background: 'linear-gradient(0deg,rgba(0,0,0,0.72),transparent)', padding: '14px 6px 5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'left' }}>{item.name}</div>
+                    <button onClick={() => p.removeTopicMedia(item.id)} title="Remove image" aria-label={`Remove ${item.name}`} style={{ position: 'absolute', top: 5, right: 5, width: 22, height: 22, borderRadius: '50%', backgroundColor: 'rgba(15,23,42,0.78)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                    <span title="Added" style={{ position: 'absolute', left: 5, top: 5, minWidth: 20, height: 20, borderRadius: 999, backgroundColor: '#059669', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px', boxShadow: '0 2px 6px rgba(0,0,0,0.25)' }}>✓</span>
                     <button onClick={() => p.openInCanva(item.url)} disabled={p.isSendingToCanva} title="Edit this image in Canva" style={{ position: 'absolute', bottom: 5, right: 5, height: 22, padding: '0 8px', borderRadius: 7, backgroundColor: 'rgba(255,255,255,0.92)', color: '#0F172A', border: '1px solid #E2E8F0', cursor: p.isSendingToCanva ? 'wait' : 'pointer', fontSize: 10, fontWeight: 800 }}>🎨 Edit</button>
                   </div>
                 ))}
                 {Array.from({ length: Math.max(0, 4 - p.topicMediaItems.length) }).map((_, i) => (
-                  <button key={`slot-${i}`} onClick={() => p.topicFileInputRef.current?.click()} title="Add image" style={{ borderRadius: 12, border: '1.5px dashed #C4B5FD', backgroundColor: '#FAF8FF', cursor: 'pointer', aspectRatio: '1', color: C.primary, fontSize: 26, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>+</button>
+                  <button key={`slot-${i}`} onClick={() => p.topicFileInputRef.current?.click()} title="Add image" style={{ borderRadius: 12, border: '1.5px dashed #C4B5FD', backgroundColor: '#FAF8FF', cursor: 'pointer', aspectRatio: '1', color: C.primary, fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0 }}><span style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>+</span><span style={{ fontSize: 11, fontWeight: 700 }}>Add Image</span></button>
                 ))}
               </div>
-              <input ref={p.topicFileInputRef} type="file" accept="image/*" multiple onChange={p.handleTopicUpload} style={{ display: 'none' }} />
+              <input ref={p.topicFileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={p.handleTopicUpload} style={{ display: 'none' }} />
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 26, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}` }}>
                 <div style={{ flex: 1 }}>
@@ -579,14 +891,19 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
             {/* ============ RIGHT — AI ASSISTANT PANEL ============ */}
             <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-              <div style={{ position: 'relative', borderRadius: 20, padding: '26px 22px 22px', background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
-                <span style={{ position: 'absolute', top: 14, left: 16, width: 30, height: 30, borderRadius: '50%', background: '#0A66C2', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(10,102,194,0.35)' }}>in</span>
-                <span style={{ position: 'absolute', top: 44, right: 14, width: 30, height: 30, borderRadius: '50%', background: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>📸</span>
-                <span style={{ position: 'absolute', bottom: 64, left: 12, width: 30, height: 30, borderRadius: '50%', background: '#1877F2', color: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(24,119,242,0.35)' }}>f</span>
-                <span style={{ position: 'absolute', bottom: 88, right: 18, width: 30, height: 30, borderRadius: '50%', background: '#25D366', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(37,211,102,0.35)' }}>💬</span>
-                <div style={{ width: 76, height: 76, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 38, margin: '0 auto', boxShadow: '0 8px 24px rgba(124,58,237,0.22)', border: '1px solid #E9D5FF' }}>🤖</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginTop: 14, letterSpacing: '-0.01em' }}>A great idea leads to great content! ✨</div>
-                <div style={{ fontSize: 12, color: '#64748B', marginTop: 6, lineHeight: 1.65 }}>Share your thoughts, add reference images, and let AI bring your ideas to life.</div>
+              <div style={{ borderRadius: 20, background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
+                <div className="sp-soc-visual" aria-hidden="true">
+                  <span className="sp-orbit" />
+                  <span className="sp-soc" title="LinkedIn" style={{ left: '11%', top: 16, backgroundColor: p.platformColors.linkedin || '#0A66C2', boxShadow: '0 4px 12px rgba(10,102,194,0.4)', animation: 'spDriftLi 6.5s ease-in-out infinite' }}><p.PlatformIcon platform="linkedin" size={22} /></span>
+                  <span className="sp-soc" title="Instagram" style={{ right: '11%', top: 16, background: 'linear-gradient(45deg,#F58529,#DD2A7B 45%,#8134AF 75%,#515BD4)', boxShadow: '0 4px 12px rgba(209,42,123,0.4)', animation: 'spDriftIg 7.2s ease-in-out infinite', animationDelay: '0.8s' }}><p.PlatformIcon platform="instagram" size={22} /></span>
+                  <span className="sp-soc" title="Facebook" style={{ left: '15%', bottom: 16, backgroundColor: p.platformColors.facebook || '#1877F2', boxShadow: '0 4px 12px rgba(24,119,242,0.4)', animation: 'spFloatY 5.2s ease-in-out infinite', animationDelay: '0.3s' }}><p.PlatformIcon platform="facebook" size={22} /></span>
+                  <span className="sp-soc" title="WhatsApp" style={{ right: '15%', bottom: 16, backgroundColor: p.platformColors.whatsapp || '#25D366', boxShadow: '0 4px 12px rgba(37,211,102,0.42)', animation: 'spFloatDiag 6s ease-in-out infinite', animationDelay: '1.4s' }}><p.PlatformIcon platform="whatsapp" size={22} /></span>
+                  <span className="sp-robot" style={{ animation: 'spBreathe 5.5s ease-in-out infinite' }}>🤖</span>
+                </div>
+                <div style={{ padding: '18px 22px 22px', borderTop: '1px solid rgba(233,213,255,0.7)' }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>A great idea leads to great content ✨</div>
+                  <div style={{ fontSize: 12, color: '#64748B', marginTop: 8, lineHeight: 1.65 }}>Share your thoughts, add reference images, and let AI bring your ideas to life.</div>
+                </div>
               </div>
 
               <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
@@ -707,13 +1024,15 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>4. Connect Your Platforms</div>
-                  <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Connect your social media accounts to publish directly</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>4. Choose Platforms</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Select where you want to generate content. Connect accounts when you&apos;re ready to publish.</div>
                 </div>
-                {p.accounts.some(a => a.connected) ? (
+                {selectedPlatformCount === 0 ? (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '4px 11px', borderRadius: 999 }}>Select at least one platform</span>
+                ) : p.accounts.some(a => a.connected) || p.whapiConnected ? (
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '4px 11px', borderRadius: 999 }}>Active</span>
                 ) : (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '4px 11px', borderRadius: 999 }}>Connect to continue</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, backgroundColor: '#F7F8FC', border: `1px solid ${C.border}`, padding: '4px 11px', borderRadius: 999 }}>None connected yet</span>
                 )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
@@ -731,16 +1050,34 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   return (
                     <div key={cfg.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', opacity: standby ? 0.6 : 1 }}>
+                      {/* Selection is a CHECKBOX (multi-select) and is deliberately
+                          a sibling of the Connect button, never nested inside it —
+                          so Connect can never toggle the selection, and clicking the
+                          row/checkbox never starts an OAuth flow. Both stay wired to
+                          the one existing selectedPlatforms state via p.togglePlatform. */}
+                      <span style={{ display: 'flex', alignItems: 'center', paddingLeft: 6, paddingRight: 0, flexShrink: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={selected && !standby}
+                          disabled={standby}
+                          onChange={() => { if (!standby) p.togglePlatform(cfg.id); }}
+                          aria-label={`Select ${cfg.label} for content generation`}
+                          style={{ width: 16, height: 16, accentColor: C.primary, cursor: standby ? 'not-allowed' : 'pointer', margin: 0 }}
+                        />
+                      </span>
                       <button onClick={() => { if (!standby) p.togglePlatform(cfg.id); }} disabled={standby} className="sp-s2-opt" style={{
                         flex: 1, padding: '12px 14px', borderRadius: 14, cursor: standby ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
-                        border: selected && !standby ? `2px solid ${brand}` : `1.5px solid ${C.border}`,
+                        // Purple = selected for GENERATION. Green is reserved for the
+                        // connection indicator below, so the two states never read as
+                        // the same thing.
+                        border: selected && !standby ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`,
                         backgroundColor: selected && !standby ? '#F6F1FF' : '#fff', fontFamily: 'inherit',
                       }}>
                         <span style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           <p.PlatformIcon platform={cfg.id} size={16} />
                         </span>
                         <span style={{ flex: 1 }}>
-                          <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: C.ink }}>{cfg.label} {selected && !standby ? <span style={{ color: brand }}>✓</span> : ''}</span>
+                          <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: C.ink }}>{cfg.label} {selected && !standby ? <span style={{ color: C.primary }}>✓</span> : ''}</span>
                           <span style={{ display: 'block', fontSize: 11, fontWeight: 600, marginTop: 1, color: standby ? '#B45309' : connected ? '#059669' : C.faint }}>{standby ? 'On standby' : connected ? '● Connected' : '○ Not connected'}</span>
                         </span>
                       </button>
@@ -809,6 +1146,22 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 })}
               </div>
 
+              {/* Compact read-back of the ONE selection state, so it is obvious
+                  which platforms generation will target. Reads from
+                  selectedPlatforms — never a second source of truth. */}
+              <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, backgroundColor: selectedPlatformCount ? '#F6F1FF' : '#F7F8FC', border: `1px solid ${selectedPlatformCount ? '#E4DBFF' : C.borderSoft}` }}>
+                <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: C.faint }}>Selected for content</span>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: selectedPlatformCount ? C.primaryDark : C.muted, marginTop: 3 }}>
+                  {selectedPlatformCount
+                    ? (['linkedin', 'facebook', 'instagram', 'whatsapp'] as const)
+                        .filter(pl => selectedPlatforms.includes(pl))
+                        .map(pl => PLATFORM_LABELS[pl] || pl)
+                        .join(', ')
+                    : 'No platforms selected'}
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Selection and connection are separate — you can generate content before connecting.</div>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 26, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
                 <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
                 <div style={{ flex: 1 }} />
@@ -818,7 +1171,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   if (!canGenContent) { setGenBlockerFlash(true); return; }
                   setGenBlockerFlash(false);
                   p.generateContent();
-                }} disabled={p.isGeneratingContent} title={p.isGeneratingContent ? 'Generating — please wait' : !canGenContent && !hasContent ? genContentBlocker : hasContent ? 'Content ready — continue to Content' : 'Generate content'} style={{ minHeight: 50, padding: '14px 24px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, cursor: p.isGeneratingContent ? 'wait' : 'pointer', fontFamily: 'inherit', border: `1.5px solid ${(canGenContent || hasContent) ? C.primary : '#E8EAF1'}`, background: hasContent ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#fff', color: hasContent ? '#fff' : canGenContent ? C.primaryDark : '#B6BDCC', boxShadow: hasContent ? '0 6px 22px rgba(124,58,237,0.42)' : canGenContent ? '0 3px 12px rgba(124,58,237,0.14)' : 'none' }}>{hasContent ? 'Next →' : p.isGeneratingContent ? '⏳ Generating…' : '✨ Generate Content →'}</button>
+                }} disabled={p.isGeneratingContent} title={p.isGeneratingContent ? 'Generating — please wait' : !canGenContent && !hasContent ? genContentBlocker : hasContent ? 'Content ready — continue to Content' : 'Generate content'} style={{ minHeight: 50, padding: '14px 24px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, cursor: p.isGeneratingContent ? 'wait' : 'pointer', fontFamily: 'inherit', border: `1.5px solid ${(canGenContent || hasContent) ? C.primary : '#E8EAF1'}`, background: hasContent ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#fff', color: hasContent ? '#fff' : canGenContent ? C.primaryDark : '#B6BDCC', boxShadow: hasContent ? '0 6px 22px rgba(124,58,237,0.42)' : canGenContent ? '0 3px 12px rgba(124,58,237,0.14)' : 'none' }}>{hasContent ? 'Next →' : p.isGeneratingContent ? '⏳ Generating…' : selectedPlatformCount === 0 ? 'Select a Platform' : selectedPlatformCount === 1 ? '✨ Generate Content →' : `✨ Generate Content for ${selectedPlatformCount} Platforms →`}</button>
               </div>
               {!hasSettings && <div style={{ fontSize: 12, color: '#92400E', marginTop: 10, fontWeight: 600 }}>Aspect ratio required before the image flow — pick one above.</div>}
               {genBlockerFlash && !canGenContent && !hasContent && !p.isGeneratingContent && (
