@@ -112,6 +112,13 @@ const PLATFORM_LABELS: Record<string, string> = {
   whatsapp: 'WhatsApp',
 };
 
+const PLATFORM_DESCS: Record<string, string> = {
+  linkedin: 'Professional network',
+  facebook: 'Community & business',
+  instagram: 'Visual storytelling',
+  whatsapp: 'Direct audience reach',
+};
+
 // Stepper
 // ---------------------------------------------------------------------------
 const STEPS = [
@@ -630,7 +637,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   }, [p.isGeneratingContent, p.content, currentStep]);
 
   const hasTopic = !!p.prompt.trim() || p.topicMediaItems.length > 0;
-  const hasSettings = !!p.aspectRatio;
   const hasContent = !!p.content.trim();
   const hasMedia = p.mediaItems.length > 0 || !!p.generatedImage || !!p.generatedVideo;
   // Publishing needs a CONNECTED platform (the OAuth token actually posts).
@@ -650,12 +656,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   // required (connection is only needed later, to publish). Any selected
   // platform unlocks it, so the button state stays honest.
   const genPlatformSelected = p.selectedPlatforms.length > 0;
-  // Single local alias for the selection list. The platform rows, the
-  // "Selected for content" summary and the Generate button all read the SAME
-  // state through this one reference — no second selection state is introduced,
-  // and it keeps the props bag from being re-read at every use site.
-  const selectedPlatforms = p.selectedPlatforms;
-  const selectedPlatformCount = selectedPlatforms.length;
   const canGenContent = !p.isGeneratingContent && hasTopic && genPlatformSelected;
   const genContentBlocker = !hasTopic
     ? 'Enter a topic first (Step 1)'
@@ -736,6 +736,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         /* Laptop: reduce Step 1 card padding so the UI never looks zoomed-out. */
         @media (min-width: 900px) and (max-width: 1199px) { .sp-s1-card { padding: 20px 18px !important; } }
         @media (max-width: 699px) { .sp-s1-card { padding: 18px 14px !important; border-radius: 16px !important; } }
+        /* Step 2 card grids: 4 across desktop, 2 across tablet,
+           tone stacks + platforms pair up on phones, single column tiny. */
+        .sp-tone-grid,.sp-plat-grid{display:grid;gap:10px;margin-bottom:24px;grid-template-columns:repeat(4,minmax(0,1fr));}
+        @media (max-width:899px){.sp-tone-grid,.sp-plat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+        @media (max-width:599px){.sp-tone-grid{grid-template-columns:minmax(0,1fr);}.sp-plat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+        @media (max-width:379px){.sp-plat-grid{grid-template-columns:minmax(0,1fr);}}
         /* Mobile single column: helper aside stacks below the editor. */
         @media (max-width: 899px) { .sp-s1-grid > aside { position: static; } }
         .sp-s1-ta { transition: border-color 0.18s, box-shadow 0.18s, background-color 0.18s; }
@@ -814,7 +820,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-wiz-root, .sp-wiz-root > * { min-width: 0; max-width: 100%; }
         .sp-s1-grid > *, .sp-s2-grid > *, .sp-wiz-grid2 > *, .sp-wiz-grid3 > *,
         .sp-wiz-prev > *, .sp-wiz-media2 > *, .sp-prev-grid > *, .sp-review-grid > *,
-        .sp-step7-grid > *, .sp-prev-trio > * { min-width: 0; max-width: 100%; }
+        .sp-step7-grid > *, .sp-prev-trio > *, .sp-tone-grid > *, .sp-plat-grid > * { min-width: 0; max-width: 100%; }
         .sp-s1-grid, .sp-s2-grid, .sp-wiz-grid2, .sp-wiz-grid3, .sp-wiz-prev,
         .sp-wiz-media2, .sp-prev-grid, .sp-review-grid, .sp-step7-grid, .sp-prev-trio { min-width: 0; }
         /* Text must never widen a track. */
@@ -966,24 +972,19 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         {/* ================= STEP 2 — SETTINGS ================= */}
         {currentStep === 2 && (
           <div className="sp-s2-grid">
-            {/* ============ LEFT — MAIN SETTINGS CARD ============ */}
+            {/* ============ LEFT — CONTENT STYLE & PLATFORM CARD ============ */}
             <div style={{ ...card, borderRadius: 20, padding: '28px 30px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
-                <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🎛️</div>
-                <div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Creative Settings</div>
-                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Step 2 of 8: Customize your content style and platform preferences</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22 }}>
+                <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>⚙️</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Content Style &amp; Platform Preference</div>
+                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4, lineHeight: 1.6 }}>Choose the tone and platforms for your content.</div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#F5F0FF', border: '1px solid #DDD6FE', borderRadius: 14, padding: '12px 16px', marginBottom: 22 }}>
-                <span style={{ fontSize: 16, lineHeight: 1.4 }}>💡</span>
-                <span style={{ fontSize: 12.5, color: C.primaryDark, fontWeight: 600, lineHeight: 1.6 }}>Tailor your content to match your audience and platform for better results.</span>
-              </div>
-
-              <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>1. Select Tone</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>Choose the tone that matches your brand voice</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, marginBottom: 24 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, letterSpacing: '0.04em' }}>SET TONE OF YOUR CONTENT</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 4, marginBottom: 12 }}>Choose the tone that matches your brand voice and audience.</div>
+              <div className="sp-tone-grid">
                 {[
                   ['Professional', '💼', 'Polished, credible and business-ready'],
                   ['Casual', '😊', 'Friendly, relatable and conversational'],
@@ -1002,200 +1003,43 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 })}
               </div>
 
-              <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>2. Select Image Style</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>Choose the visual style for your AI-generated media</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, marginBottom: 24 }}>
-                {[
-                  ['Photographic', '📷', 'Realistic and true-to-life'],
-                  ['Digital Art', '🎨', 'Creative and illustrated'],
-                  ['Cinematic', '🎬', 'Movie-like and dramatic'],
-                  ['Anime', '🌸', 'Stylized and animated'],
-                ].map(([k, i, d]) => {
-                  const active = p.imageStyle === k;
-                  return (
-                    <button key={k} onClick={() => p.setImageStyle(k)} className="sp-s2-opt" style={selectCardPremium(active)}>
-                      <span style={checkBadge(active)}>{active ? '✓' : ''}</span>
-                      <span style={{ fontSize: 24 }}>{i}</span>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: active ? C.primaryDark : C.ink }}>{k}</span>
-                      <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{d}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>3. Select Aspect Ratio</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>Choose the aspect ratio for your post</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, marginBottom: 24 }}>
-                {(() => {
-                  const desc: Record<string, string> = {
-                    '1:1': 'Best for Instagram',
-                    '9:16': 'Best for Stories & Reels',
-                    '16:9': 'Best for LinkedIn, Facebook, YouTube',
-                    '4:3': 'Good for most platforms',
-                  };
-                  const order = ['1:1', '9:16', '16:9', '4:3'];
-                  const keys = [...order.filter(k => p.aspectRatioMap[k]), ...Object.keys(p.aspectRatioMap).filter(k => !order.includes(k))];
-                  return keys.map(key => {
-                    const val = p.aspectRatioMap[key];
-                    const active = p.aspectRatio === key;
-                    return (
-                      <button key={key} onClick={() => p.setAspectRatio(key)} className="sp-s2-opt" style={{ ...selectCardPremium(active), alignItems: 'center', textAlign: 'center', paddingTop: 18 }}>
-                        <span style={checkBadge(active)}>{active ? '✓' : ''}</span>
-                        <span style={{
-                          width: key === '1:1' ? 30 : key === '16:9' ? 40 : key === '9:16' ? 22 : 34,
-                          height: key === '1:1' ? 30 : key === '16:9' ? 23 : key === '9:16' ? 36 : 26,
-                          borderRadius: 6, border: `2.5px solid ${active ? C.primary : '#CBD5E1'}`,
-                          backgroundColor: active ? '#fff' : '#F8FAFC', flexShrink: 0, display: 'block',
-                        }} />
-                        <span>
-                          <span style={{ display: 'block', fontSize: 10, fontWeight: 800, color: active ? C.primaryDark : C.muted }}>{key}</span>
-                          <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: active ? C.primaryDark : C.ink, marginTop: 1 }}>{val.label}</span>
-                        </span>
-                        <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{desc[key] || `Optimized for ${val.label}`}</span>
-                      </button>
-                    );
-                  });
-                })()}
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 180 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>4. Choose Platforms</div>
-                  <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Select where you want to generate content. Connect accounts when you&apos;re ready to publish.</div>
-                </div>
-                {selectedPlatformCount === 0 ? (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '4px 11px', borderRadius: 999 }}>Select at least one platform</span>
-                ) : p.accounts.some(a => a.connected) || p.whapiConnected ? (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '4px 11px', borderRadius: 999 }}>Active</span>
-                ) : (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, backgroundColor: '#F7F8FC', border: `1px solid ${C.border}`, padding: '4px 11px', borderRadius: 999 }}>None connected yet</span>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+              {/* Image Style + Aspect Ratio live in Step 4 — Media (moved out of Settings). */}
+              <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, letterSpacing: '0.04em' }}>SELECT PLATFORMS FOR THIS CONTENT</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 4, marginBottom: 12 }}>Choose where you want this content to be created for.</div>
+              <div className="sp-plat-grid">
                 {([
                   { id: 'linkedin', label: 'LinkedIn' },
                   { id: 'facebook', label: 'Facebook' },
                   { id: 'instagram', label: 'Instagram' },
                   { id: 'whatsapp', label: 'WhatsApp' },
                 ] as const).map(cfg => {
-                  const standby = false;
-                  const isWhapi = cfg.id === 'whatsapp';
-                  const connected = isWhapi ? p.whapiConnected : p.accounts.some(a => a.platform === cfg.id && a.connected);
+                  // Content-generation selection ONLY (multi-select). Connection
+                  // state lives in Publish — never shown or toggled here.
                   const selected = p.selectedPlatforms.includes(cfg.id);
                   const brand = p.platformColors[cfg.id] || C.primary;
                   return (
-                    <div key={cfg.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', opacity: standby ? 0.6 : 1 }}>
-                      {/* Selection is a CHECKBOX (multi-select) and is deliberately
-                          a sibling of the Connect button, never nested inside it —
-                          so Connect can never toggle the selection, and clicking the
-                          row/checkbox never starts an OAuth flow. Both stay wired to
-                          the one existing selectedPlatforms state via p.togglePlatform. */}
-                      <span style={{ display: 'flex', alignItems: 'center', paddingLeft: 6, paddingRight: 0, flexShrink: 0 }}>
-                        <input
-                          type="checkbox"
-                          checked={selected && !standby}
-                          disabled={standby}
-                          onChange={() => { if (!standby) p.togglePlatform(cfg.id); }}
-                          aria-label={`Select ${cfg.label} for content generation`}
-                          style={{ width: 16, height: 16, accentColor: C.primary, cursor: standby ? 'not-allowed' : 'pointer', margin: 0 }}
-                        />
+                    <button
+                      key={cfg.id}
+                      onClick={() => p.togglePlatform(cfg.id)}
+                      aria-pressed={selected}
+                      aria-label={`Select ${cfg.label} for content generation`}
+                      className="sp-s2-opt"
+                      style={selectCardPremium(selected)}
+                    >
+                      <span style={{
+                        position: 'absolute', top: 10, right: 10, width: 22, height: 22, borderRadius: 7,
+                        border: selected ? `2px solid ${C.primary}` : `1.5px solid #CBD5E1`,
+                        backgroundColor: selected ? C.primary : '#fff', color: '#fff', fontSize: 11, fontWeight: 800,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}>{selected ? '✓' : ''}</span>
+                      <span style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <p.PlatformIcon platform={cfg.id} size={20} />
                       </span>
-                      <button onClick={() => { if (!standby) p.togglePlatform(cfg.id); }} disabled={standby} className="sp-s2-opt" style={{
-                        flex: 1, padding: '12px 14px', borderRadius: 14, cursor: standby ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
-                        // Purple = selected for GENERATION. Green is reserved for the
-                        // connection indicator below, so the two states never read as
-                        // the same thing.
-                        border: selected && !standby ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`,
-                        backgroundColor: selected && !standby ? '#F6F1FF' : '#fff', fontFamily: 'inherit',
-                      }}>
-                        <span style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <p.PlatformIcon platform={cfg.id} size={16} />
-                        </span>
-                        <span style={{ flex: 1 }}>
-                          <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: C.ink }}>{cfg.label} {selected && !standby ? <span style={{ color: C.primary }}>✓</span> : ''}</span>
-                          <span style={{ display: 'block', fontSize: 11, fontWeight: 600, marginTop: 1, color: standby ? '#B45309' : connected ? '#059669' : C.faint }}>{standby ? 'On standby' : connected ? '● Connected' : '○ Not connected'}</span>
-                        </span>
-                      </button>
-                      {!connected && !standby && !isWhapi && (
-                        <button onClick={() => p.connectPlatform(cfg.id)} style={{ padding: '10px 20px', borderRadius: 11, fontSize: 12, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'center', boxShadow: '0 3px 10px rgba(124,58,237,0.3)', fontFamily: 'inherit' }}>Connect</button>
-                      )}
-                      {!connected && !standby && isWhapi && p.whapiCanConnect && (
-                        <button onClick={() => p.startWhatsAppConnect()} style={{ padding: '10px 20px', borderRadius: 11, fontSize: 12, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'center', boxShadow: '0 3px 10px rgba(124,58,237,0.3)', fontFamily: 'inherit' }}>Connect</button>
-                      )}
-                      {connected && !standby && !isWhapi && (
-                        <button onClick={() => p.disconnectPlatform(cfg.id)} style={{ padding: '10px 20px', borderRadius: 11, fontSize: 12, fontWeight: 800, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'center', fontFamily: 'inherit' }}>Disconnect</button>
-                      )}
-                      {connected && !standby && isWhapi && (
-                        <button onClick={() => p.disconnectWhatsApp()} disabled={p.whatsappDisconnecting || p.whapiLoading} style={{ padding: '10px 20px', borderRadius: 11, fontSize: 12, fontWeight: 800, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', cursor: (p.whatsappDisconnecting || p.whapiLoading) ? 'wait' : 'pointer', whiteSpace: 'nowrap', alignSelf: 'center', fontFamily: 'inherit', opacity: (p.whatsappDisconnecting || p.whapiLoading) ? 0.6 : 1 }}>{p.whatsappDisconnecting ? 'Disconnecting…' : 'Disconnect'}</button>
-                      )}
-                      </div>
-
-                      {/* Per-account targets. Only meaningful once the platform is
-                          selected — it fans the publish out to every checked
-                          account instead of just the first connected one. */}
-                      {selected && !standby && !isWhapi && p.accounts.filter(a => a.platform === cfg.id && a.connected).length > 0 && (() => {
-                        const accs = p.accounts.filter(a => a.platform === cfg.id && a.connected);
-                        const keys = accs.map(a => `${a.platform}:${a.userId}:${a.pageId || ''}`);
-                        const chosenCount = keys.filter(k => p.selectedAccountKeys.includes(k)).length;
-                        return (
-                          <div style={{ marginLeft: 10, padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 12, backgroundColor: '#FCFCFE' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                              <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: C.faint }}>
-                                Post to {chosenCount}/{accs.length} account{accs.length === 1 ? '' : 's'}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => (chosenCount === keys.length ? p.clearAccountsFor(cfg.id) : p.selectAllAccountsFor(cfg.id))}
-                                style={{ border: 'none', background: 'none', color: C.primaryDark, fontSize: 10.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
-                              >
-                                {chosenCount === keys.length ? 'Clear all' : 'Select all'}
-                              </button>
-                            </div>
-                            {accs.map((a) => {
-                              const key = `${a.platform}:${a.userId}:${a.pageId || ''}`;
-                              const on = p.selectedAccountKeys.includes(key);
-                              return (
-                                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', cursor: 'pointer', borderRadius: 8, backgroundColor: on ? '#F5F3FF' : 'transparent' }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={on}
-                                    onChange={() => p.toggleAccount(key)}
-                                    style={{ width: 14, height: 14, accentColor: C.primary, cursor: 'pointer', flexShrink: 0 }}
-                                  />
-                                  <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {a.name || a.email || a.userId.slice(0, 10)}
-                                  </span>
-                                  {a.pageId && a.pages?.length ? (
-                                    <span style={{ fontSize: 10, fontWeight: 700, color: C.faint, flexShrink: 0 }}>
-                                      {a.pages.find(pg => pg.id === a.pageId)?.name || 'Page'}
-                                    </span>
-                                  ) : null}
-                                </label>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
-                    </div>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: selected ? C.primaryDark : C.ink }}>{cfg.label}</span>
+                      <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{PLATFORM_DESCS[cfg.id]}</span>
+                    </button>
                   );
                 })}
-              </div>
-
-              {/* Compact read-back of the ONE selection state, so it is obvious
-                  which platforms generation will target. Reads from
-                  selectedPlatforms — never a second source of truth. */}
-              <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, backgroundColor: selectedPlatformCount ? '#F6F1FF' : '#F7F8FC', border: `1px solid ${selectedPlatformCount ? '#E4DBFF' : C.borderSoft}` }}>
-                <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', color: C.faint }}>Selected for content</span>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: selectedPlatformCount ? C.primaryDark : C.muted, marginTop: 3 }}>
-                  {selectedPlatformCount
-                    ? (['linkedin', 'facebook', 'instagram', 'whatsapp'] as const)
-                        .filter(pl => selectedPlatforms.includes(pl))
-                        .map(pl => PLATFORM_LABELS[pl] || pl)
-                        .join(', ')
-                    : 'No platforms selected'}
-                </div>
-                <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Selection and connection are separate — you can generate content before connecting.</div>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 26, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
@@ -1207,9 +1051,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   if (!canGenContent) { setGenBlockerFlash(true); return; }
                   setGenBlockerFlash(false);
                   p.generateContent();
-                }} disabled={p.isGeneratingContent} title={p.isGeneratingContent ? 'Generating — please wait' : !canGenContent && !hasContent ? genContentBlocker : hasContent ? 'Content ready — continue to Content' : 'Generate content'} style={{ minHeight: 50, padding: '14px 24px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, cursor: p.isGeneratingContent ? 'wait' : 'pointer', fontFamily: 'inherit', border: `1.5px solid ${(canGenContent || hasContent) ? C.primary : '#E8EAF1'}`, background: hasContent ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#fff', color: hasContent ? '#fff' : canGenContent ? C.primaryDark : '#B6BDCC', boxShadow: hasContent ? '0 6px 22px rgba(124,58,237,0.42)' : canGenContent ? '0 3px 12px rgba(124,58,237,0.14)' : 'none' }}>{hasContent ? 'Next →' : p.isGeneratingContent ? '⏳ Generating…' : selectedPlatformCount === 0 ? 'Select a Platform' : selectedPlatformCount === 1 ? '✨ Generate Content →' : `✨ Generate Content for ${selectedPlatformCount} Platforms →`}</button>
+                }} disabled={p.isGeneratingContent} title={p.isGeneratingContent ? 'Generating — please wait' : !canGenContent && !hasContent ? genContentBlocker : hasContent ? 'Content ready — continue to Content' : 'Generate content'} style={{ minHeight: 50, padding: '14px 24px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, cursor: p.isGeneratingContent ? 'wait' : 'pointer', fontFamily: 'inherit', border: `1.5px solid ${(canGenContent || hasContent) ? C.primary : '#E8EAF1'}`, background: hasContent ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#fff', color: hasContent ? '#fff' : canGenContent ? C.primaryDark : '#B6BDCC', boxShadow: hasContent ? '0 6px 22px rgba(124,58,237,0.42)' : canGenContent ? '0 3px 12px rgba(124,58,237,0.14)' : 'none' }}>{p.isGeneratingContent ? '⏳ Generating…' : 'Continue to Generate Content →'}</button>
               </div>
-              {!hasSettings && <div style={{ fontSize: 12, color: '#92400E', marginTop: 10, fontWeight: 600 }}>Aspect ratio required before the image flow — pick one above.</div>}
               {genBlockerFlash && !canGenContent && !hasContent && !p.isGeneratingContent && (
                 <div style={{ fontSize: 12.5, color: '#B91C1C', backgroundColor: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: 12, padding: '10px 14px', marginTop: 10, fontWeight: 700 }}>⚠️ {genContentBlocker}</div>
               )}
@@ -1222,40 +1065,66 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
             {/* ============ RIGHT — AI ASSISTANT PANEL ============ */}
             <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-              <div style={{ position: 'relative', borderRadius: 20, padding: '26px 22px 22px', background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
-                <span style={{ position: 'absolute', top: 14, left: 16, width: 30, height: 30, borderRadius: '50%', background: '#0A66C2', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(10,102,194,0.35)' }}>in</span>
-                <span style={{ position: 'absolute', top: 44, right: 14, width: 30, height: 30, borderRadius: '50%', background: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>📸</span>
-                <span style={{ position: 'absolute', bottom: 96, left: 12, width: 30, height: 30, borderRadius: '50%', background: '#1877F2', color: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(24,119,242,0.35)' }}>f</span>
-                <span style={{ position: 'absolute', bottom: 120, right: 18, width: 30, height: 30, borderRadius: '50%', background: '#25D366', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(37,211,102,0.35)' }}>💬</span>
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto', boxShadow: '0 8px 24px rgba(124,58,237,0.22)', border: '1px solid #E9D5FF' }}>🤖</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginTop: 14, letterSpacing: '-0.01em', lineHeight: 1.4 }}>Customize Your Content.<br />Make an Impact!</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12, textAlign: 'left' }}>
-                  {['Right tone', 'Perfect visuals', 'Multi-platform ready'].map(b => (
-                    <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✓</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>{b}</span>
-                    </div>
-                  ))}
+              <div style={{ borderRadius: 20, background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
+                <div className="sp-soc-visual" aria-hidden="true">
+                  <span className="sp-orbit" />
+                  <span className="sp-soc" title="LinkedIn" style={{ left: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(10,102,194,0.4)', animation: 'spDriftLi 6.5s ease-in-out infinite' }}><p.PlatformIcon platform="linkedin" size={22} /><img src="/brand-icons/linkedin.webp" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#0A66C2'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="Instagram" style={{ right: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(209,42,123,0.4)', animation: 'spDriftIg 7.2s ease-in-out infinite', animationDelay: '0.8s' }}><p.PlatformIcon platform="instagram" size={22} /><img src="/brand-icons/instagram.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#E1306C'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="Facebook" style={{ left: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(24,119,242,0.4)', animation: 'spFloatY 5.2s ease-in-out infinite', animationDelay: '0.3s' }}><p.PlatformIcon platform="facebook" size={22} /><img src="/brand-icons/facebook.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#1877F2'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="WhatsApp" style={{ right: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(37,211,102,0.42)', animation: 'spFloatDiag 6s ease-in-out infinite', animationDelay: '1.4s' }}><p.PlatformIcon platform="whatsapp" size={22} /><img src="/brand-icons/whatsapp.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#25D366'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-robot" style={{ animation: 'spBreathe 5.5s ease-in-out infinite' }}>🤖</span>
+                </div>
+                <div style={{ padding: '18px 16px 20px', borderTop: '1px solid rgba(233,213,255,0.7)' }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>Shape the voice of your content</div>
+                  <div style={{ fontSize: 12, color: '#64748B', marginTop: 8, lineHeight: 1.65 }}>Choose the right tone and platforms before generating content.</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12, textAlign: 'left' }}>
+                    {['Right tone', 'Selected platforms', 'Ready for generation'].map(b => (
+                      <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✓</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>{b}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
               <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 10 }}>💡 Quick Tips</div>
-                {[
-                  ['👥', 'Choose a tone that fits your audience'],
-                  ['🖼️', 'Use visuals that match your message'],
-                  ['📐', 'Select the right aspect ratio'],
-                  ['🔗', 'Connect your accounts now'],
-                ].map(([icon, tip]) => (
-                  <div key={tip} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
-                    <span style={{ fontSize: 15, flexShrink: 0 }}>{icon}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: '#334155', lineHeight: 1.5 }}>{tip}</span>
+                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Current Selection</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 4, marginBottom: 12 }}>Here&apos;s what you&apos;ve chosen so far.</div>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: C.faint }}>TONE</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 2 }}>{p.tone}</div>
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: C.faint }}>PLATFORMS</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 2 }}>
+                    {(['linkedin', 'facebook', 'instagram', 'whatsapp'] as const)
+                      .filter(pl => p.selectedPlatforms.includes(pl))
+                      .map(pl => PLATFORM_LABELS[pl] || pl)
+                      .join(', ') || 'No platforms selected'}
                   </div>
-                ))}
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: C.faint }}>CONTENT GOAL</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 2 }}>Generate engaging post copy</div>
+                </div>
+                <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ width: '100%', padding: '11px', borderRadius: 11, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.primary}`, backgroundColor: '#fff', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit' }}>Edit choices</button>
               </div>
 
-              <div style={{ borderRadius: 20, padding: '24px 22px', background: 'linear-gradient(135deg,#F5F0FF,#EDE9FE)', border: '1px solid #DDD6FE', textAlign: 'center' }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: C.primaryDark, lineHeight: 1.5, letterSpacing: '-0.01em' }}>Good Content<br />Builds Stronger<br />Connections</div>
+              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
+                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 4 }}>Quick Tips</div>
+                {[
+                  'Pick a tone that matches your audience',
+                  'Choose platforms before content generation',
+                  'Keep your message specific',
+                  'You can refine content in the next step',
+                ].map(tip => (
+                  <div key={tip} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '6px 0' }}>
+                    <span style={{ color: C.primary, fontWeight: 800, flexShrink: 0, lineHeight: 1.5 }}>—</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 500, color: '#334155', lineHeight: 1.5 }}>{tip}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 12, background: 'linear-gradient(135deg,#F5F0FF,#FCE7F3)', border: '1px solid #E9D5FF', fontSize: 12.5, fontStyle: 'italic', fontWeight: 600, color: C.primaryDark, textAlign: 'center', lineHeight: 1.6 }}>&ldquo;Good content starts with the right tone.&rdquo;</div>
               </div>
             </aside>
           </div>
@@ -1521,6 +1390,26 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         className="sp-s1-ta"
                         style={{ width: '100%', boxSizing: 'border-box', minHeight: 120, padding: '16px 18px', border: `1.5px solid ${C.border}`, borderRadius: 14, fontSize: 13.5, lineHeight: 1.7, color: useContentContext && !p.imagePrompt ? C.muted : C.ink, backgroundColor: useContentContext ? '#F8FAFC' : '#FCFCFE', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }}
                       />
+                      {/* Visual settings moved here from Step 2 — aspect ratio and
+                          image style are chosen where the image is generated. */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, marginTop: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.05em', color: C.muted, marginBottom: 6 }}>ASPECT RATIO</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {['1:1', '9:16', '16:9', '4:3'].filter(k => p.aspectRatioMap[k]).map(key => (
+                              <button key={key} onClick={() => p.setAspectRatio(key)} title={p.aspectRatioMap[key].label} style={{ padding: '7px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', border: p.aspectRatio === key ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`, backgroundColor: p.aspectRatio === key ? C.primarySoft : '#fff', color: p.aspectRatio === key ? C.primaryDark : C.muted }}>{key}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.05em', color: C.muted, marginBottom: 6 }}>IMAGE STYLE</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {['Photographic', 'Digital Art', 'Cinematic', 'Anime'].map(k => (
+                              <button key={k} onClick={() => p.setImageStyle(k)} style={{ padding: '7px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', border: p.imageStyle === k ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`, backgroundColor: p.imageStyle === k ? C.primarySoft : '#fff', color: p.imageStyle === k ? C.primaryDark : C.muted }}>{k}</button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 11.5, color: C.faint, fontWeight: 600 }}>{shown.length}/500</span>
                         <button
@@ -1534,11 +1423,11 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                           </span>
                         </button>
                         <div style={{ flex: 1 }} />
-                        <button onClick={p.generateImage} disabled={!canGenImage} title={!p.aspectRatio ? 'Choose aspect ratio in Settings first' : !p.content.trim() ? 'Add content first' : 'Generate AI image'} style={{ minHeight: 46, padding: '12px 28px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, border: 'none', cursor: canGenImage ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: canGenImage ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#DDD6FE', color: '#fff', boxShadow: canGenImage ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}>
+                        <button onClick={p.generateImage} disabled={!canGenImage} title={!p.aspectRatio ? 'Select an aspect ratio above first' : !p.content.trim() ? 'Add content first' : 'Generate AI image'} style={{ minHeight: 46, padding: '12px 28px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, border: 'none', cursor: canGenImage ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: canGenImage ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#DDD6FE', color: '#fff', boxShadow: canGenImage ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}>
                           {p.isGeneratingImage ? 'Generating…' : '✨ Generate Image'}
                         </button>
                       </div>
-                      <div style={{ fontSize: 11, color: C.faint, marginTop: 8, lineHeight: 1.5 }}>AI will use your post topic, tone, and selected visual style from the previous step.{!p.aspectRatio ? ' Choose an aspect ratio in Settings to unlock generation.' : ''}</div>
+                      <div style={{ fontSize: 11, color: C.faint, marginTop: 8, lineHeight: 1.5 }}>AI will use your post topic, tone, and selected visual style.{!p.aspectRatio ? ' Select an aspect ratio above to unlock generation.' : ''}</div>
                     </>
                   );
                 })()}
@@ -2016,13 +1905,13 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         <button
                           onClick={() => p.generateCarouselSlides(p.carouselSlideCount)}
                           disabled={p.isGeneratingCarousel || p.isGeneratingImage || !p.aspectRatio || p.mediaItems.length >= 9}
-                          title={!p.aspectRatio ? 'Choose an aspect ratio in Settings first' : p.mediaItems.length >= 9 ? 'Gallery is full (max 9)' : 'Generate a full set of carousel slides from your topic'}
+                          title={!p.aspectRatio ? 'Select an aspect ratio in the AI panel first' : p.mediaItems.length >= 9 ? 'Gallery is full (max 9)' : 'Generate a full set of carousel slides from your topic'}
                           style={{ padding: '8px 16px', borderRadius: 999, fontSize: 11, fontWeight: 700, border: 'none', background: (p.isGeneratingCarousel || p.isGeneratingImage || !p.aspectRatio || p.mediaItems.length >= 9) ? '#DDD6FE' : 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', cursor: (p.isGeneratingCarousel || p.isGeneratingImage || !p.aspectRatio || p.mediaItems.length >= 9) ? 'not-allowed' : 'pointer' }}
                         >
                           {p.isGeneratingCarousel ? 'Generating slides…' : p.isGeneratingImage ? 'Generating…' : `Generate ${p.carouselSlideCount} slides`}
                         </button>
                       </div>
-                      {!p.aspectRatio && <div style={{ fontSize: 11, color: '#92400E', marginTop: 6 }}>Choose an aspect ratio in Settings first — slides generate at that size.</div>}
+                      {!p.aspectRatio && <div style={{ fontSize: 11, color: '#92400E', marginTop: 6 }}>Select an aspect ratio in the AI panel first — slides generate at that size.</div>}
                     </div>
                     {!p.carouselValidation.valid && (
                       <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '7px 10px', borderRadius: 8 }}>⚠️ {p.carouselValidation.reason} Instagram carousels additionally need publicly hosted image URLs.</div>
