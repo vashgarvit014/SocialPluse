@@ -888,6 +888,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 <div style={{ fontSize: 12.5, color: C.primaryDark, fontWeight: 700, marginTop: 2 }}>or click to upload</div>
                 <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Supports JPG, PNG, WEBP (Max 5MB each)</div>
               </div>
+              {p.topicMediaItems.filter(i => i.type === 'image').length > 0 && (
               <div className="sp-topic-slots">
                 {p.topicMediaItems.filter(i => i.type === 'image').map(item => (
                   <div key={item.id} title={item.name} style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, aspectRatio: '1', backgroundColor: '#000', minWidth: 0 }}>
@@ -902,6 +903,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <button key={`slot-${i}`} onClick={() => p.topicFileInputRef.current?.click()} title="Add image" style={{ borderRadius: 12, border: '1.5px dashed #C4B5FD', backgroundColor: '#FAF8FF', cursor: 'pointer', aspectRatio: '1', color: C.primary, fontFamily: 'inherit', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0 }}><span style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>+</span><span style={{ fontSize: 11, fontWeight: 700 }}>Add Image</span></button>
                 ))}
               </div>
+              )}
               <input ref={p.topicFileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={p.handleTopicUpload} style={{ display: 'none' }} />
 
               <div className="sp-step-nav" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 26, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}` }}>
