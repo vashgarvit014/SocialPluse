@@ -119,6 +119,15 @@ const PLATFORM_DESCS: Record<string, string> = {
   whatsapp: 'Direct audience reach',
 };
 
+// Generation phases for the Step 3 animation panel (presentation only —
+// start/completion are driven by the real p.isGeneratingContent flag).
+const GEN_PHASES: Array<[string, string]> = [
+  ['Understanding your idea', 'Finding the best angle, structure and audience fit.'],
+  ['Building the content structure', 'Creating the hook, message flow and call to action.'],
+  ['Writing your content', 'Generating platform-ready copy for your selected tone.'],
+  ['Applying your brand voice', 'Refining wording, style and hashtags for consistency.'],
+];
+
 // Stepper
 // ---------------------------------------------------------------------------
 const STEPS = [
@@ -500,7 +509,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   }
   const [currentStep, setCurrentStep] = field('currentStep', 1);
   const [publishMode, setPublishMode] = field<'now' | 'later'>('publishMode', 'now');
-  const [studioTab, setStudioTab] = field<'caption' | 'hashtags' | 'prompt'>('studioTab', 'caption');
   const [previewPlatform, setPreviewPlatform] = field('previewPlatform', 'linkedin');
   // selectedPlatforms is the single source of truth: keep the preview tab
   // inside the selection so Preview never shows an unselected platform.
@@ -561,6 +569,43 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   const [dragOverSlideId, setDragOverSlideId] = useState<string | null>(null);
   const [showSlidePicker, setShowSlidePicker] = useState(false);
   const [showRegenPicker, setShowRegenPicker] = useState(false);
+  // Step 3 generation-panel progress (presentation only). The interval runs
+  // solely while the REAL content request is in flight; completion and
+  // failure come from p.isGeneratingContent / p.content, never the timer.
+  const [genPhase, setGenPhase] = useState(0);
+  const [genPct, setGenPct] = useState(0);
+  useEffect(() => {
+    if (!p.isGeneratingContent) return;
+    setGenPhase(0);
+    setGenPct(2);
+    const t0 = Date.now();
+    const id = setInterval(() => {
+      const el = Date.now() - t0;
+      setGenPhase(Math.min(3, Math.floor(el / 2200)));
+      setGenPct(prev => Math.min(92, Math.floor(prev + 2 + Math.random() * 4)));
+    }, 500);
+    return () => clearInterval(id);
+  }, [p.isGeneratingContent]);
+  // Inline hashtag composer (Step 3). Appends to the caption through the
+  // exact same per-platform write-back path as the chip toggles.
+  const [newTag, setNewTag] = useState('');
+  const addTag = () => {
+    const t = newTag.trim().replace(/^#+/, '');
+    if (!t || p.activePreviewPlatform === 'whatsapp') return;
+    const tagText = '#' + t;
+    const v = p.content.includes(tagText) ? p.content : `${p.content.trim()} ${tagText}`.trim();
+    p.setContent(v);
+    if (p.activePreviewPlatform && p.platformContent[p.activePreviewPlatform]) {
+      p.setPlatformContent({
+        ...p.platformContent,
+        [p.activePreviewPlatform]: {
+          ...p.platformContent[p.activePreviewPlatform],
+          caption: v.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/, '').trim(),
+        },
+      });
+    }
+    setNewTag('');
+  };
   const [showPreviewMenu, setShowPreviewMenu] = useState(false);
   // Step 7 post-preview modal (transient overlay state only — all content
   // state lives in page.tsx and is untouched by open/close).
@@ -665,6 +710,10 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   const canGenImage = !p.isGeneratingImage && !!p.aspectRatio && !!p.content.trim();
 
   const activeTags = p.platformContent[p.activePreviewPlatform]?.hashtags || [];
+  // Chips show generated hashtags plus any the user typed into the caption,
+  // so added tags stay visible and removable without a second state.
+  const captionTags = (p.content.match(/#[A-Za-z0-9_]+/g) || []).map(t => t.slice(1));
+  const chipTags: string[] = Array.from(new Set([...activeTags.map((t: unknown) => String(t)), ...captionTags]));
   const sentences = p.content ? p.content.split(/[.!?]+/).filter(s => s.trim()).length : 0;
 
   const saveDraft = p.saveFullDraft;
@@ -791,6 +840,24 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         @keyframes spBreathe { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-5px) scale(1.03); } }
         @keyframes spSpinSlow { to { transform: rotate(360deg); } }
         @media (prefers-reduced-motion: reduce) { .sp-soc, .sp-robot, .sp-orbit, .sp-cloud { animation: none !important; transition: none !important; } }
+        /* --- Step 3 generation panel (light adaptation of the generation
+               concept: orb, sparks, progress, stages, skeleton) --- */
+        .sp-ptabs{scrollbar-width:none;-ms-overflow-style:none}
+        .sp-ptabs::-webkit-scrollbar{display:none}
+        .sp-orb{width:54px;height:54px;border-radius:50%;flex-shrink:0;position:relative;background:conic-gradient(from 0deg,#8B5CF6,#EC4899,#22D3EE,#8B5CF6);box-shadow:0 0 28px rgba(139,92,246,.45),0 0 60px rgba(34,211,238,.14);animation:spOrbFloat 2.5s ease-in-out infinite}
+        .sp-orb::after{content:"";position:absolute;inset:6px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#2A2140,#120E24 70%)}
+        @keyframes spOrbFloat{50%{transform:translateY(-4px) scale(1.04)}}
+        .sp-spark{position:absolute;width:5px;height:5px;border-radius:50%;background:#22D3EE;opacity:0;animation:spSparkRise 2.2s infinite;pointer-events:none}
+        @keyframes spSparkRise{0%,100%{opacity:0;transform:translateY(6px) scale(.4)}45%{opacity:.9;transform:translateY(-4px) scale(1)}}
+        .sp-pfill{height:100%;border-radius:inherit;background:linear-gradient(90deg,#7C3AED,#EC4899,#22D3EE);transition:width .25s ease}
+        .sp-stage-dot{width:9px;height:9px;border-radius:50%;background:#CBD5E1;flex-shrink:0}
+        .sp-stage-on .sp-stage-dot{background:#8B5CF6;box-shadow:0 0 0 5px rgba(139,92,246,.14),0 0 14px rgba(139,92,246,.7);animation:spPulseDot 1.2s infinite}
+        @keyframes spPulseDot{50%{transform:scale(1.25);opacity:.75}}
+        .sp-skel{height:13px;border-radius:8px;background:linear-gradient(90deg,#ECE7FA 25%,#F7F3FF 37%,#ECE7FA 63%);background-size:400% 100%;animation:spShimmer 1.3s infinite}
+        @keyframes spShimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+        .sp-gen-stages{display:grid;gap:8px;margin-top:14px}
+        @media(min-width:640px){.sp-gen-stages{grid-template-columns:1fr 1fr}}
+        @media (prefers-reduced-motion: reduce) { .sp-orb,.sp-skel,.sp-stage-on .sp-stage-dot,.sp-spark,.sp-pfill { animation: none !important; transition: none !important; } }
         .sp-s2-grid { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 16px; align-items: start; }
         .sp-prev-grid { display: grid; grid-template-columns: minmax(0,2.1fr) minmax(300px,1fr); gap: 24px; align-items: start; }
         @media (max-width: 1024px) { .sp-prev-grid { grid-template-columns: 1fr; } }
@@ -1124,13 +1191,13 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         {/* ================= STEP 3 — CONTENT ================= */}
         {currentStep === 3 && (
           <div className="sp-s2-grid">
-            {/* ============ LEFT — MAIN AI CONTENT EDITOR CARD ============ */}
+            {/* ============ LEFT — GENERATED CONTENT CARD ============ */}
             <div style={{ ...card, borderRadius: 20, padding: '28px 30px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6, flexWrap: 'wrap' }}>
                 <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>✨</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>AI Content Editor</div>
-                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Step 3 of 8: Review and refine your generated content</div>
+                <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Generated Content &amp; Hashtags</div>
+                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Review, edit or regenerate your platform-ready content.</div>
                 </div>
                 <button onClick={() => setShowRegenPicker(true)} disabled={!canGenContent} title={!canGenContent ? genContentBlocker : 'Choose what to regenerate — one platform or all'} style={{ padding: '10px 18px', borderRadius: 11, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${canGenContent ? C.primary : '#E8EAF1'}`, backgroundColor: '#fff', color: canGenContent ? C.primaryDark : '#B6BDCC', cursor: canGenContent ? 'pointer' : 'not-allowed', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>↻ Regenerate</button>
                 <div style={{ position: 'relative' }}>
@@ -1159,7 +1226,47 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 </div>
               </div>
 
-              {!p.content.trim() ? (
+              {p.generationError && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: '#B91C1C', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', padding: '10px 12px', borderRadius: 12, marginTop: 14 }}>
+                  <span style={{ flex: 1 }}>⚠️ {p.generationError}</span>
+                  <button onClick={() => p.setGenerationError('')} style={{ border: 'none', background: 'none', color: '#B91C1C', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: '0 2px' }}>×</button>
+                </div>
+              )}
+              {p.isGeneratingContent ? (
+                <div style={{ border: '1.5px solid #E4DBFF', borderRadius: 16, background: 'linear-gradient(180deg,#FBFAFF,#F6F1FF)', padding: '18px 20px', marginTop: 14, position: 'relative', overflow: 'hidden' }}>
+                  <span className="sp-spark" style={{ left: '20%', top: '30%' }} />
+                  <span className="sp-spark" style={{ left: '45%', top: '70%', animationDelay: '.7s' }} />
+                  <span className="sp-spark" style={{ left: '68%', top: '25%', animationDelay: '1.1s' }} />
+                  <span className="sp-spark" style={{ left: '86%', top: '65%', animationDelay: '1.6s' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <span className="sp-orb" aria-hidden="true" />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 800, color: C.ink }}>✨ SocialPulse AI</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginTop: 2 }}>{GEN_PHASES[genPhase][0]}</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{GEN_PHASES[genPhase][1]}</div>
+                    </div>
+                    <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: C.primaryDark, flexShrink: 0 }}>{genPct}%</div>
+                  </div>
+                  <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={genPct} aria-label="Generation progress" style={{ height: 7, borderRadius: 99, background: '#E7E0FA', overflow: 'hidden', marginTop: 14 }}>
+                    <div className="sp-pfill" style={{ width: `${genPct}%` }} />
+                  </div>
+                  <div className="sp-gen-stages">
+                    {GEN_PHASES.map((ph, i) => (
+                      <div key={ph[0]} className={i === genPhase ? 'sp-stage-on' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, fontSize: 12.5, fontWeight: 600, color: i < genPhase ? '#059669' : i === genPhase ? C.ink : C.faint, border: '1.5px solid transparent', ...(i === genPhase ? { backgroundColor: '#fff', borderColor: '#DDD0FA', boxShadow: '0 2px 10px rgba(124,58,237,0.12)' } : {}) }}>
+                        <span className="sp-stage-dot" style={i < genPhase ? { backgroundColor: '#059669' } : {}} />
+                        <span>{i < genPhase ? '✓ ' : ''}{ph[0]}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gap: 10, marginTop: 14 }} aria-hidden="true">
+                    <div className="sp-skel" style={{ width: '100%' }} />
+                    <div className="sp-skel" style={{ width: '92%' }} />
+                    <div className="sp-skel" style={{ width: '78%' }} />
+                    <div className="sp-skel" style={{ width: '86%' }} />
+                    <div className="sp-skel" style={{ width: '64%' }} />
+                  </div>
+                </div>
+              ) : !p.content.trim() ? (
                 <div style={{ border: '2px dashed #C4B5FD', borderRadius: 16, backgroundColor: '#FAF8FF', padding: 40, textAlign: 'center' }}>
                   <div style={{ fontSize: 34 }}>📝</div>
                   <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, marginTop: 10 }}>No content yet</div>
@@ -1168,12 +1275,15 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 </div>
               ) : (
                 <div>
-                  <div style={{ display: 'flex', gap: 4, borderBottom: `1.5px solid ${C.borderSoft}`, marginBottom: 14 }}>
-                    {([['caption', 'Caption'], ['hashtags', 'Hashtags'], ['prompt', 'Image Prompt']] as const).map(([k, label]) => (
-                      <button key={k} onClick={() => setStudioTab(k)} style={{ padding: '11px 18px', fontSize: 13, fontWeight: 800, border: 'none', borderBottom: studioTab === k ? `2.5px solid ${C.primary}` : '2.5px solid transparent', background: 'none', color: studioTab === k ? C.primaryDark : C.faint, cursor: 'pointer', fontFamily: 'inherit' }}>{label}</button>
-                    ))}
+                  <div className="sp-ptabs" role="tablist" aria-label="Platform content" style={{ display: 'flex', gap: 6, margin: '14px 0 4px', overflowX: 'auto', paddingBottom: 4 }}>
+                    {p.selectedPlatforms.length === 0 && <div style={{ fontSize: 12, color: C.muted, padding: '10px 12px' }}>Select platforms in Step 2 first.</div>}
+                    {p.selectedPlatforms.map(pl => {
+                      const on = pl === p.activePreviewPlatform;
+                      return (
+                        <button key={pl} role="tab" aria-selected={on} onClick={() => p.switchPreviewPlatform(pl)} style={{ flexShrink: 0, padding: '8px 18px', borderRadius: 999, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', border: on ? `1.5px solid ${C.primary}` : `1.5px solid ${C.border}`, backgroundColor: on ? C.primarySoft : '#fff', color: on ? C.primaryDark : C.muted }}>{PLATFORM_LABELS[pl] || pl}</button>
+                      );
+                    })}
                   </div>
-                  {studioTab === 'caption' && (
                     <div>
                       <div style={{ fontSize: 12, color: C.primaryDark, backgroundColor: '#F5F0FF', border: '1px solid #DDD6FE', padding: '10px 14px', borderRadius: 12, marginBottom: 12, fontWeight: 600 }}>✨ AI-generated suggestion — feel free to edit, improve, or regenerate.</div>
                       <textarea value={p.content} onChange={e => {
@@ -1199,18 +1309,16 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         <button onClick={() => { try { navigator.clipboard.writeText(p.content); setCopiedText(true); setTimeout(() => setCopiedText(false), 2000); } catch {} }} style={{ padding: '10px 18px', borderRadius: 10, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.border}`, backgroundColor: copiedText ? '#ECFDF5' : '#fff', color: copiedText ? '#059669' : C.ink, cursor: 'pointer', fontFamily: 'inherit' }}>📋 {copiedText ? 'Copied ✓' : 'Copy Text'}</button>
                         <button onClick={() => setCurrentStep(2)} title="Change tone in Settings" style={{ padding: '10px 18px', borderRadius: 10, fontSize: 12.5, fontWeight: 800, border: '1.5px solid #FDE68A', backgroundColor: '#FFFBEB', color: '#92400E', cursor: 'pointer', fontFamily: 'inherit' }}>💼 Tone: {p.tone}</button>
                       </div>
-                    </div>
-                  )}
-                  {studioTab === 'hashtags' && (
+                  {p.activePreviewPlatform !== 'whatsapp' && (
                     <div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, margin: '20px 0 4px' }}>HASHTAGS</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                        {activeTags.length === 0 && <span style={{ fontSize: 12, color: C.faint }}>Hashtags appear here after generation.</span>}
-                        {activeTags.map((t, i) => {
+                        {chipTags.length === 0 && <span style={{ fontSize: 12, color: C.faint }}>Hashtags appear here after generation.</span>}
+                        {chipTags.map((t) => {
                           const tagText = '#' + String(t).replace(/^#+/, '');
                           const inCaption = p.content.includes(tagText);
                           return (
-                            <button key={i} onClick={() => {
-                              // WhatsApp is a no-hashtag channel: never inject tags into its caption.
+                            <button key={tagText} onClick={() => {
                               if (p.activePreviewPlatform === 'whatsapp') return;
                               const v = inCaption
                                 ? p.content.split(tagText).join('').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
@@ -1225,51 +1333,18 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                                   },
                                 });
                               }
-                              try { navigator.clipboard.writeText(tagText); } catch {}
                             }} title={inCaption ? 'Click to remove from caption' : 'Click to add to caption'} style={{ fontSize: 12, fontWeight: 700, backgroundColor: inCaption ? C.primary : C.primarySoft, color: inCaption ? '#fff' : C.primaryDark, border: `1.5px solid ${inCaption ? C.primary : C.primaryBorder}`, padding: '7px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit', boxShadow: inCaption ? '0 3px 10px rgba(124,58,237,0.3)' : 'none' }}>{tagText}{inCaption ? ' ✓' : ''}</button>
                           );
                         })}
                       </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                        <input value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }} placeholder="Add a hashtag…" aria-label="Add a hashtag" style={{ flex: '1 1 140px', minWidth: 0, border: `1.5px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', color: C.ink }} />
+                        <button onClick={addTag} style={{ ...ghostBtn, minHeight: 40, fontSize: 12.5, padding: '9px 18px' }}>Add</button>
+                      </div>
                       <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>Click a hashtag to add it to (or remove it from) your caption.</div>
                     </div>
                   )}
-                  {studioTab === 'prompt' && (
-                    <div>
-                      <textarea value={p.imagePrompt} onChange={() => {}} placeholder="Image prompt appears here…" style={{ width: '100%', boxSizing: 'border-box', minHeight: 140, padding: '16px 18px', border: `1.5px solid ${C.border}`, borderRadius: 14, fontSize: 13.5, lineHeight: 1.75, color: C.ink, backgroundColor: '#FCFCFE', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }} />
-                      <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Powers Generate AI Image with your Image Style + Aspect Ratio.</div>
                     </div>
-                  )}
-                  <div style={{ ...card, borderRadius: 16, padding: '18px 20px', marginTop: 18, boxShadow: 'none' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, flex: 1 }}>Suggested Hashtags</div>
-                      <button onClick={p.generateContent} disabled={!canGenContent} title={!canGenContent ? genContentBlocker : 'Refresh hashtags'} style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11.5, fontWeight: 800, border: `1.5px solid ${canGenContent ? C.primaryBorder : C.border}`, backgroundColor: '#fff', color: canGenContent ? C.primaryDark : C.faint, cursor: canGenContent ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>↻ Refresh</button>
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {(activeTags.length ? activeTags.slice(0, 10) : ['innovation', 'collaboration', 'technology', 'future', 'growth', 'community', 'SocialPulse', 'digitaltransformation', 'teamwork', 'success']).map((t, i) => {
-                        const tagText = '#' + String(t).replace(/^#+/, '');
-                        const inCaption = activeTags.length > 0 && p.content.includes(tagText);
-                        return (
-                          <button key={i} disabled={activeTags.length === 0} onClick={() => {
-                            // WhatsApp is a no-hashtag channel: never inject tags into its caption.
-                            if (p.activePreviewPlatform === 'whatsapp') return;
-                            const v = inCaption
-                              ? p.content.split(tagText).join('').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
-                              : `${p.content.trim()} ${tagText}`.trim();
-                            p.setContent(v);
-                            if (p.activePreviewPlatform && p.platformContent[p.activePreviewPlatform]) {
-                              p.setPlatformContent({
-                                ...p.platformContent,
-                                [p.activePreviewPlatform]: {
-                                  ...p.platformContent[p.activePreviewPlatform],
-                                  caption: v.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/, '').trim(),
-                                },
-                              });
-                            }
-                          }} title={activeTags.length === 0 ? 'Generate content to activate hashtags' : inCaption ? 'Click to remove from caption' : 'Click to add to caption'} style={{ fontSize: 12, fontWeight: 700, backgroundColor: inCaption ? C.primary : C.primarySoft, color: inCaption ? '#fff' : C.primaryDark, border: `1.5px solid ${inCaption ? C.primary : C.primaryBorder}`, padding: '7px 14px', borderRadius: 999, cursor: activeTags.length === 0 ? 'default' : 'pointer', fontFamily: 'inherit', opacity: activeTags.length === 0 ? 0.75 : 1 }}>{tagText}{inCaption ? ' ✓' : ''}</button>
-                        );
-                      })}
-                    </div>
-                  </div>
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 24, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}` }}>
@@ -1281,42 +1356,47 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
             {/* ============ RIGHT — AI ASSISTANT PANEL ============ */}
             <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-              <div style={{ position: 'relative', borderRadius: 20, padding: '26px 22px 22px', background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
-                <span style={{ position: 'absolute', top: 14, left: 16, width: 30, height: 30, borderRadius: '50%', background: '#0A66C2', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(10,102,194,0.35)' }}>in</span>
-                <span style={{ position: 'absolute', top: 44, right: 14, width: 30, height: 30, borderRadius: '50%', background: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>📸</span>
-                <span style={{ position: 'absolute', bottom: 72, left: 12, width: 30, height: 30, borderRadius: '50%', background: '#1877F2', color: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(24,119,242,0.35)' }}>f</span>
-                <span style={{ position: 'absolute', bottom: 96, right: 18, width: 30, height: 30, borderRadius: '50%', background: '#25D366', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(37,211,102,0.35)' }}>💬</span>
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto', boxShadow: '0 8px 24px rgba(124,58,237,0.22)', border: '1px solid #E9D5FF' }}>🤖</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: C.ink, marginTop: 14, letterSpacing: '-0.01em', lineHeight: 1.4 }}>Turn Ideas Into<br />Impact!</div>
-                <div style={{ fontSize: 12, color: '#64748B', marginTop: 6, fontWeight: 600 }}>Create. Engage. Grow.</div>
+              <div style={{ borderRadius: 20, background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
+                <div className="sp-soc-visual" aria-hidden="true">
+                  <span className="sp-orbit" />
+                  <span className="sp-soc" title="LinkedIn" style={{ left: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(10,102,194,0.4)', animation: 'spDriftLi 6.5s ease-in-out infinite' }}><p.PlatformIcon platform="linkedin" size={22} /><img src="/brand-icons/linkedin.webp" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#0A66C2'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="Instagram" style={{ right: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(209,42,123,0.4)', animation: 'spDriftIg 7.2s ease-in-out infinite', animationDelay: '0.8s' }}><p.PlatformIcon platform="instagram" size={22} /><img src="/brand-icons/instagram.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#E1306C'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="Facebook" style={{ left: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(24,119,242,0.4)', animation: 'spFloatY 5.2s ease-in-out infinite', animationDelay: '0.3s' }}><p.PlatformIcon platform="facebook" size={22} /><img src="/brand-icons/facebook.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#1877F2'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="WhatsApp" style={{ right: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(37,211,102,0.42)', animation: 'spFloatDiag 6s ease-in-out infinite', animationDelay: '1.4s' }}><p.PlatformIcon platform="whatsapp" size={22} /><img src="/brand-icons/whatsapp.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#25D366'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-robot" style={{ animation: 'spBreathe 5.5s ease-in-out infinite' }}>🤖</span>
+                </div>
+                <div style={{ padding: '18px 16px 20px', borderTop: '1px solid rgba(233,213,255,0.7)' }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>Turn Ideas Into Content</div>
+                  <div style={{ fontSize: 12, color: '#64748B', marginTop: 8, lineHeight: 1.65 }}>AI is shaping your idea into platform-ready content.</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12, textAlign: 'left' }}>
+                    {['Tone applied', 'Platforms optimized', 'Content generated'].map(b => (
+                      <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✓</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>{b}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 12 }}>💡 AI Suggestions</div>
-                {[
-                  ['📝', 'Make it shorter', 'Try a more concise version.', '#EDE9FE'],
-                  ['📣', 'Add a call-to-action', 'Encourage your audience to take action.', '#FFFBEB'],
-                  ['✨', 'Make it more engaging', 'Add emojis or a personal touch.', '#FCE7F3'],
-                ].map(([icon, title, desc, bg]) => (
-                  <div key={title} className="sp-s2-opt" style={{ display: 'flex', gap: 12, padding: '12px 14px', borderRadius: 14, border: `1px solid ${C.borderSoft}`, background: '#FCFCFE', marginBottom: 8 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{icon}</div>
-                    <div>
-                      <div style={{ fontSize: 12.5, fontWeight: 800, color: C.ink }}>{title}</div>
-                      <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>{desc}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 10 }}>🎯 Content Tips</div>
-                {['Keep it clear and concise', 'Include a strong call-to-action', 'Use relevant hashtags', 'Maintain your brand tone'].map(tip => (
-                  <div key={tip} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
-                    <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✓</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: '#334155' }}>{tip}</span>
-                  </div>
-                ))}
-                <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px dashed ${C.border}`, textAlign: 'center', fontSize: 13, fontWeight: 800, color: C.primaryDark, fontStyle: 'italic', lineHeight: 1.5 }}>“Small Content,<br />Big Results”</div>
+              <div style={{ ...card, borderRadius: 16, padding: '18px 20px', boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Content Summary</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '5px 0' }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: C.faint }}>TONE</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: C.ink }}>{p.tone}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '5px 0' }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: C.faint }}>PLATFORM</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: C.ink }}>{PLATFORM_LABELS[p.activePreviewPlatform] || p.activePreviewPlatform}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '5px 0' }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: C.faint }}>STATUS</span>
+                  {p.isGeneratingContent
+                    ? <span style={{ fontSize: 12.5, fontWeight: 700, color: C.primaryDark }}>Generating…</span>
+                    : hasContent
+                      ? <span style={{ fontSize: 12.5, fontWeight: 700, color: '#059669' }}>Generated</span>
+                      : <span style={{ fontSize: 12.5, fontWeight: 700, color: C.faint }}>Waiting</span>}
+                </div>
               </div>
             </aside>
           </div>
