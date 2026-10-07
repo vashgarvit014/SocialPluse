@@ -835,20 +835,38 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
     </div>
   );
 
+  // Inline per-image ALT editors (Step 6): textarea + counter always visible,
+  // Generate fills only missing descriptions, Regenerate refreshes them all.
   const altTextControls = (
-    <section style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
-        <h3 style={{ fontSize: 13, margin: 0, color: C.ink }}>Image ALT text</h3>
+    <section style={{ marginTop: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: C.ink }}>Image ALT Text</span>
         <span style={{ fontSize: 11, color: C.muted }}>Descriptions stay with your images.</span>
       </div>
-      {accessibilityMedia.filter(m => m.type === 'image').map((m, i) => <details key={m.id} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, marginBottom: 8 }}>
-        <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: C.ink }}>Image {i + 1} · {m.altText?.trim() ? 'ALT added' : 'ALT missing'}</summary>
-        <img src={m.url} alt={m.altText || ''} style={{ width: 120, height: 90, objectFit: 'contain' }} />
-        <textarea aria-label={`ALT text for image ${i + 1}`} value={m.altText || ''} maxLength={1000} onChange={e => p.updateAltText(m.id, e.target.value)} rows={3} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: 12, margin: '8px 0', borderRadius: 8, border: `1px solid ${C.border}`, font: 'inherit', fontSize: 13, lineHeight: 1.5 }} />
-        <button style={{ ...ghostBtn, marginRight: 8 }} disabled={p.altBusy} onClick={() => p.generateAltText([m])}>Generate ALT Text</button>
-        <button style={ghostBtn} onClick={() => p.updateAltText(m.id, '')}>Clear</button>
-      </details>)}
-      <button style={{ ...ghostBtn, minHeight: 34, fontSize: 11, opacity: p.altBusy ? .6 : 1 }} disabled={p.altBusy || !accessibilityMedia.some(m => m.type === 'image' && !m.altText?.trim())} onClick={() => p.generateAltText(accessibilityMedia.filter(m => m.type === 'image' && !m.altText?.trim()))}>{p.altBusy ? 'Describing images…' : 'Generate Missing ALT Text'}</button>
+      {(() => {
+        const imgs = accessibilityMedia.filter(m => m.type === 'image');
+        const missing = imgs.filter(m => !m.altText?.trim());
+        return (
+          <>
+            {imgs.map((m, i) => (
+              <div key={m.id} style={{ marginBottom: 10 }}>
+                {imgs.length > 1 && <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 4 }}>Image {i + 1}</div>}
+                <textarea
+                  aria-label={`ALT description for image ${i + 1}`}
+                  placeholder="Write a short, clear description of this image..."
+                  value={m.altText || ''}
+                  maxLength={500}
+                  onChange={e => p.updateAltText(m.id, e.target.value.slice(0, 500))}
+                  rows={3}
+                  style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: 12, borderRadius: 8, border: `1px solid ${C.border}`, font: 'inherit', fontSize: 13, lineHeight: 1.5, resize: 'vertical', color: C.ink }}
+                />
+                <div style={{ fontSize: 11, color: C.faint, marginTop: 4 }}>{(m.altText || '').length} / 500</div>
+              </div>
+            ))}
+            <button style={{ ...ghostBtn, minHeight: 40, fontSize: 12.5, opacity: p.altBusy || !imgs.length ? .6 : 1 }} disabled={p.altBusy || !imgs.length} onClick={() => p.generateAltText(missing.length ? missing : imgs)}>{p.altBusy ? 'Generating description…' : missing.length ? '✨ Generate Description' : 'Regenerate Description'}</button>
+          </>
+        );
+      })()}
     </section>
   );
 
@@ -2249,7 +2267,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               {/* ---- Section 2: Image Preview ---- */}
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
                 <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Image Preview</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>This is how your image will look with your logo.</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>See how your logo looks on your selected image.</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>Preview for</span>
                   <select value={previewPlatform} onChange={e => setPreviewPlatform(e.target.value)} style={{ padding: '8px 12px', borderRadius: 10, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', textTransform: 'capitalize' }}>
@@ -2291,13 +2309,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                             title="Edit this visual in Canva"
                             style={{ flex: 1, minWidth: 80, padding: '9px 10px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: (!heroUrl || heroIsVideo || p.isSendingToCanva) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (!heroUrl || heroIsVideo || p.isSendingToCanva) ? 0.65 : 1 }}
                           >{p.isSendingToCanva ? 'Opening…' : '✏️ Edit'}</button>
-                          {hero && (
-                            <button
-                              onClick={() => p.setMediaCover(hero.id)}
-                              title="Make this the cover visual"
-                              style={{ flex: 1, minWidth: 80, padding: '9px 10px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}
-                            >🖼️ Cover</button>
-                          )}
                           {hero ? (
                             <button
                               onClick={() => { p.removeMediaItem(hero.id); if (selectedMediaId === hero.id) setSelectedMediaId(null); }}
@@ -2390,7 +2401,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
                 <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
                 <div style={{ flex: 1 }} />
-                <button onClick={goNext} style={{ minHeight: 50, padding: '14px 38px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Continue to Preview ↗</button>
+                <button onClick={goNext} style={{ minHeight: 50, padding: '14px 38px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Continue to Preview →</button>
               </div>
             </div>
             {/* ============ RIGHT — AI ASSISTANT PANEL ============ */}

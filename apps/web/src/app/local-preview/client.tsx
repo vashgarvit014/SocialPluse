@@ -50,6 +50,7 @@ export default function PreviewClient() {
   const [busyImg, setBusyImg] = useState(false);
   const [carousel, setCarousel] = useState(false);
   const [logoImg, setLogoImg] = useState<string>('');
+  const [altBusyMock, setAltBusyMock] = useState(false);
   const [logoPos, setLogoPos] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center'>('bottom-right');
   const [gallery, setGallery] = useState<Array<{ id: string; url: string; type: 'image'; name: string; altText?: string }>>([]);
   useEffect(() => {
@@ -154,9 +155,15 @@ export default function PreviewClient() {
         setBusyImg(false);
       }, 1200);
     },
-    altBusy: false,
+    altBusy: altBusyMock,
     updateAltText: (id: string, v: string) => setGallery(prev => prev.map(m => (m.id === id ? { ...m, altText: v } : m))),
-    generateAltText: () => setGallery(prev => prev.map(m => (m.altText?.trim() ? m : { ...m, altText: 'Mock description: a vibrant gradient brand visual.' }))),
+    generateAltText: () => {
+      setAltBusyMock(true);
+      setTimeout(() => {
+        setGallery(prev => prev.map(m => (m.altText?.trim() ? m : { ...m, altText: 'Mock description: a vibrant gradient brand visual.' })));
+        setAltBusyMock(false);
+      }, 900);
+    },
     saveFullDraft: noop, cancelPreview: noop,
     openInCanva: noop, isSendingToCanva: false,
     whapiConnected: false, whapiCanConnect: false, startWhatsAppConnect: noop,
@@ -171,7 +178,7 @@ export default function PreviewClient() {
     applyLogoToAllMedia: noop, isApplyingLogo: false,
     generationError: genErr, setGenerationError: (v: string) => setGenErr(v),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel, logoImg, logoPos, gallery]);
+  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel, logoImg, logoPos, gallery, altBusyMock]);
 
   return (
     <div style={{ background: '#F4F5FA', minHeight: '100vh' }}>
