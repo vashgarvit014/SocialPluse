@@ -15,6 +15,10 @@ type Props = {
   isCarousel?: boolean;
   senderName?: string;
   senderRole?: string;
+  logoUrl?: string;
+  logoPosition?: string;
+  logoScale?: number;
+  logoOpacity?: number;
 };
 
 function aspectStyle(aspectRatio?: string): React.CSSProperties {
@@ -39,6 +43,10 @@ export default function WhatsAppCommunityPreview({
   isCarousel = false,
   senderName = 'You',
   senderRole = 'Community admin',
+  logoUrl,
+  logoPosition = 'bottom-right',
+  logoScale = 0.18,
+  logoOpacity = 1,
 }: Props) {
   // PERMANENT RULE: WhatsApp is a no-hashtag channel. Strip every #tag
   // anywhere in the text and ignore the hashtags prop entirely, so the
@@ -90,6 +98,13 @@ export default function WhatsAppCommunityPreview({
                 // photos fully inside the bubble regardless of their shape.
                 // Tall portraits are capped so the bubble stays readable.
                 <img src={active.url} alt={caption?.slice(0,80) || 'WhatsApp media'} style={{ maxWidth: '100%', maxHeight: 440, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto', backgroundColor: '#000' }} />
+              )}
+              {logoUrl && active.type !== 'video' && (
+                <img src={logoUrl} alt="logo" style={{
+                  position: 'absolute', width: `${Math.round(logoScale * 100)}%`, maxWidth: '28%', opacity: logoOpacity,
+                  ...(logoPosition === 'top-left' ? { top: 10, left: 10 } : logoPosition === 'top-right' ? { top: 10, right: 10 } : logoPosition === 'bottom-left' ? { bottom: 10, left: 10 } : logoPosition === 'bottom-right' ? { bottom: 10, right: 10 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
+                  backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6, pointerEvents: 'none',
+                }} />
               )}
               {isCarousel && slides.length > 1 && (
                 <>

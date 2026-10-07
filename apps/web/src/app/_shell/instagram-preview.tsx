@@ -12,6 +12,10 @@ type InstagramPreviewProps = {
   hashtags?: string[];
   aspectRatio?: string;
   isCarousel?: boolean;
+  logoUrl?: string;
+  logoPosition?: string;
+  logoScale?: number;
+  logoOpacity?: number;
 };
 
 function getMediaAspect(aspectRatio?: string): React.CSSProperties {
@@ -34,6 +38,10 @@ export default function InstagramPhonePreview({
   hashtags = [],
   aspectRatio = '1:1',
   isCarousel = false,
+  logoUrl,
+  logoPosition = 'bottom-right',
+  logoScale = 0.18,
+  logoOpacity = 1,
 }: InstagramPreviewProps) {
   const displayUsername = username?.replace(/^@/, '') || 'dotstark_technologies';
   const tagString = hashtags.map(t => '#' + String(t).replace(/^#+/, '')).join(' ');
@@ -68,6 +76,13 @@ export default function InstagramPhonePreview({
           )
         ) : (
           <div style={{ color: '#737373', fontSize: 13, textAlign: 'center', padding: 40 }}>No media yet — add from Media</div>
+        )}
+        {logoUrl && active.type !== 'video' && (
+          <img src={logoUrl} alt="logo" style={{
+            position: 'absolute', width: `${Math.round(logoScale * 100)}%`, maxWidth: '28%', opacity: logoOpacity,
+            ...(logoPosition === 'top-left' ? { top: 10, left: 10 } : logoPosition === 'top-right' ? { top: 10, right: 10 } : logoPosition === 'bottom-left' ? { bottom: 10, left: 10 } : logoPosition === 'bottom-right' ? { bottom: 10, right: 10 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
+            backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6, pointerEvents: 'none',
+          }} />
         )}
         {isCarousel && slides.length > 1 && (
           <>

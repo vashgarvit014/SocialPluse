@@ -538,6 +538,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   // Carousel swipe-preview position (Step 5). Clamped against the live slide
   // list at render time so removing slides can never strand it out of range.
   const [carouselPreviewIndex, setCarouselPreviewIndex] = field('carouselPreviewIndex', 0);
+  const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
   // ---- Step 4 local UI state (workspace mode + AI prompt editor only) ----
   // mediaTab switches the featured workspace panel (AI / upload / library).
   // All panels stay reachable — nothing is unmounted for good, and every
@@ -940,6 +941,19 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-robot { position: absolute; left: 50%; top: 50%; width: 74px; height: 74px; margin-left: -37px; margin-top: -37px; border-radius: 24px; background: linear-gradient(135deg,#7C3AED,#A855F7); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: 0 10px 28px rgba(124,58,237,.45), inset 0 1px 0 rgba(255,255,255,.35); z-index: 2; }
         .sp-duo2{display:grid;gap:20px 28px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start;min-width:0}
         .sp-duo2side{min-width:0;max-width:100%}
+        .sp-plat-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+        .sp-plat-tab{display:inline-flex;align-items:center;gap:6px;padding:6px 14px 6px 8px;border-radius:999px;border:1.5px solid #E5E7EB;background:#fff;color:#64748B;font-weight:800;font-size:12.5px;text-transform:capitalize;cursor:pointer;font-family:inherit}
+        .sp-plat-tab svg{width:22px;height:22px}
+        .sp-plat-tab.sp-on{border:2px solid #7C3AED;background:#F5F0FF;color:#5B21B6}
+        .sp-prev-viewport{overflow:hidden;border-radius:16px;border:1px solid #E5E7EB;background:#F8FAFC;touch-action:pan-y}
+        .sp-prev-track{display:flex;transition:transform 0.35s ease}
+        .sp-prev-slide{flex:0 0 100%;min-width:0;display:flex;justify-content:center;padding:12px}
+        .sp-prev-slide>div{width:100%}
+        .sp-prev-arrow{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:none;background:rgba(15,23,42,0.55);color:#fff;font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2}
+        .sp-prev-dots{display:flex;gap:6px;justify-content:center;margin-top:10px}
+        .sp-prev-dot{width:8px;height:8px;border-radius:999px;border:none;padding:0;background:#DDD6FE;cursor:pointer}
+        .sp-prev-dot.sp-on{background:#7C3AED}
+        .sp-prev-tools{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
         @media(min-width:700px){.sp-duo2side + .sp-duo2side{border-left:1px solid #F1F3F9;padding-left:28px}}
         @media(max-width:699px){.sp-duo2{grid-template-columns:minmax(0,1fr)}.sp-duo2side + .sp-duo2side{border-top:1px solid #F1F3F9;padding-top:20px}}
         .sp-orbit { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; margin-left: -75px; margin-top: -75px; border: 1.5px dashed rgba(124,58,237,.35); border-radius: 50%; pointer-events: none; animation: spSpinSlow 24s linear infinite; }
@@ -2200,77 +2214,21 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🎨</div>
                   <div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Personalization</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Branding Preview</div>
+                    <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Preview your branded visual and make final adjustments before publishing.</div>
                   </div>
                 </div>
               </div>
 
-              <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-              {/* ---- Sections 1+2: Brand Identity + Describe, side by side ---- */}
-              <div className="sp-duo2">
-              <div className="sp-duo2side">
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
-                  <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Logo & Visual Identity</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Upload your brand logo once and apply it to this image or all images.</div>
-                  </div>
-                </div>
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, backgroundColor: '#FCFCFE', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand Logo</div>
-                    <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Upload your brand logo once and apply it to this image or all images.</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {p.logoImage
-                        ? <img src={p.logoImage} alt="Brand logo" style={{ width: 44, height: 44, objectFit: 'contain', backgroundColor: '#fff', borderRadius: 10, border: `1px solid ${C.border}`, padding: 4 }} />
-                        : <img src="/sp-logo.png" alt="SocialPulse" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 10, border: `1px solid ${C.border}` }} />}
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>SocialPulse</div>
-                        <div style={{ fontSize: 10, color: p.logoImage ? '#059669' : C.faint, fontWeight: 600 }}>{p.logoImage ? `✓ Logo uploaded • ${p.logoPosition} • ${Math.round(p.logoScale * 100)}%` : 'No logo uploaded yet'}</div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
-                      <button onClick={() => p.setLogoModalOpen(true)} style={{ flex: 1, padding: '10px', borderRadius: 9, fontSize: 12, fontWeight: 800, border: `1.5px dashed ${C.primaryBorder}`, backgroundColor: '#fff', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit' }}>{p.logoImage ? 'Change Logo' : 'Upload Logo'}</button>
-                      {p.logoImage && <button onClick={p.clearLogo} title="Remove the brand logo" style={{ flex: 1, padding: '8px 10px', borderRadius: 9, fontSize: 11, fontWeight: 700, border: '1px solid #FECACA', backgroundColor: '#fff', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>}
-                    </div>
-                  </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  {p.logoImage && (
-                    <button onClick={() => { p.setLogoTargetId(null); p.setLogoModalOpen(true); }} style={{ ...ghostBtn, minHeight: 38, fontSize: 12, flex: 1 }}>🏷️ Adjust Logo</button>
-                  )}
-                </div>
-                {p.logoTargetId && p.mediaItems.some(m => m.id === p.logoTargetId) && (
-                  <div style={{ marginTop: 8, fontSize: 11, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '7px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ flex: 1 }}>🎯 Will apply to {(() => { const i = p.mediaItems.findIndex(m => m.id === p.logoTargetId); return i === 0 ? '★ Cover image' : `Image #${i + 1}`; })()} only</span>
-                    <button onClick={() => p.setLogoTargetId(null)} style={{ fontSize: 10, fontWeight: 700, background: 'none', border: 'none', color: C.primaryDark, cursor: 'pointer', textDecoration: 'underline' }}>All instead</button>
-                  </div>
-                )}
-                {(() => {
-                  const burnedCount = p.mediaItems.filter(m => p.burnedLogoIds[m.id]).length;
-                  if (!burnedCount) return null;
-                  return (
-                    <div style={{ marginTop: 8, fontSize: 11, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '9px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      <span style={{ flex: '1 1 200px', lineHeight: 1.5 }}>⚠️ Logo is baked into {burnedCount} image{burnedCount === 1 ? '' : 's'} from a previous Apply — removing the brand logo won’t erase those pixels.</span>
-                      <button onClick={() => p.restoreBurnedMedia()} title="Swap burned images back to their pre-logo originals" style={{ padding: '8px 14px', borderRadius: 8, fontSize: 11, fontWeight: 800, border: '1px solid #F59E0B', backgroundColor: '#fff', color: '#92400E', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Restore originals</button>
-                    </div>
-                  );
-                })()}
-              </div>
-              <div className="sp-duo2side">
-                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Describe Your Image</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Add a short description to help people using screen readers understand your image.</div>
-                {altTextControls}
-              </div>
-              </div>
-              </div>
-
-              {/* ---- Section 2: Image Preview ---- */}
+              {/* ---- Section 1: Branded Preview (platform slider) ---- */}
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
                 <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Image Preview</div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>See how your logo looks on your selected image.</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>{p.aspectRatio ? `${p.aspectRatio}${p.aspectRatioMap[p.aspectRatio] ? ` • ${p.aspectRatioMap[p.aspectRatio].label}` : ''}` : 'No aspect ratio'}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>{p.imageStyle}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>Caption • {p.content.trim().length} chars</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>{(p.platformContent[p.activePreviewPlatform]?.hashtags || []).length} hashtags</span>
                 </div>
                 {(() => {
                   const hero = canvaEditTarget || p.mediaItems.find(m => m.type === 'image') || p.mediaItems[0] || null;
@@ -2278,6 +2236,15 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   const heroIsVideo = hero ? hero.type === 'video' : !!p.generatedVideo && !hero;
                   const heroKey = hero?.id || 'gen';
                   const thumbs = (p.isCarousel ? p.carouselSlides : p.mediaItems).slice(0, 8);
+                  const previewOpts = (['linkedin', 'facebook', 'instagram', 'whatsapp'] as const).filter(pl => p.selectedPlatforms.includes(pl));
+                  const safePreviewIdx = Math.min(previewSlideIdx, Math.max(previewOpts.length - 1, 0));
+                  const capNoTags = (() => { const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || []; if (!p.content.trim()) return ''; return tags.length ? p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim() : p.content; })();
+                  const waCap = (() => { const c = p.platformContent[p.activePreviewPlatform]?.caption || p.content; return c.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim(); })();
+                  const tagList = p.platformContent[p.activePreviewPlatform]?.hashtags || [];
+                  const unburnedLogo = p.logoImage && !heroIsVideo && !p.burnedLogoIds[heroKey] ? p.logoImage : undefined;
+                  const toolTarget = canvaEditTarget || hero;
+                  const canEditTool = !!toolTarget && toolTarget.type !== 'video' && !p.isSendingToCanva;
+                  const canDeleteTool = !!toolTarget && !!toolTarget.id && p.mediaItems.some(m => m.id === toolTarget.id);
                   if (!heroUrl) {
                     return <div style={{ border: '2px dashed #C4B5FD', borderRadius: 16, backgroundColor: '#FAF8FF', padding: 40, textAlign: 'center' }}>
                       <div style={{ fontSize: 32 }}>🖼️</div>
@@ -2287,17 +2254,104 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   }
                   return (
                     <div>
-                      <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', border: `1px solid ${C.border}`, backgroundColor: '#000' }}>
-                        {heroIsVideo
-                          ? <video src={heroUrl} controls style={{ width: '100%', maxHeight: 380, display: 'block', backgroundColor: '#000' }} />
-                          : <img src={heroUrl} alt={hero?.altText || 'Branded design preview'} onClick={() => setLightboxItem({ url: heroUrl, type: 'image', altText: hero?.altText })} title="Click to zoom" style={{ width: '100%', maxHeight: 380, objectFit: 'contain', display: 'block', backgroundColor: '#0F172A', cursor: 'zoom-in' }} />}
-                        {p.logoImage && !p.burnedLogoIds[heroKey] && !heroIsVideo && (
-                          <img src={p.logoImage} alt="logo" style={{
-                            position: 'absolute', width: `${Math.round(p.logoScale * 100)}%`, maxWidth: '28%', opacity: p.logoOpacity,
-                            ...(p.logoPosition === 'top-left' ? { top: 10, left: 10 } : p.logoPosition === 'top-right' ? { top: 10, right: 10 } : p.logoPosition === 'bottom-left' ? { bottom: 54, left: 10 } : p.logoPosition === 'bottom-right' ? { bottom: 54, right: 10 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
-                            backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6, pointerEvents: 'none',
-                          }} />
+                      {previewOpts.length > 1 && (
+                        <div className="sp-plat-tabs">
+                          {previewOpts.map((pps, i) => (
+                            <button key={pps} className={'sp-plat-tab' + (i === safePreviewIdx ? ' sp-on' : '')} onClick={() => { setPreviewSlideIdx(i); setPreviewPlatform(pps); if (p.platformContent[pps]) p.switchPreviewPlatform(pps); }} aria-label={`Preview ${pps}`}>
+                              <p.PlatformIcon platform={pps} size={22} />
+                              {pps}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ position: 'relative' }}>
+                        <div className="sp-prev-viewport" onTouchStart={e => { e.currentTarget.dataset.sx = String(e.touches[0].clientX); }} onTouchEnd={e => { const sx = parseFloat(e.currentTarget.dataset.sx || 'x'); if (Number.isNaN(sx) || previewOpts.length < 2) return; const dx = e.changedTouches[0].clientX - sx; delete e.currentTarget.dataset.sx; if (Math.abs(dx) < 40) return; const nn = dx < 0 ? (safePreviewIdx + 1) % previewOpts.length : (safePreviewIdx - 1 + previewOpts.length) % previewOpts.length; setPreviewSlideIdx(nn); const pl = previewOpts[nn]; setPreviewPlatform(pl); if (p.platformContent[pl]) p.switchPreviewPlatform(pl); }}>
+                          <div className="sp-prev-track" style={{ transform: `translateX(-${safePreviewIdx * 100}%)` }}>
+                            {previewOpts.map(pps => (
+                              <div key={pps} className="sp-prev-slide">
+                                <div style={{ position: 'relative', width: '100%', maxWidth: pps === 'instagram' ? 480 : pps === 'whatsapp' ? 400 : 660 }}>
+                                  {pps === 'instagram' ? (
+                                    <InstagramPhonePreview
+                                      username={(p.accounts.find(a => a.platform === 'instagram' && a.connected) as any)?.instagramUsername || p.accounts.find(a => a.platform === 'instagram' && a.connected)?.name || p.accounts.find(a => a.platform === 'facebook' && a.connected)?.name || 'socialpulse'}
+                                      avatarUrl={p.logoImage || undefined}
+                                      mediaUrl={heroUrl}
+                                      mediaType={heroIsVideo ? 'video' : 'image'}
+                                      caption={capNoTags}
+                                      hashtags={tagList}
+                                      aspectRatio={p.aspectRatio || '1:1'}
+                                      logoUrl={unburnedLogo}
+                                      logoPosition={p.logoPosition}
+                                      logoScale={p.logoScale}
+                                      logoOpacity={p.logoOpacity}
+                                    />
+                                  ) : pps === 'facebook' ? (
+                                    <FacebookPostPreview
+                                      caption={capNoTags}
+                                      hashtags={tagList}
+                                      mediaUrl={heroUrl}
+                                      mediaType={heroIsVideo ? 'video' : 'image'}
+                                      pageName="SocialPulse"
+                                      avatarUrl={p.logoImage || undefined}
+                                      aspectRatio={p.aspectRatio || '1:1'}
+                                      logoUrl={unburnedLogo}
+                                      logoPosition={p.logoPosition}
+                                      logoScale={p.logoScale}
+                                      logoOpacity={p.logoOpacity}
+                                    />
+                                  ) : pps === 'linkedin' ? (
+                                    <LinkedInPostPreview
+                                      caption={capNoTags}
+                                      hashtags={tagList}
+                                      mediaUrl={heroUrl}
+                                      mediaType={heroIsVideo ? 'video' : 'image'}
+                                      aspectRatio={p.aspectRatio || '1:1'}
+                                      profileName="SocialPulse"
+                                      profileSubtitle="Social Media Content Manager"
+                                      avatarUrl={p.logoImage || undefined}
+                                      logoUrl={p.logoImage || undefined}
+                                      logoPosition={p.logoPosition}
+                                      logoScale={p.logoScale}
+                                      logoOpacity={p.logoOpacity}
+                                      burnedIds={p.burnedLogoIds}
+                                    />
+                                  ) : (
+                                    <WhatsAppCommunityPreview
+                                      communityName={(p.whapiGroups || []).find(g => g.id === p.whapiSelectedGroupId)?.name || 'SocialPulse Testing 🚀'}
+                                      subtitle="Announcements"
+                                      destinationType={(p.whapiGroups || []).find(g => g.id === p.whapiSelectedGroupId)?.type || 'announcement_group'}
+                                      caption={waCap}
+                                      hashtags={[]}
+                                      mediaUrl={heroUrl}
+                                      mediaType={heroIsVideo ? 'video' : 'image'}
+                                      aspectRatio={p.aspectRatio || '1:1'}
+                                      logoUrl={unburnedLogo}
+                                      logoPosition={p.logoPosition}
+                                      logoScale={p.logoScale}
+                                      logoOpacity={p.logoOpacity}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {previewOpts.length > 1 && (
+                          <>
+                            <button className="sp-prev-arrow" style={{ left: 8 }} aria-label="Previous platform" onClick={() => { const nn = (safePreviewIdx - 1 + previewOpts.length) % previewOpts.length; setPreviewSlideIdx(nn); const pl = previewOpts[nn]; setPreviewPlatform(pl); if (p.platformContent[pl]) p.switchPreviewPlatform(pl); }}>‹</button>
+                            <button className="sp-prev-arrow" style={{ right: 8 }} aria-label="Next platform" onClick={() => { const nn = (safePreviewIdx + 1) % previewOpts.length; setPreviewPlatform(previewOpts[nn]); setPreviewSlideIdx(nn); const pl = previewOpts[nn]; if (p.platformContent[pl]) p.switchPreviewPlatform(pl); }}>›</button>
+                          </>
                         )}
+                      </div>
+                      {previewOpts.length > 1 && (
+                        <div className="sp-prev-dots">
+                          {previewOpts.map((pps, i) => (
+                            <button key={pps} aria-label={`Go to ${pps} preview`} className={'sp-prev-dot' + (i === safePreviewIdx ? ' sp-on' : '')} onClick={() => { setPreviewSlideIdx(i); setPreviewPlatform(pps); if (p.platformContent[pps]) p.switchPreviewPlatform(pps); }} />
+                          ))}
+                        </div>
+                      )}
+                      <div className="sp-prev-tools">
+                        <button onClick={() => { if (toolTarget) p.openInCanva(toolTarget.url); }} disabled={!canEditTool} title={!toolTarget ? 'Generate or upload an image first' : toolTarget.type === 'video' ? 'Videos cannot be edited in Canva' : 'Open the featured visual in Canva'} style={{ ...ghostBtn, minHeight: 40, padding: '10px 18px', fontSize: 12.5, fontWeight: 800, opacity: canEditTool ? 1 : 0.55, cursor: canEditTool ? 'pointer' : 'not-allowed' }}>Edit</button>
+                        <button onClick={() => { if (toolTarget && toolTarget.id) { p.removeMediaItem(toolTarget.id); if (selectedMediaId === toolTarget.id) setSelectedMediaId(null); } }} disabled={!canDeleteTool} title={canDeleteTool ? 'Delete the featured visual' : 'Only gallery uploads can be deleted here'} style={{ minHeight: 40, padding: '10px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: '1px solid #FECACA', backgroundColor: '#FEF2F2', color: '#DC2626', cursor: canDeleteTool ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canDeleteTool ? 1 : 0.55 }}>Delete</button>
                       </div>
                       {p.isCarousel && thumbs.length > 0 && (
                         <div style={{ display: 'flex', gap: 8, marginTop: 10, overflowX: 'auto', padding: '2px 2px 4px' }}>
@@ -2370,6 +2424,65 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     </div>
                   );
                 })()}
+              </div>
+
+              <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+              {/* ---- Section 2: Brand Identity + Describe, side by side ---- */}
+              <div className="sp-duo2">
+              <div className="sp-duo2side">
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Logo & Visual Identity</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Upload your brand logo once and apply it to this image or all images.</div>
+                  </div>
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, backgroundColor: '#FCFCFE', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand Logo</div>
+                    <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Upload your brand logo once and apply it to this image or all images.</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      {p.logoImage
+                        ? <img src={p.logoImage} alt="Brand logo" style={{ width: 44, height: 44, objectFit: 'contain', backgroundColor: '#fff', borderRadius: 10, border: `1px solid ${C.border}`, padding: 4 }} />
+                        : <img src="/sp-logo.png" alt="SocialPulse" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 10, border: `1px solid ${C.border}` }} />}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>SocialPulse</div>
+                        <div style={{ fontSize: 10, color: p.logoImage ? '#059669' : C.faint, fontWeight: 600 }}>{p.logoImage ? `✓ Logo uploaded • ${p.logoPosition} • ${Math.round(p.logoScale * 100)}%` : 'No logo uploaded yet'}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
+                      <button onClick={() => p.setLogoModalOpen(true)} style={{ flex: 1, padding: '10px', borderRadius: 9, fontSize: 12, fontWeight: 800, border: `1.5px dashed ${C.primaryBorder}`, backgroundColor: '#fff', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit' }}>{p.logoImage ? 'Change Logo' : 'Upload Logo'}</button>
+                      {p.logoImage && <button onClick={p.clearLogo} title="Remove the brand logo" style={{ flex: 1, padding: '8px 10px', borderRadius: 9, fontSize: 11, fontWeight: 700, border: '1px solid #FECACA', backgroundColor: '#fff', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>}
+                    </div>
+                  </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                  {p.logoImage && (
+                    <button onClick={() => { p.setLogoTargetId(null); p.setLogoModalOpen(true); }} style={{ ...ghostBtn, minHeight: 38, fontSize: 12, flex: 1 }}>🏷️ Adjust Logo</button>
+                  )}
+                </div>
+                {p.logoTargetId && p.mediaItems.some(m => m.id === p.logoTargetId) && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '7px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ flex: 1 }}>🎯 Will apply to {(() => { const i = p.mediaItems.findIndex(m => m.id === p.logoTargetId); return i === 0 ? '★ Cover image' : `Image #${i + 1}`; })()} only</span>
+                    <button onClick={() => p.setLogoTargetId(null)} style={{ fontSize: 10, fontWeight: 700, background: 'none', border: 'none', color: C.primaryDark, cursor: 'pointer', textDecoration: 'underline' }}>All instead</button>
+                  </div>
+                )}
+                {(() => {
+                  const burnedCount = p.mediaItems.filter(m => p.burnedLogoIds[m.id]).length;
+                  if (!burnedCount) return null;
+                  return (
+                    <div style={{ marginTop: 8, fontSize: 11, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '9px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{ flex: '1 1 200px', lineHeight: 1.5 }}>⚠️ Logo is baked into {burnedCount} image{burnedCount === 1 ? '' : 's'} from a previous Apply — removing the brand logo won’t erase those pixels.</span>
+                      <button onClick={() => p.restoreBurnedMedia()} title="Swap burned images back to their pre-logo originals" style={{ padding: '8px 14px', borderRadius: 8, fontSize: 11, fontWeight: 800, border: '1px solid #F59E0B', backgroundColor: '#fff', color: '#92400E', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Restore originals</button>
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="sp-duo2side">
+                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Describe Your Image</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Add a short description to help people using screen readers understand your image.</div>
+                {altTextControls}
+              </div>
+              </div>
               </div>
 
 

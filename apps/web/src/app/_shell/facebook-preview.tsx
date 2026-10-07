@@ -9,6 +9,10 @@ type FBPreviewProps = {
   pageName?: string;
   avatarUrl?: string;
   aspectRatio?: string;
+  logoUrl?: string;
+  logoPosition?: string;
+  logoScale?: number;
+  logoOpacity?: number;
 };
 
 function getMediaAspect(aspectRatio?: string): React.CSSProperties {
@@ -17,14 +21,21 @@ function getMediaAspect(aspectRatio?: string): React.CSSProperties {
   return { aspectRatio: '1/1' };
 }
 
-function SingleMedia({ url, type, aspectRatio }: { url: string; type: string; aspectRatio?: string }) {
+function SingleMedia({ url, type, aspectRatio, logoUrl, logoPosition, logoScale, logoOpacity }: { url: string; type: string; aspectRatio?: string; logoUrl?: string; logoPosition?: string; logoScale?: number; logoOpacity?: number }) {
   const style = getMediaAspect(aspectRatio);
   return (
-    <div style={{ ...style, width: '100%', overflow: 'hidden', backgroundColor: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ ...style, width: '100%', overflow: 'hidden', backgroundColor: '#0f0f0f', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {type === 'video' ? (
         <video src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />
       ) : (
         <img src={url} alt="Facebook post media" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      )}
+      {logoUrl && type !== 'video' && (
+        <img src={logoUrl} alt="logo" style={{
+          position: 'absolute', width: `${Math.round((logoScale ?? 0.18) * 100)}%`, maxWidth: '28%', opacity: logoOpacity ?? 1,
+          ...(logoPosition === 'top-left' ? { top: 10, left: 10 } : logoPosition === 'top-right' ? { top: 10, right: 10 } : logoPosition === 'bottom-left' ? { bottom: 10, left: 10 } : logoPosition === 'bottom-right' ? { bottom: 10, right: 10 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
+          backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6, pointerEvents: 'none',
+        }} />
       )}
     </div>
   );
@@ -75,7 +86,7 @@ function MultiGrid({ items, aspectRatio }: { items: Array<{ url: string; type: s
   return <SingleMedia url={items[0].url} type={items[0].type} aspectRatio={aspectRatio} />;
 }
 
-export default function FacebookPostPreview({ caption = '', hashtags = [], mediaUrl, mediaType = 'image', mediaList, pageName = 'SocialPulse', avatarUrl, aspectRatio = '1:1' }: FBPreviewProps) {
+export default function FacebookPostPreview({ caption = '', hashtags = [], mediaUrl, mediaType = 'image', mediaList, pageName = 'SocialPulse', avatarUrl, aspectRatio = '1:1', logoUrl, logoPosition = 'bottom-right', logoScale = 0.18, logoOpacity = 1 }: FBPreviewProps) {
   const tagString = hashtags.map(t => '#' + String(t).replace(/^#+/, '')).join(' ');
   const fullCaption = [caption?.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim(), tagString].filter(Boolean).join(' ');
   const displayCaption = fullCaption.length > 180 ? fullCaption.slice(0, 180) + '...' : fullCaption;
@@ -102,7 +113,7 @@ export default function FacebookPostPreview({ caption = '', hashtags = [], media
       {/* Media */}
       {hasMedia ? (
         items.length === 1 ? (
-          <SingleMedia url={items[0].url} type={items[0].type} aspectRatio={aspectRatio} />
+          <SingleMedia url={items[0].url} type={items[0].type} aspectRatio={aspectRatio} logoUrl={logoUrl} logoPosition={logoPosition} logoScale={logoScale} logoOpacity={logoOpacity} />
         ) : (
           <MultiGrid items={items} aspectRatio={aspectRatio} />
         )

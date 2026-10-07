@@ -37,7 +37,8 @@ export default function PreviewClient() {
   const [wizardState, setWizardState] = useState<Record<string, unknown>>({ currentStep: stepParam });
   const [prompt, setPrompt] = useState('Preview fixture topic idea');
   const [tone, setTone] = useState('Professional');
-  const [plats, setPlats] = useState<string[]>(['facebook']);
+  const platsParam = (search.get('plats') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const [plats, setPlats] = useState<string[]>(platsParam.length ? platsParam : ['facebook']);
   const [content, setContentState] = useState('');
   const [platContent, setPlatContent] = useState<Record<string, { caption: string; hashtags: string[] }>>({});
   const [active, setActive] = useState('facebook');
