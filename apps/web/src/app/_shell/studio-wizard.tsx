@@ -1558,11 +1558,17 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                             ))}
                           </div>
                         </div>
-                        <button onClick={p.generateImage} disabled={!canGenImage} title={!p.aspectRatio ? 'Select an aspect ratio above first' : !p.content.trim() ? 'Add content first' : 'Generate AI image'} style={{ minHeight: 46, padding: '12px 28px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, border: 'none', cursor: canGenImage ? 'pointer' : 'not-allowed', fontFamily: 'inherit', flexShrink: 0, background: canGenImage ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#DDD6FE', color: '#fff', boxShadow: canGenImage ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}>
-                          {p.isGeneratingImage ? 'Generating…' : '✨ Generate Image'}
+                        <button
+                          onClick={p.generateImage}
+                          disabled={p.isGeneratingImage || !shown.trim() || !p.aspectRatio || !p.imageStyle || !canGenImage}
+                          aria-disabled={p.isGeneratingImage || !shown.trim() || !p.aspectRatio || !p.imageStyle || !canGenImage}
+                          title={p.isGeneratingImage ? 'Generating — please wait' : !shown.trim() ? 'Describe your visual above first' : !p.aspectRatio ? 'Select an aspect ratio above first' : !p.imageStyle ? 'Choose an image style above first' : !canGenImage ? 'Add content first' : 'Generate AI image'}
+                          style={{ minHeight: 46, padding: '12px 28px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, border: 'none', cursor: (canGenImage && shown.trim() && p.aspectRatio && p.imageStyle) ? 'pointer' : 'not-allowed', fontFamily: 'inherit', flexShrink: 0, background: (canGenImage && shown.trim() && p.aspectRatio && p.imageStyle) ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#E4DFF2', color: (canGenImage && shown.trim() && p.aspectRatio && p.imageStyle) ? '#fff' : '#9A8FC7', opacity: (canGenImage && shown.trim() && p.aspectRatio && p.imageStyle) ? 1 : 0.7, boxShadow: (canGenImage && shown.trim() && p.aspectRatio && p.imageStyle) ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}
+                        >
+                          {p.isGeneratingImage ? 'Generating…' : !shown.trim() ? 'Enter a Visual Description First' : !p.aspectRatio ? 'Select Aspect Ratio First' : !p.imageStyle ? 'Choose Image Style First' : !canGenImage ? 'Add content first' : '✨ Generate Image'}
                         </button>
                       </div>
-                      <div style={{ fontSize: 11, color: C.faint, marginTop: 8, lineHeight: 1.5 }}>AI will use your post topic, tone, and selected visual style.{!p.aspectRatio ? ' Select an aspect ratio above to unlock generation.' : ''}</div>
+                      <div style={{ fontSize: 11, color: C.faint, marginTop: 8, lineHeight: 1.5 }}>AI will use your post topic, tone, and selected visual style.{!shown.trim() ? ' Enter a visual description above to unlock generation.' : !p.aspectRatio ? ' Select an aspect ratio above to unlock generation.' : !p.imageStyle ? ' Choose an image style above to unlock generation.' : ''}</div>
                     </>
                   );
                 })()}
