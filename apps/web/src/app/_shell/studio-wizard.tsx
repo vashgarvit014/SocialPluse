@@ -2179,12 +2179,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🎨</div>
                   <div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Branding & Accessibility</div>
-                    <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Step 6 of 8: Apply your brand identity and make your visuals accessible</div>
+                    <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Add your logo and make your image accessible before Preview.</div>
                   </div>
-                </div>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#F5F0FF', border: '1px solid #DDD6FE', borderRadius: 14, padding: '12px 16px', marginTop: 18 }}>
-                  <span style={{ fontSize: 16, lineHeight: 1.4 }}>✨</span>
-                  <span style={{ fontSize: 12.5, color: C.primaryDark, fontWeight: 600, lineHeight: 1.6 }}>Consistent branding creates recognition, while accessible visuals make your content easier for everyone to understand.</span>
                 </div>
               </div>
 
@@ -2195,18 +2191,11 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Brand Identity</div>
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Keep your visuals consistent with your brand identity across every platform.</div>
                   </div>
-                  <button
-                    onClick={() => p.applyLogoToAllMedia()}
-                    disabled={p.isApplyingLogo || !p.logoImage}
-                    title={!p.logoImage ? 'Upload a brand logo first' : 'Burn the logo into all gallery media'}
-                    style={{ minHeight: 44, padding: '12px 22px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: 'none', cursor: (p.isApplyingLogo || !p.logoImage) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', background: (p.isApplyingLogo || !p.logoImage) ? '#DDD6FE' : 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: (p.isApplyingLogo || !p.logoImage) ? 'none' : '0 6px 20px rgba(124,58,237,0.4)' }}
-                  >
-                    {p.isApplyingLogo ? 'Applying…' : 'Apply to All Slides'}
-                  </button>
                 </div>
                 <div className="sp-wiz-grid3" style={{ marginTop: 12 }}>
                   <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, backgroundColor: '#FCFCFE', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand Logo</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand Logo (Optional)</div>
+                    <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Upload your brand logo once and apply it to this image or all images.</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {p.logoImage
                         ? <img src={p.logoImage} alt="Brand logo" style={{ width: 44, height: 44, objectFit: 'contain', backgroundColor: '#fff', borderRadius: 10, border: `1px solid ${C.border}`, padding: 4 }} />
@@ -2221,37 +2210,32 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       {p.logoImage && <button onClick={p.clearLogo} title="Remove the brand logo" style={{ flex: 1, padding: '8px 10px', borderRadius: 9, fontSize: 11, fontWeight: 700, border: '1px solid #FECACA', backgroundColor: '#fff', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>}
                     </div>
                   </div>
-                  <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, backgroundColor: '#FCFCFE', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand Colors</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>Manage your brand color palette.</div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                      {brandSwatches.map(c => (
-                        <button key={c} onClick={() => setActiveSwatch(c)} title={c} style={{ width: 30, height: 30, borderRadius: '50%', backgroundColor: c, border: activeSwatch === c ? `2.5px solid ${C.primary}` : '1px solid rgba(15,23,42,0.15)', cursor: 'pointer', boxShadow: activeSwatch === c ? '0 0 0 3px #EDE9FE' : 'none', padding: 0 }} />
-                      ))}
-                      {brandSwatches.length < BRAND_SWATCHES.length + EXTRA_SWATCHES.length && (
-                        <button onClick={() => { const next = EXTRA_SWATCHES.find(c => !brandSwatches.includes(c)); if (next) { setBrandSwatches(prev => [...prev, next]); setActiveSwatch(next); } }} title="Add a brand color" style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px dashed #CBD5E1', backgroundColor: '#fff', color: C.primaryDark, cursor: 'pointer', fontSize: 15, fontWeight: 800, lineHeight: 1 }}>+</button>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 10, color: C.faint, marginTop: 'auto' }}>Active accent • {activeSwatch}</div>
                   </div>
-                  <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, backgroundColor: '#FCFCFE', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand Fonts</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>Keep your typography consistent.</div>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 10, fontWeight: 700, color: C.muted }}>
-                      Heading Font
-                      <select value={headingFont} onChange={e => setHeadingFont(e.target.value)} style={{ padding: '8px 10px', borderRadius: 9, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>
-                        {['Poppins', 'Inter', 'Montserrat'].map(f => <option key={f} value={f}>{f}</option>)}
-                      </select>
-                    </label>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 10, fontWeight: 700, color: C.muted }}>
-                      Body Font
-                      <select value={bodyFont} onChange={e => setBodyFont(e.target.value)} style={{ padding: '8px 10px', borderRadius: 9, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>
-                        {['Inter', 'Poppins', 'Roboto'].map(f => <option key={f} value={f}>{f}</option>)}
-                      </select>
-                    </label>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, marginTop: 18 }}>Logo Placement</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 10 }}>Choose where your logo will appear on the image.</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(96px,1fr))', gap: 8 }}>
+                    {([
+                      ['top-left', 'Top Left'],
+                      ['top-right', 'Top Right'],
+                      ['bottom-left', 'Bottom Left'],
+                      ['bottom-right', 'Bottom Right'],
+                      ['center', 'Center'],
+                    ] as const).map(([id, label]) => {
+                      const on = p.logoPosition === id;
+                      return (
+                        <button key={id} onClick={() => p.setLogoPosition(id)} disabled={!p.logoImage} title={p.logoImage ? `Place logo: ${label}` : 'Upload a logo first'} aria-pressed={on} className="sp-s2-opt" style={{ ...selectCardPremium(on), alignItems: 'center', textAlign: 'center', padding: '12px 8px', opacity: p.logoImage ? 1 : 0.55, cursor: p.logoImage ? 'pointer' : 'not-allowed' }}>
+                          <span style={checkBadge(on)}>{on ? '✓' : ''}</span>
+                          <span style={{ position: 'relative', width: 40, height: 28, borderRadius: 6, border: `1.5px solid ${on ? C.primary : '#CBD5E1'}`, backgroundColor: on ? '#fff' : '#F8FAFC', display: 'block' }}>
+                            <span style={{
+                              position: 'absolute', width: 8, height: 8, borderRadius: 2, backgroundColor: on ? C.primary : '#94A3B8',
+                              ...(id === 'top-left' ? { top: 3, left: 3 } : id === 'top-right' ? { top: 3, right: 3 } : id === 'bottom-left' ? { bottom: 3, left: 3 } : id === 'bottom-right' ? { bottom: 3, right: 3 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
+                            }} />
+                          </span>
+                          <span style={{ fontSize: 11.5, fontWeight: 800, color: on ? C.primaryDark : C.ink, marginTop: 6 }}>{label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
-                </div>
-                {p.logoImage && <div style={{ fontSize: 10, color: C.faint, marginTop: 10 }}>Logo position: {p.logoPosition} • size {Math.round(p.logoScale * 100)}% — change position/size in the logo dialog.</div>}
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                   {p.logoImage && (
                     <button onClick={() => { p.setLogoTargetId(null); p.setLogoModalOpen(true); }} style={{ ...ghostBtn, minHeight: 38, fontSize: 12, flex: 1 }}>🏷️ Adjust Logo</button>
@@ -2275,27 +2259,10 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 })()}
               </div>
 
-              {/* ---- Section 2: Brand Readiness ---- */}
-              <div style={{ ...card, borderRadius: 20, padding: '20px 24px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Brand Readiness</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 6 }}>Setup status at a glance — complete each item before Preview.</div>
-                {[
-                  ['Logo', p.logoImage ? 'Uploaded ✓' : '⚠ Not uploaded', !!p.logoImage],
-                  ['Colors', `${brandSwatches.length} colors configured`, brandSwatches.length >= 4],
-                  ['Fonts', `${headingFont} + ${bodyFont}`, !!(headingFont && bodyFont)],
-                  ['Branding', p.logoImage ? 'Ready to apply ✓' : 'Add a logo to apply', !!p.logoImage],
-                ].map(([label, value, ok]) => (
-                  <div key={label as string} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: `1px solid ${C.borderSoft}` }}>
-                    <span style={{ fontSize: 12.5, color: C.muted, fontWeight: 600, flex: 1 }}>{label}</span>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: ok ? '#059669' : '#92400E', backgroundColor: ok ? '#ECFDF5' : '#FFFBEB', border: `1px solid ${ok ? '#A7F3D0' : '#FDE68A'}`, padding: '4px 12px', borderRadius: 999 }}>{value}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* ---- Section 3: Design Preview (branding preview) ---- */}
+              {/* ---- Section 2: Image Preview ---- */}
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Design Preview</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>See how your brand identity looks on your selected visual.</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Image Preview</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>This is how your image will look with your logo.</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>Preview for</span>
                   <select value={previewPlatform} onChange={e => setPreviewPlatform(e.target.value)} style={{ padding: '8px 12px', borderRadius: 10, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', textTransform: 'capitalize' }}>
@@ -2344,12 +2311,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                               style={{ flex: 1, minWidth: 80, padding: '9px 10px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}
                             >🖼️ Cover</button>
                           )}
-                          <button
-                            onClick={() => p.applyLogoToAllMedia()}
-                            disabled={p.isApplyingLogo || !p.logoImage}
-                            title={!p.logoImage ? 'Upload a brand logo first' : 'Burn the logo into all gallery media'}
-                            style={{ flex: 1, minWidth: 100, padding: '9px 10px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(124,58,237,0.92)', color: '#fff', cursor: (p.isApplyingLogo || !p.logoImage) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (p.isApplyingLogo || !p.logoImage) ? 0.65 : 1 }}
-                          >{p.isApplyingLogo ? 'Applying…' : '🏷️ Apply to All'}</button>
                           {hero ? (
                             <button
                               onClick={() => { p.removeMediaItem(hero.id); if (selectedMediaId === hero.id) setSelectedMediaId(null); }}
@@ -2397,93 +2358,106 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                           })}
                         </div>
                       )}
+                      {(() => {
+                        // Apply targets mirror the burn: all image media, or the
+                        // single generated visual when the gallery is empty.
+                        const imageCount = p.isCarousel
+                          ? p.carouselSlides.length
+                          : (p.mediaItems.filter(m => m.type === 'image').length || ((p.generatedImage || p.generatedVideo) ? 1 : 0));
+                        const heroId = hero && hero.id && p.mediaItems.some(m => m.id === hero.id) ? hero.id : null;
+                        const canApply = !!p.logoImage && !p.isApplyingLogo && !!heroUrl && !heroIsVideo;
+                        const applyToHero = () => {
+                          // Deferred one tick so the target selection above has
+                          // committed before the burn reads it (same pattern as
+                          // the logo dialog's delayed apply).
+                          if (heroId) {
+                            p.setLogoTargetId(heroId);
+                            setTimeout(() => p.applyLogoToAllMedia(), 60);
+                          } else {
+                            p.applyLogoToAllMedia();
+                          }
+                        };
+                        const applyToAll = () => {
+                          p.setLogoTargetId(null);
+                          setTimeout(() => p.applyLogoToAllMedia(), 60);
+                        };
+                        return (
+                          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                            <button onClick={applyToHero} disabled={!canApply} title={!p.logoImage ? 'Upload a brand logo first' : 'Burn the logo into the featured visual'} style={{ flex: 1, minWidth: 150, minHeight: 44, padding: '12px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: 'none', cursor: canApply ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: canApply ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#DDD6FE', color: '#fff', boxShadow: canApply ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}>
+                              {p.isApplyingLogo ? 'Applying…' : 'Apply Logo to This Image'}
+                            </button>
+                            {imageCount > 1 && (
+                              <button onClick={applyToAll} disabled={!canApply} title="Burn the logo into all images" style={{ flex: 1, minWidth: 150, minHeight: 44, padding: '12px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.primary}`, backgroundColor: '#fff', color: C.primaryDark, cursor: canApply ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canApply ? 1 : 0.6 }}>
+                                {p.isApplyingLogo ? 'Applying…' : 'Apply to All Images'}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })()}
               </div>
 
-              {/* ---- Section 4: Image ALT Text ---- */}
+              {/* ---- Section 4: Describe Your Image ---- */}
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Image ALT Text</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Add descriptions to your images to improve accessibility.</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Describe Your Image</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Add a short description to help people using screen readers understand your image.</div>
                 {altTextControls}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
                 <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
                 <div style={{ flex: 1 }} />
-                <button onClick={() => setCurrentStep(7)} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14, width: 'auto' }}>Preview</button>
-                <button onClick={goNext} style={{ minHeight: 50, padding: '14px 38px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Next →</button>
+                <button onClick={goNext} style={{ minHeight: 50, padding: '14px 38px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Continue to Preview →</button>
               </div>
             </div>
             {/* ============ RIGHT — AI ASSISTANT PANEL ============ */}
             <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-              <div style={{ position: 'relative', borderRadius: 20, padding: '26px 22px 22px', background: 'linear-gradient(135deg,#EDE9FE 0%,#DDD6FE 100%)', border: '1px solid #C4B5FD', overflow: 'hidden', textAlign: 'center' }}>
-                <span style={{ position: 'absolute', top: 14, left: 16, width: 32, height: 32, borderRadius: 10, background: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>SP</span>
-                <span style={{ position: 'absolute', top: 44, right: 14, width: 30, height: 30, borderRadius: '50%', background: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>🎨</span>
-                <span style={{ position: 'absolute', bottom: 84, left: 12, width: 30, height: 30, borderRadius: '50%', background: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>Aa</span>
-                <span style={{ position: 'absolute', bottom: 108, right: 18, width: 30, height: 30, borderRadius: '50%', background: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>🖼️</span>
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto', boxShadow: '0 8px 24px rgba(124,58,237,0.22)', border: '1px solid #E9D5FF' }}>🤖</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: C.ink, marginTop: 14, letterSpacing: '-0.01em', lineHeight: 1.4 }}>Build a Stronger<br />Brand with AI ✨</div>
-                <div style={{ fontSize: 12, color: '#64748B', marginTop: 6, fontWeight: 600, lineHeight: 1.6 }}>Consistent visuals create recognition and make your content easier to remember.</div>
+              <div style={{ borderRadius: 20, background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
+                <div className="sp-soc-visual" aria-hidden="true">
+                  <span className="sp-orbit" />
+                  <span className="sp-soc" title="LinkedIn" style={{ left: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(10,102,194,0.4)', animation: 'spDriftLi 6.5s ease-in-out infinite' }}><p.PlatformIcon platform="linkedin" size={22} /><img src="/brand-icons/linkedin.webp" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#0A66C2'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="Instagram" style={{ right: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(209,42,123,0.4)', animation: 'spDriftIg 7.2s ease-in-out infinite', animationDelay: '0.8s' }}><p.PlatformIcon platform="instagram" size={22} /><img src="/brand-icons/instagram.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#E1306C'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="Facebook" style={{ left: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(24,119,242,0.4)', animation: 'spFloatY 5.2s ease-in-out infinite', animationDelay: '0.3s' }}><p.PlatformIcon platform="facebook" size={22} /><img src="/brand-icons/facebook.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#1877F2'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="WhatsApp" style={{ right: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(37,211,102,0.42)', animation: 'spFloatDiag 6s ease-in-out infinite', animationDelay: '1.4s' }}><p.PlatformIcon platform="whatsapp" size={22} /><img src="/brand-icons/whatsapp.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#25D366'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-robot sp-robot-logo" style={{ animation: 'spBreathe 5.5s ease-in-out infinite' }}><img src="/sp-logo.png" alt="SocialPulse AI" width={74} height={74} /></span>
+                </div>
+                <div style={{ padding: '18px 16px 20px', borderTop: '1px solid rgba(233,213,255,0.7)' }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>Build a Stronger Brand with AI ✨</div>
+                  <div style={{ fontSize: 12, color: '#64748B', marginTop: 8, lineHeight: 1.65 }}>Add your logo to make your content instantly recognizable across all platforms.</div>
+                </div>
               </div>
 
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 10 }}>💡 Quick Tips</div>
-                {['Use a recognizable logo', 'Keep brand colors consistent', 'Choose readable fonts', 'Maintain strong contrast', 'Add ALT text to images', 'Apply branding across slides'].map(tip => (
-                  <div key={tip} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
-                    <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✓</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: '#334155' }}>{tip}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px', textAlign: 'center' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Brand Readiness</div>
+              <div style={{ ...card, borderRadius: 16, padding: '18px 20px', boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Accessibility Check</div>
                 {(() => {
-                  const imagesForAlt = [...p.mediaItems, ...postExtraImages].filter(m => m.type === 'image');
-                  const altOk = imagesForAlt.length > 0 && imagesForAlt.every(m => m.altText?.trim());
-                  const rows: Array<[string, boolean]> = [
-                    ['Logo', !!p.logoImage],
-                    ['Colors', brandSwatches.length >= 4],
-                    ['Fonts', !!(headingFont && bodyFont)],
-                    ['Accessibility', altOk],
+                  const checkImages = [...p.mediaItems, ...postExtraImages].filter(m => m.type === 'image');
+                  const altOk = checkImages.length > 0 && checkImages.every(m => m.altText?.trim());
+                  const rows: Array<[string, boolean, string]> = [
+                    p.logoImage
+                      ? ['Logo is visible', true, '']
+                      : ['Logo is optional', false, ''],
+                    checkImages.length === 0
+                      ? ['No visuals yet', false, '']
+                      : altOk
+                        ? ['Descriptions added', true, '']
+                        : ['Add image description', false, ''],
+                    checkImages.length === 0
+                      ? ['Waiting for visual', false, '']
+                      : ['Preview ready', true, ''],
                   ];
-                  const score = rows.filter(([, ok]) => ok).length * 25;
-                  const R = 34;
-                  const CIRC = 2 * Math.PI * R;
                   return (
-                    <>
-                      <div style={{ position: 'relative', width: 96, height: 96, margin: '12px auto 4px' }}>
-                        <svg width="96" height="96" viewBox="0 0 96 96">
-                          <circle cx="48" cy="48" r={R} fill="none" stroke="#F1F3F9" strokeWidth="10" />
-                          <circle cx="48" cy="48" r={R} fill="none" stroke="url(#brandScoreGrad)" strokeWidth="10" strokeLinecap="round"
-                            strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - score / 100)} transform="rotate(-90 48 48)"
-                            style={{ transition: 'stroke-dashoffset 0.4s' }} />
-                          <defs>
-                            <linearGradient id="brandScoreGrad" x1="0" y1="0" x2="1" y2="1">
-                              <stop offset="0%" stopColor="#7C3AED" />
-                              <stop offset="100%" stopColor="#A855F7" />
-                            </linearGradient>
-                          </defs>
-                        </svg>
-                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, fontWeight: 800, color: C.ink }}>{score}%</div>
-                      </div>
-                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Setup status — not a quality score.</div>
+                    <div>
                       {rows.map(([label, ok]) => (
                         <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
                           <span style={{ width: 17, height: 17, borderRadius: '50%', background: ok ? '#ECFDF5' : '#F1F3F9', border: `1px solid ${ok ? '#A7F3D0' : '#E2E8F0'}`, color: ok ? '#059669' : '#B6BDCC', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{ok ? '✓' : '·'}</span>
                           <span style={{ fontSize: 12, fontWeight: 600, color: ok ? '#334155' : C.faint }}>{label}</span>
                         </div>
                       ))}
-                    </>
+                    </div>
                   );
                 })()}
-              </div>
-
-              <div style={{ borderRadius: 20, padding: '24px 22px', background: 'linear-gradient(135deg,#F5F0FF,#EDE9FE)', border: '1px solid #DDD6FE', textAlign: 'center' }}>
-                <div style={{ fontSize: 26, color: C.primary, fontWeight: 800, lineHeight: 1, fontFamily: 'Georgia, serif' }}>“</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: C.primaryDark, lineHeight: 1.55, letterSpacing: '-0.01em' }}>Consistency today,<br />stronger connections tomorrow.</div>
               </div>
             </aside>
           </div>

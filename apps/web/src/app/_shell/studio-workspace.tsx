@@ -152,6 +152,7 @@ export interface StudioWorkspaceProps {
   isSavingDraft: boolean;
   // brand
   logoImage: string; logoPosition: string; logoScale: number; logoOpacity: number;
+  setLogoPosition: (v: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center') => void;
   setLogoModalOpen: (v: boolean) => void;
   logoInputRef: React.RefObject<HTMLInputElement | null>;
   logoTargetId: string | null; setLogoTargetId: (v: string | null) => void;

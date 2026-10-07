@@ -3416,6 +3416,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             fileInputRef={fileInputRef}
             generatedImage={generatedImage} generatedVideo={generatedVideo}
             logoImage={logoImage} logoPosition={logoPosition} logoScale={logoScale} logoOpacity={logoOpacity}
+            setLogoPosition={setLogoPosition}
             setLogoModalOpen={setLogoModalOpen} logoInputRef={logoInputRef}
             logoTargetId={logoTargetId} setLogoTargetId={setLogoTargetId}
             burnedLogoIds={burnedLogoIds} clearLogo={clearLogo} restoreBurnedMedia={restoreBurnedMedia}

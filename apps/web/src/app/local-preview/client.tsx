@@ -26,6 +26,14 @@ export default function PreviewClient() {
   const search = useSearchParams();
   const stepParam = Math.max(1, Math.min(8, Number(search.get('step') || '1') || 1));
   const genParam = search.get('gen') === '1';
+  // Step 6 demo state (?step=6): mock gallery visual + uploaded logo so
+  // placement, preview, apply and ALT flows are reviewable instantly.
+  // ?logo=0 simulates "no logo uploaded"; ?multi=1 simulates 2 images.
+  const demoBrand = stepParam === 6;
+  const wantLogo = search.get('logo') !== '0';
+  const wantMulti = search.get('multi') === '1';
+  const mockVisual = (label: string) =>
+    `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7C3AED"/><stop offset="1" stop-color="#D946EF"/></linearGradient></defs><rect width="640" height="640" fill="url(#g)"/><text x="320" y="330" text-anchor="middle" font-family="sans-serif" font-size="44" font-weight="800" fill="rgba(255,255,255,.92)">${label}</text></svg>`)}`;
   const [wizardState, setWizardState] = useState<Record<string, unknown>>({ currentStep: stepParam });
   const [prompt, setPrompt] = useState('Preview fixture topic idea');
   const [tone, setTone] = useState('Professional');
@@ -41,6 +49,18 @@ export default function PreviewClient() {
   const [genImg, setGenImg] = useState('');
   const [busyImg, setBusyImg] = useState(false);
   const [carousel, setCarousel] = useState(false);
+  const [logoImg, setLogoImg] = useState<string>('');
+  const [logoPos, setLogoPos] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center'>('bottom-right');
+  const [gallery, setGallery] = useState<Array<{ id: string; url: string; type: 'image'; name: string; altText?: string }>>([]);
+  useEffect(() => {
+    if (!demoBrand) return;
+    if (wantLogo) setLogoImg('/sp-logo.png');
+    setGallery([
+      { id: 'mock-1', url: mockVisual('Brand visual'), type: 'image', name: 'mock-visual-1' },
+      ...(wantMulti ? [{ id: 'mock-2', url: mockVisual('Second visual'), type: 'image' as const, name: 'mock-visual-2' }] : []),
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const noop = () => {};
   const words = content.trim() ? content.trim().split(/\s+/).length : 0;
 
@@ -101,10 +121,9 @@ export default function PreviewClient() {
     dragOverTopic: false, setDragOverTopic: noop, handleDragOver: (e: { preventDefault: () => void }) => e.preventDefault(),
     fileInputRef: { current: null }, handleDrop: noop,
     dragOverPreview: false, setDragOverPreview: noop,
-    mediaItems: [] as unknown[], removeMediaItem: noop,
+    mediaItems: gallery, removeMediaItem: (id: string) => setGallery(prev => prev.filter(m => m.id !== id)),
     generatedImage: genImg, generatedVideo: '', mediaType: null,
     clearGeneratedImage: () => setGenImg(''),
-    burnedLogoIds: {},
     isCarousel: carousel, setIsCarousel: (v: boolean) => setCarousel(v), carouselSlides: [] as unknown[], carouselValidation: { valid: true, reason: '' },
     isGeneratingContent: generating,
     generateContent: () => {
@@ -135,16 +154,24 @@ export default function PreviewClient() {
         setBusyImg(false);
       }, 1200);
     },
-    altBusy: false, updateAltText: noop, generateAltText: noop,
+    altBusy: false,
+    updateAltText: (id: string, v: string) => setGallery(prev => prev.map(m => (m.id === id ? { ...m, altText: v } : m))),
+    generateAltText: () => setGallery(prev => prev.map(m => (m.altText?.trim() ? m : { ...m, altText: 'Mock description: a vibrant gradient brand visual.' }))),
     saveFullDraft: noop, cancelPreview: noop,
     openInCanva: noop, isSendingToCanva: false,
     whapiConnected: false, whapiCanConnect: false, startWhatsAppConnect: noop,
     disconnectPlatform: noop, disconnectWhatsApp: noop, whatsappDisconnecting: false, whapiLoading: false,
     connectPlatform: noop,
-    logoImage: '',
+    logoImage: logoImg, logoPosition: logoPos, logoScale: 0.18, logoOpacity: 1,
+    setLogoModalOpen: noop,
+    setLogoPosition: (v: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center') => setLogoPos(v),
+    logoInputRef: { current: null },
+    logoTargetId: null, setLogoTargetId: noop,
+    burnedLogoIds: {}, clearLogo: () => setLogoImg(''), restoreBurnedMedia: noop,
+    applyLogoToAllMedia: noop, isApplyingLogo: false,
     generationError: genErr, setGenerationError: (v: string) => setGenErr(v),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel]);
+  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel, logoImg, logoPos, gallery]);
 
   return (
     <div style={{ background: '#F4F5FA', minHeight: '100vh' }}>
