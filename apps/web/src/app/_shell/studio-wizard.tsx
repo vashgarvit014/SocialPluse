@@ -2290,35 +2290,14 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', border: `1px solid ${C.border}`, backgroundColor: '#000' }}>
                         {heroIsVideo
                           ? <video src={heroUrl} controls style={{ width: '100%', maxHeight: 380, display: 'block', backgroundColor: '#000' }} />
-                          : <img src={heroUrl} alt={hero?.altText || 'Branded design preview'} style={{ width: '100%', maxHeight: 380, objectFit: 'contain', display: 'block', backgroundColor: '#0F172A' }} />}
+                          : <img src={heroUrl} alt={hero?.altText || 'Branded design preview'} onClick={() => setLightboxItem({ url: heroUrl, type: 'image', altText: hero?.altText })} title="Click to zoom" style={{ width: '100%', maxHeight: 380, objectFit: 'contain', display: 'block', backgroundColor: '#0F172A', cursor: 'zoom-in' }} />}
                         {p.logoImage && !p.burnedLogoIds[heroKey] && !heroIsVideo && (
                           <img src={p.logoImage} alt="logo" style={{
                             position: 'absolute', width: `${Math.round(p.logoScale * 100)}%`, maxWidth: '28%', opacity: p.logoOpacity,
                             ...(p.logoPosition === 'top-left' ? { top: 10, left: 10 } : p.logoPosition === 'top-right' ? { top: 10, right: 10 } : p.logoPosition === 'bottom-left' ? { bottom: 54, left: 10 } : p.logoPosition === 'bottom-right' ? { bottom: 54, right: 10 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
-                            backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6,
+                            backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6, pointerEvents: 'none',
                           }} />
                         )}
-                        <div style={{ position: 'absolute', left: 10, right: 10, bottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <button
-                            onClick={() => { if (heroUrl && !heroIsVideo) p.openInCanva(heroUrl); }}
-                            disabled={!heroUrl || heroIsVideo || p.isSendingToCanva}
-                            title="Edit this visual in Canva"
-                            style={{ flex: 1, minWidth: 80, padding: '9px 10px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: (!heroUrl || heroIsVideo || p.isSendingToCanva) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (!heroUrl || heroIsVideo || p.isSendingToCanva) ? 0.65 : 1 }}
-                          >{p.isSendingToCanva ? 'Opening…' : '✏️ Edit'}</button>
-                          {hero ? (
-                            <button
-                              onClick={() => { p.removeMediaItem(hero.id); if (selectedMediaId === hero.id) setSelectedMediaId(null); }}
-                              title="Remove this visual"
-                              style={{ flex: 1, minWidth: 80, padding: '9px 10px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(220,38,38,0.85)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
-                            >🗑️ Delete</button>
-                          ) : (
-                            <button
-                              onClick={() => p.clearGeneratedImage()}
-                              title="Remove the generated visual"
-                              style={{ flex: 1, minWidth: 80, padding: '9px 10px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(220,38,38,0.85)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
-                            >🗑️ Delete</button>
-                          )}
-                        </div>
                       </div>
                       {p.isCarousel && thumbs.length > 0 && (
                         <div style={{ display: 'flex', gap: 8, marginTop: 10, overflowX: 'auto', padding: '2px 2px 4px' }}>
