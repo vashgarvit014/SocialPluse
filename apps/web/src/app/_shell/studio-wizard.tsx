@@ -841,8 +841,11 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         /* Laptop: reduce Step 1 card padding so the UI never looks zoomed-out. */
         @media (min-width: 900px) and (max-width: 1199px) { .sp-s1-card { padding: 20px 18px !important; } }
         @media (max-width: 699px) { .sp-s1-card { padding: 18px 14px !important; border-radius: 16px !important; } }
-        /* Step 2 card grids: 4 across desktop, 2 across tablet,
-           tone stacks + platforms pair up on phones, single column tiny. */
+        /* Step 4 friendly option grids: 4 across desktop, 2x2 tablet,
+           2 columns on phones, single column only when very narrow. */
+        .sp-size-grid{display:grid;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr));}
+        @media (max-width:899px){.sp-size-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+        @media (max-width:379px){.sp-size-grid{grid-template-columns:minmax(0,1fr);}}
         .sp-tone-grid,.sp-plat-grid{display:grid;gap:10px;margin-bottom:24px;grid-template-columns:repeat(4,minmax(0,1fr));}
         @media (max-width:899px){.sp-tone-grid,.sp-plat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
         @media (max-width:599px){.sp-tone-grid{grid-template-columns:minmax(0,1fr);}.sp-plat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
@@ -948,7 +951,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-wiz-root, .sp-wiz-root > * { min-width: 0; max-width: 100%; }
         .sp-s1-grid > *, .sp-s2-grid > *, .sp-wiz-grid2 > *, .sp-wiz-grid3 > *,
         .sp-wiz-prev > *, .sp-wiz-media2 > *, .sp-prev-grid > *, .sp-review-grid > *,
-        .sp-step7-grid > *, .sp-prev-trio > *, .sp-tone-grid > *, .sp-plat-grid > * { min-width: 0; max-width: 100%; }
+        .sp-step7-grid > *, .sp-prev-trio > *, .sp-tone-grid > *, .sp-plat-grid > *, .sp-size-grid > * { min-width: 0; max-width: 100%; }
         .sp-s1-grid, .sp-s2-grid, .sp-wiz-grid2, .sp-wiz-grid3, .sp-wiz-prev,
         .sp-wiz-media2, .sp-prev-grid, .sp-review-grid, .sp-step7-grid, .sp-prev-trio { min-width: 0; }
         /* Text must never widen a track. */
@@ -1544,22 +1547,54 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       {/* Visual settings moved here from Step 2 — aspect ratio and
                           image style are chosen where the image is generated. */}
                       <div style={{ marginTop: 12 }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.05em', color: C.muted, marginBottom: 6 }}>ASPECT RATIO</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {['1:1', '9:16', '16:9', '4:3'].filter(k => p.aspectRatioMap[k]).map(key => (
-                            <button key={key} onClick={() => p.setAspectRatio(key)} title={p.aspectRatioMap[key].label} style={{ padding: '7px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', border: p.aspectRatio === key ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`, backgroundColor: p.aspectRatio === key ? C.primarySoft : '#fff', color: p.aspectRatio === key ? C.primaryDark : C.muted }}>{key}</button>
-                          ))}
+                        <div style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>Choose Image Size</div>
+                        <div className="sp-size-grid" style={{ marginTop: 10 }}>
+                          {([
+                            ['1:1', 'Square', 'Best for Instagram'],
+                            ['9:16', 'Portrait', 'Best for Stories & Reels'],
+                            ['16:9', 'Wide', 'Best for LinkedIn & Facebook'],
+                            ['4:3', 'Standard', 'Good for general posts'],
+                          ] as const).filter(([key]) => p.aspectRatioMap[key]).map(([key, name, hint]) => {
+                            const active = p.aspectRatio === key;
+                            return (
+                              <button key={key} onClick={() => p.setAspectRatio(key)} title={`${name} (${key}) — ${hint}`} aria-pressed={active} className="sp-s2-opt" style={{ ...selectCardPremium(active), alignItems: 'center', textAlign: 'center' }}>
+                                <span style={checkBadge(active)}>{active ? '✓' : ''}</span>
+                                <span style={{
+                                  width: key === '1:1' ? 30 : key === '16:9' ? 40 : key === '9:16' ? 22 : 34,
+                                  height: key === '1:1' ? 30 : key === '16:9' ? 23 : key === '9:16' ? 36 : 26,
+                                  borderRadius: 6, border: `2.5px solid ${active ? C.primary : '#CBD5E1'}`,
+                                  backgroundColor: active ? '#fff' : '#F8FAFC', flexShrink: 0, display: 'block',
+                                }} />
+                                <span style={{ fontSize: 13, fontWeight: 800, color: active ? C.primaryDark : C.ink, marginTop: 6 }}>{name}</span>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: active ? C.primaryDark : C.muted }}>{key}</span>
+                                <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{hint}</span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-                          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.05em', color: C.muted, marginBottom: 6 }}>IMAGE STYLE</div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                            {['Photographic', 'Digital Art', 'Cinematic', 'Anime'].map(k => (
-                              <button key={k} onClick={() => p.setImageStyle(k)} style={{ padding: '7px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', border: p.imageStyle === k ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`, backgroundColor: p.imageStyle === k ? C.primarySoft : '#fff', color: p.imageStyle === k ? C.primaryDark : C.muted }}>{k}</button>
-                            ))}
-                          </div>
+                      <div style={{ marginTop: 16 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>Choose Visual Style</div>
+                        <div className="sp-size-grid" style={{ marginTop: 10 }}>
+                          {([
+                            ['Photographic', '📷', 'Real Photo', 'Natural and realistic'],
+                            ['Digital Art', '🎨', 'Creative Art', 'Designed and illustrated'],
+                            ['Cinematic', '🎬', 'Cinematic', 'Dramatic and polished'],
+                            ['Anime', '🖌', 'Illustration', 'Stylized and artistic'],
+                          ] as const).map(([value, icon, label, desc]) => {
+                            const active = p.imageStyle === value;
+                            return (
+                              <button key={value} onClick={() => p.setImageStyle(value)} title={`${label} — ${desc}`} aria-pressed={active} className="sp-s2-opt" style={selectCardPremium(active)}>
+                                <span style={checkBadge(active)}>{active ? '✓' : ''}</span>
+                                <span style={{ fontSize: 24 }}>{icon}</span>
+                                <span style={{ fontSize: 13, fontWeight: 800, color: active ? C.primaryDark : C.ink }}>{label}</span>
+                                <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{desc}</span>
+                              </button>
+                            );
+                          })}
                         </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14, flexWrap: 'wrap' }}>
                         <button
                           onClick={p.generateImage}
                           disabled={p.isGeneratingImage || !shown.trim() || !p.aspectRatio || !p.imageStyle || !canGenImage}
@@ -1577,7 +1612,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                             : '✨ Generate Image'}
                         </button>
                       </div>
-                      <div style={{ fontSize: 11, color: C.faint, marginTop: 8, lineHeight: 1.5 }}>AI will use your post topic, tone, and selected visual style.{!shown.trim() ? ' Enter a visual description above to unlock generation.' : !p.aspectRatio ? ' Select an aspect ratio above to unlock generation.' : !p.imageStyle ? ' Choose an image style above to unlock generation.' : ''}</div>
+                      <div style={{ fontSize: 11, color: C.faint, marginTop: 8, lineHeight: 1.5 }}>We’ll use your content and choices to create the image.{!shown.trim() ? ' Enter a visual description above to unlock generation.' : !p.aspectRatio ? ' Select an aspect ratio above to unlock generation.' : !p.imageStyle ? ' Choose an image style above to unlock generation.' : ''}</div>
                     </>
                   );
                 })()}
