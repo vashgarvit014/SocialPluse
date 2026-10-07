@@ -145,7 +145,7 @@ const STEPS = [
   { n: 3, t: 'Content' },
   { n: 4, t: 'Media' },
   { n: 5, t: 'Design' },
-  { n: 6, t: 'Branding' },
+  { n: 6, t: 'Personalization' },
   { n: 7, t: 'Preview' },
   { n: 8, t: 'Publish' },
 ];
@@ -2170,7 +2170,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
           </div>
         )}
 
-        {/* ================= STEP 6 — BRANDING & ACCESSIBILITY ================= */}
+        {/* ================= STEP 6 — PERSONALIZATION ================= */}
         {currentStep === 6 && (
           <div className="sp-s2-grid">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
@@ -2178,8 +2178,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🎨</div>
                   <div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Branding & Accessibility</div>
-                    <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Add your logo and make your image accessible before Preview.</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Personalization</div>
                   </div>
                 </div>
               </div>
@@ -2188,8 +2187,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
                   <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Brand Identity</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Keep your visuals consistent with your brand identity across every platform.</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Logo & Visual Identity</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Upload your brand logo once and apply it to this image or all images.</div>
                   </div>
                 </div>
                 <div className="sp-wiz-grid3" style={{ marginTop: 12 }}>
@@ -2409,7 +2408,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
                 <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
                 <div style={{ flex: 1 }} />
-                <button onClick={goNext} style={{ minHeight: 50, padding: '14px 38px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Continue to Preview →</button>
+                <button onClick={goNext} style={{ minHeight: 50, padding: '14px 38px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Continue to Preview ↗</button>
               </div>
             </div>
             {/* ============ RIGHT — AI ASSISTANT PANEL ============ */}
