@@ -2198,7 +2198,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {p.logoImage
                         ? <img src={p.logoImage} alt="Brand logo" style={{ width: 44, height: 44, objectFit: 'contain', backgroundColor: '#fff', borderRadius: 10, border: `1px solid ${C.border}`, padding: 4 }} />
-                        : <span style={{ width: 44, height: 44, borderRadius: 10, background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 15 }}>SP</span>}
+                        : <img src="/sp-logo.png" alt="SocialPulse" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 10, border: `1px solid ${C.border}` }} />}
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>SocialPulse</div>
                         <div style={{ fontSize: 10, color: p.logoImage ? '#059669' : C.faint, fontWeight: 600 }}>{p.logoImage ? `✓ Logo uploaded • ${p.logoPosition} • ${Math.round(p.logoScale * 100)}%` : 'No logo uploaded yet'}</div>
