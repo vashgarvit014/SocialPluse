@@ -34,6 +34,13 @@ Retry after the restart succeeded. Backend was healthy throughout.
 Group edits into as few rebuilds as possible. Five rebuilds in one day is
 how the 2026-10-06 incident happened. One deploy per batch, not per edit.
 
+## Rule 4: Scope discipline — only the requested step
+
+When the user asks to design/change Step N (or any single page/section),
+touch ONLY that step. Do NOT redesign the full wizard, other steps, or the
+whole app in the same change. Keep diffs minimal and scoped to what was
+asked. (Standing instruction, 2026-10-07.)
+
 ## Standing preview surfaces (local-only, never deploy these)
 
 - Step 4 prototype: http://localhost:3021/ served from
