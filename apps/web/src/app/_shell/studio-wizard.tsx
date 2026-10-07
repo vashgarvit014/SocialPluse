@@ -2269,10 +2269,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Image Preview</div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>See how your logo looks on your selected image.</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>Preview for</span>
-                  <select value={previewPlatform} onChange={e => setPreviewPlatform(e.target.value)} style={{ padding: '8px 12px', borderRadius: 10, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', textTransform: 'capitalize' }}>
-                    {['linkedin', 'facebook', 'instagram', 'whatsapp'].map(pl => <option key={pl} value={pl} style={{ textTransform: 'capitalize' }}>{pl.charAt(0).toUpperCase() + pl.slice(1)}</option>)}
-                  </select>
                   <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>{p.aspectRatio ? `${p.aspectRatio}${p.aspectRatioMap[p.aspectRatio] ? ` • ${p.aspectRatioMap[p.aspectRatio].label}` : ''}` : 'No aspect ratio'}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>{p.imageStyle}</span>
                 </div>
