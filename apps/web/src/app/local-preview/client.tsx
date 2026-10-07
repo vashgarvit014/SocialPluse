@@ -46,9 +46,10 @@ export default function PreviewClient() {
   // ?gen=1 starts a mock generation shortly after mount (for animation states).
   useEffect(() => {
     if (stepParam !== 3 || !genParam) return;
+    let done: ReturnType<typeof setTimeout> | undefined;
     const kick = setTimeout(() => {
       setGenerating(true);
-      const done = setTimeout(() => {
+      done = setTimeout(() => {
         const next: Record<string, { caption: string; hashtags: string[] }> = {};
         for (const k of Object.keys(SEED)) next[k] = { caption: SEED[k].caption, hashtags: SEED[k].hashtags.slice() };
         setPlatContent(next);
@@ -58,9 +59,11 @@ export default function PreviewClient() {
         });
         setGenerating(false);
       }, 4000);
-      (kick as unknown as { __done?: unknown }).__done = done;
     }, 600);
-    return () => clearTimeout(kick);
+    return () => {
+      clearTimeout(kick);
+      if (done) clearTimeout(done);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

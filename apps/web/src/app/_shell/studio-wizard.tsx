@@ -1336,7 +1336,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   </div>
                   <div className="sp-gen-stages">
                     {GEN_PHASES.map((ph, i) => (
-                      <div key={ph[0]} className={i === genPhaseShown ? 'sp-stage-on' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, fontSize: 12.5, fontWeight: 600, color: i < genPhaseShown || genPct >= 100 ? '#059669' : i === genPhaseShown ? C.ink : C.faint, border: '1.5px solid transparent', ...(i === genPhaseShown && genPct < 100 ? { backgroundColor: '#fff', borderColor: '#DDD0FA', boxShadow: '0 2px 10px rgba(124,58,237,0.12)' } : {}) }}>
+                      <div key={ph[0]} className={i === genPhaseShown ? 'sp-stage-on' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, fontSize: 12.5, fontWeight: 600, color: i < genPhaseShown || genPct >= 100 ? '#059669' : i === genPhaseShown ? C.ink : C.faint, borderWidth: '1.5px', borderStyle: 'solid', borderColor: 'transparent', ...(i === genPhaseShown && genPct < 100 ? { backgroundColor: '#fff', borderColor: '#DDD0FA', boxShadow: '0 2px 10px rgba(124,58,237,0.12)' } : {}) }}>
                         <span className="sp-stage-dot" style={i < genPhaseShown || genPct >= 100 ? { backgroundColor: '#059669' } : {}} />
                         <span>{i < genPhaseShown || genPct >= 100 ? '✓ ' : ''}{ph[0]}</span>
                       </div>
