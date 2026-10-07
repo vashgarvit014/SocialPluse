@@ -895,7 +895,9 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         @keyframes spFloatDiag { 0%,100% { transform: translate(-4px,-4px); } 50% { transform: translate(6px,6px); } }
         @keyframes spBreathe { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-5px) scale(1.03); } }
         @keyframes spSpinSlow { to { transform: rotate(360deg); } }
-        @media (prefers-reduced-motion: reduce) { .sp-soc, .sp-robot, .sp-orbit, .sp-cloud { animation: none !important; transition: none !important; } }
+        @media (prefers-reduced-motion: reduce) { .sp-soc, .sp-robot, .sp-orbit, .sp-cloud, .sp-spin { animation: none !important; transition: none !important; } }
+        .sp-spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spRot .8s linear infinite;vertical-align:-2px;margin-right:6px}
+        @keyframes spRot{to{transform:rotate(360deg)}}
         /* --- Step 3 generation panel (light adaptation of the generation
                concept: orb, sparks, progress, stages, skeleton) --- */
         .sp-ptabs{scrollbar-width:none;-ms-overflow-style:none}
@@ -1562,10 +1564,17 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                           onClick={p.generateImage}
                           disabled={p.isGeneratingImage || !shown.trim() || !p.aspectRatio || !p.imageStyle || !canGenImage}
                           aria-disabled={p.isGeneratingImage || !shown.trim() || !p.aspectRatio || !p.imageStyle || !canGenImage}
-                          title={p.isGeneratingImage ? 'Generating — please wait' : !shown.trim() ? 'Describe your visual above first' : !p.aspectRatio ? 'Select an aspect ratio above first' : !p.imageStyle ? 'Choose an image style above first' : !canGenImage ? 'Add content first' : 'Generate AI image'}
+                          title={p.isGeneratingImage ? 'Generating — please wait' : !shown.trim() ? 'Describe your visual above first' : !p.aspectRatio ? 'Select an aspect ratio above first' : !p.imageStyle ? 'Choose an image style above first' : !canGenImage ? 'Add content first' : (p.generatedImage || p.generatedVideo) ? 'Start a fresh generation with the current prompt and settings' : 'Generate AI image'}
                           style={{ minHeight: 46, padding: '12px 28px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, border: 'none', cursor: (canGenImage && shown.trim() && p.aspectRatio && p.imageStyle) ? 'pointer' : 'not-allowed', fontFamily: 'inherit', flexShrink: 0, background: (canGenImage && shown.trim() && p.aspectRatio && p.imageStyle) ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#E4DFF2', color: (canGenImage && shown.trim() && p.aspectRatio && p.imageStyle) ? '#fff' : '#9A8FC7', opacity: (canGenImage && shown.trim() && p.aspectRatio && p.imageStyle) ? 1 : 0.7, boxShadow: (canGenImage && shown.trim() && p.aspectRatio && p.imageStyle) ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}
                         >
-                          {p.isGeneratingImage ? 'Generating…' : !shown.trim() ? 'Enter a Visual Description First' : !p.aspectRatio ? 'Select Aspect Ratio First' : !p.imageStyle ? 'Choose Image Style First' : !canGenImage ? 'Add content first' : '✨ Generate Image'}
+                          {p.isGeneratingImage
+                            ? (<span><span className="sp-spin" aria-hidden="true" />Generating Image…</span>)
+                            : !shown.trim() ? 'Enter a Visual Description First'
+                            : !p.aspectRatio ? 'Select Aspect Ratio First'
+                            : !p.imageStyle ? 'Choose Image Style First'
+                            : !canGenImage ? 'Add content first'
+                            : (p.generatedImage || p.generatedVideo) ? '🔁 Regenerate Image'
+                            : '✨ Generate Image'}
                         </button>
                       </div>
                       <div style={{ fontSize: 11, color: C.faint, marginTop: 8, lineHeight: 1.5 }}>AI will use your post topic, tone, and selected visual style.{!shown.trim() ? ' Enter a visual description above to unlock generation.' : !p.aspectRatio ? ' Select an aspect ratio above to unlock generation.' : !p.imageStyle ? ' Choose an image style above to unlock generation.' : ''}</div>
@@ -1576,7 +1585,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
             )}
             {mediaTab === 'ai' && (
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, marginBottom: 12 }}>Generated Media</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, flex: 1 }}>Generated Media</div>
+                  {(p.generatedImage || p.generatedVideo) && !p.isGeneratingImage && (
+                    <span style={{ fontSize: 11, fontWeight: 800, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '5px 12px', borderRadius: 999, whiteSpace: 'nowrap' }}>✓ AI image ready</span>
+                  )}
+                </div>
                 {(() => {
                   const hasResult = !!(p.generatedImage || p.generatedVideo);
                   if (genGate) {
