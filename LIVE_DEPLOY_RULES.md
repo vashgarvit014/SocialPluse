@@ -41,6 +41,24 @@ touch ONLY that step. Do NOT redesign the full wizard, other steps, or the
 whole app in the same change. Keep diffs minimal and scoped to what was
 asked. (Standing instruction, 2026-10-07.)
 
+## Rule 5: Local-only change preview mode (standing, 2026-10-07)
+
+- UI/behavior changes stay LOCAL until the user explicitly approves
+  production integration. Never deploy, touch Cloudflare, push remote main,
+  or change backend/API contracts unless the request strictly requires it.
+- Preview with the REAL component under test (mock props/state), never a
+  lookalike duplicate that can drift.
+- ONE reusable preview env: `http://localhost:30019` serving
+  `apps/web` (`next dev -p 30019`) with the dev-only route
+  `src/app/local-preview/` — deep-link directly to the changed state:
+  `/local-preview?step=N` (1–8), plus `&gen=1` for Step 3 generation.
+  The route 404s when `NODE_ENV=production`, so it can never ship.
+- Do not create a new experiment folder/port per change; do not make the
+  user walk the whole wizard to inspect one change.
+- After each change, report ONLY: changed thing, direct preview URL,
+  files changed, unrelated modifications (none/list), production deployed
+  (NO), ready for review (yes/no).
+
 ## Standing preview surfaces (local-only, never deploy these)
 
 - Step 4 prototype: http://localhost:3021/ served from
