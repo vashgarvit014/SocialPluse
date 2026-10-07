@@ -119,6 +119,15 @@ const PLATFORM_DESCS: Record<string, string> = {
   whatsapp: 'Direct audience reach',
 };
 
+// Supplied brand artwork for the selectable platform cards (falls back to
+// the PlatformIcon glyph if an image ever fails to load).
+const PLATFORM_IMGS: Record<string, string> = {
+  linkedin: '/brand-icons/linkedin.webp',
+  facebook: '/brand-icons/facebook.png',
+  instagram: '/brand-icons/instagram.png',
+  whatsapp: '/brand-icons/whatsapp.png',
+};
+
 // Generation phases for the Step 3 animation panel (presentation only —
 // start/completion are driven by the real p.isGeneratingContent flag).
 const GEN_PHASES: Array<[string, string]> = [
@@ -1183,8 +1192,9 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         backgroundColor: selected ? C.primary : '#fff', color: '#fff', fontSize: 11, fontWeight: 800,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       }}>{selected ? '✓' : ''}</span>
-                      <span style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ position: 'relative', width: 42, height: 42, borderRadius: 12, backgroundColor: '#fff', border: '1px solid #EDE9FE', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
                         <p.PlatformIcon platform={cfg.id} size={20} />
+                        <img src={PLATFORM_IMGS[cfg.id]} alt="" aria-hidden="true" width={34} height={34} style={{ position: 'absolute', top: 4, left: 4, width: 'calc(100% - 8px)', height: 'calc(100% - 8px)', objectFit: 'contain' }} onError={e => { const s = e.currentTarget.parentElement; if (s) s.style.background = brand; e.currentTarget.style.display = 'none'; }} />
                       </span>
                       <span style={{ fontSize: 13, fontWeight: 800, color: selected ? C.primaryDark : C.ink }}>{cfg.label}</span>
                       <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{PLATFORM_DESCS[cfg.id]}</span>
