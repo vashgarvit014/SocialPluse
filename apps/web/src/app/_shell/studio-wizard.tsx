@@ -2210,32 +2210,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     </div>
                   </div>
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, marginTop: 18 }}>Logo Placement</div>
-                  <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 10 }}>Choose where your logo will appear on the image.</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(96px,1fr))', gap: 8 }}>
-                    {([
-                      ['top-left', 'Top Left'],
-                      ['top-right', 'Top Right'],
-                      ['bottom-left', 'Bottom Left'],
-                      ['bottom-right', 'Bottom Right'],
-                      ['center', 'Center'],
-                    ] as const).map(([id, label]) => {
-                      const on = p.logoPosition === id;
-                      return (
-                        <button key={id} onClick={() => p.setLogoPosition(id)} disabled={!p.logoImage} title={p.logoImage ? `Place logo: ${label}` : 'Upload a logo first'} aria-pressed={on} className="sp-s2-opt" style={{ ...selectCardPremium(on), alignItems: 'center', textAlign: 'center', padding: '12px 8px', opacity: p.logoImage ? 1 : 0.55, cursor: p.logoImage ? 'pointer' : 'not-allowed' }}>
-                          <span style={checkBadge(on)}>{on ? '✓' : ''}</span>
-                          <span style={{ position: 'relative', width: 40, height: 28, borderRadius: 6, border: `1.5px solid ${on ? C.primary : '#CBD5E1'}`, backgroundColor: on ? '#fff' : '#F8FAFC', display: 'block' }}>
-                            <span style={{
-                              position: 'absolute', width: 8, height: 8, borderRadius: 2, backgroundColor: on ? C.primary : '#94A3B8',
-                              ...(id === 'top-left' ? { top: 3, left: 3 } : id === 'top-right' ? { top: 3, right: 3 } : id === 'bottom-left' ? { bottom: 3, left: 3 } : id === 'bottom-right' ? { bottom: 3, right: 3 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
-                            }} />
-                          </span>
-                          <span style={{ fontSize: 11.5, fontWeight: 800, color: on ? C.primaryDark : C.ink, marginTop: 6 }}>{label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                   {p.logoImage && (
                     <button onClick={() => { p.setLogoTargetId(null); p.setLogoModalOpen(true); }} style={{ ...ghostBtn, minHeight: 38, fontSize: 12, flex: 1 }}>🏷️ Adjust Logo</button>
                   )}
