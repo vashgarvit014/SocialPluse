@@ -33,3 +33,11 @@ Retry after the restart succeeded. Backend was healthy throughout.
 
 Group edits into as few rebuilds as possible. Five rebuilds in one day is
 how the 2026-10-06 incident happened. One deploy per batch, not per edit.
+
+## Standing preview surfaces (local-only, never deploy these)
+
+- Step 4 prototype: http://localhost:3021/ served from
+  `experiments/content-studio-step4/` (python http.server).
+  Rule (2026-10-07, user instruction): Step 4 preview/test changes belong
+  ONLY to this page — make staged edits visible on this URL and use this
+  URL for Step 4 review. Do not start rival Step 4 previews on other ports.
