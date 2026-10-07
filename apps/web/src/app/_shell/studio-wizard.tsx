@@ -608,10 +608,11 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
     if (!busy && wasGenBusy.current) {
       // Real response arrived (or the request failed): finish or stop.
       stopGenLoop();
-      if (p.generationError || !p.content.trim()) {
-        setGenStage('error');
-      } else {
-        setGenStage('finishing');
+    if (p.generationError || !p.content.trim()) {
+      setGenStage('error');
+    } else {
+      genSigRef.current = genSigFor();
+      setGenStage('finishing');
         const from = genPctRef.current;
         const f0 = performance.now();
         const dur = 600;
@@ -638,6 +639,22 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
     // from the fresh render's content/error at the moment the flag flips.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.isGeneratingContent]);
+  // Step 3 owns generation: on entry, reuse content only when it matches the
+  // current inputs; otherwise start a fresh request immediately so the first
+  // visible state is the animation, never stale content or a blank page.
+  useEffect(() => {
+    if (currentStep !== 3 || p.isGeneratingContent) return;
+    const sig = genSigFor();
+    if (genSigRef.current === null && p.content.trim()) {
+      genSigRef.current = sig;
+      return;
+    }
+    if ((!p.content.trim() || genSigRef.current !== sig) && canGenContent) {
+      p.generateContent();
+    }
+    // Runs on step entry only; generation state drives everything after.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep]);
   // Inline hashtag composer (Step 3). Appends to the caption through the
   // exact same per-platform write-back path as the chip toggles.
   const [newTag, setNewTag] = useState('');
@@ -723,15 +740,11 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
     : p.mediaItems.find(m => m.type === 'image');
 
   // Auto-advance: when AI content finishes generating, move to Step 3 (review).
-  // If content already exists (user re-clicks Generate), goNext is handled
-  // by the button below — this only auto-advances fresh generations.
-  const wasGeneratingContent = useRef(false);
-  useEffect(() => {
-    if (wasGeneratingContent.current && !p.isGeneratingContent && p.content.trim() && currentStep === 2) {
-      setCurrentStep(3);
-    }
-    wasGeneratingContent.current = p.isGeneratingContent;
-  }, [p.isGeneratingContent, p.content, currentStep]);
+  // Generation signature: identifies the exact inputs (topic/tone/platforms)
+  // some content was made from. Step 3 compares it on entry to decide
+  // between reusing content and starting a fresh generation.
+  const genSigRef = useRef<string | null>(null);
+  const genSigFor = () => JSON.stringify({ t: p.prompt, tone: p.tone, plats: [...p.selectedPlatforms].sort() });
 
   const hasTopic = !!p.prompt.trim() || p.topicMediaItems.length > 0;
   const hasContent = !!p.content.trim();
@@ -770,6 +783,13 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   // the four stages; completion is handled separately by genPct >= 100.
   const genPhaseShown = Math.min(3, Math.max(0, Math.floor(genPct / 25)));
   const genPhaseShownSafe = GEN_PHASES[genPhaseShown] || GEN_PHASES[3];
+  // First paint on a stale/empty Step 3 shows the animation immediately; the
+  // entry effect above starts the matching request in the same commit, so the
+  // user never sees stale content flash or a blank page. Scoped to 'idle' so
+  // it can never swallow the error/success states once a cycle has run.
+  const step3Sig = genSigFor();
+  const step3Adopted = genSigRef.current === null && !!p.content.trim();
+  const step3NeedsGen = genStage === 'idle' && currentStep === 3 && !p.isGeneratingContent && canGenContent && !step3Adopted && (!p.content.trim() || genSigRef.current !== step3Sig);
   const sentences = p.content ? p.content.split(/[.!?]+/).filter(s => s.trim()).length : 0;
 
   const saveDraft = p.saveFullDraft;
@@ -1177,12 +1197,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
                 <div style={{ flex: 1 }} />
                 <button onClick={() => {
-                  if (p.isGeneratingContent) return;
-                  if (hasContent) { setGenBlockerFlash(false); goNext(); return; }
-                  if (!canGenContent) { setGenBlockerFlash(true); return; }
+                  // Validate, then move immediately — generation itself starts
+                  // on Step 3, so navigation never waits for the AI.
+                  if (!p.tone || p.selectedPlatforms.length === 0 || !hasTopic) { setGenBlockerFlash(true); return; }
                   setGenBlockerFlash(false);
-                  p.generateContent();
-                }} disabled={p.isGeneratingContent} title={p.isGeneratingContent ? 'Generating — please wait' : !canGenContent && !hasContent ? genContentBlocker : hasContent ? 'Content ready — continue to Content' : 'Generate content'} style={{ minHeight: 50, padding: '14px 24px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, cursor: p.isGeneratingContent ? 'wait' : 'pointer', fontFamily: 'inherit', border: `1.5px solid ${(canGenContent || hasContent) ? C.primary : '#E8EAF1'}`, background: hasContent ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#fff', color: hasContent ? '#fff' : canGenContent ? C.primaryDark : '#B6BDCC', boxShadow: hasContent ? '0 6px 22px rgba(124,58,237,0.42)' : canGenContent ? '0 3px 12px rgba(124,58,237,0.14)' : 'none' }}>{p.isGeneratingContent ? '⏳ Generating…' : 'Continue to Generate Content →'}</button>
+                  goNext();
+                }} title={(!p.tone || p.selectedPlatforms.length === 0 || !hasTopic) ? genContentBlocker : 'Continue to Step 3 — content generates there'} style={{ minHeight: 50, padding: '14px 24px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Continue to Generate Content →</button>
               </div>
               {genBlockerFlash && !canGenContent && !hasContent && !p.isGeneratingContent && (
                 <div style={{ fontSize: 12.5, color: '#B91C1C', backgroundColor: '#FEF2F2', border: '1.5px solid #FECACA', borderRadius: 12, padding: '10px 14px', marginTop: 10, fontWeight: 700 }}>⚠️ {genContentBlocker}</div>
@@ -1296,7 +1316,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <button onClick={() => p.setGenerationError('')} style={{ border: 'none', background: 'none', color: '#B91C1C', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: '0 2px' }}>×</button>
                 </div>
               )}
-              {(genStage === 'generating' || genStage === 'finishing') ? (
+              {(genStage === 'generating' || genStage === 'finishing' || step3NeedsGen) ? (
                 <div style={{ border: '1.5px solid #E4DBFF', borderRadius: 16, background: 'linear-gradient(180deg,#FBFAFF,#F6F1FF)', padding: '18px 20px', marginTop: 14, position: 'relative', overflow: 'hidden' }}>
                   <span className="sp-spark" style={{ left: '20%', top: '30%' }} />
                   <span className="sp-spark" style={{ left: '45%', top: '70%', animationDelay: '.7s' }} />
@@ -1346,7 +1366,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 <div style={{ border: '2px dashed #C4B5FD', borderRadius: 16, backgroundColor: '#FAF8FF', padding: 40, textAlign: 'center' }}>
                   <div style={{ fontSize: 34 }}>📝</div>
                   <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, marginTop: 10 }}>No content yet</div>
-                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Go back to Settings and click Generate Content.</div>
+                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Go back to Settings and click Continue to Generate Content.</div>
                   <button onClick={() => setCurrentStep(2)} style={{ ...primaryBtn(false), width: 'auto', marginTop: 16, padding: '12px 24px' }}>← Back to Settings</button>
                 </div>
               ) : (
