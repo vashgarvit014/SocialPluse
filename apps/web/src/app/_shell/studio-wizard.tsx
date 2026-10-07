@@ -934,6 +934,10 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                concept: orb, sparks, progress, stages, skeleton) --- */
         .sp-ptabs{scrollbar-width:none;-ms-overflow-style:none}
         .sp-ptabs::-webkit-scrollbar{display:none}
+        /* Hashtag remove control: small red circle overlapping the chip corner. */
+        .sp-tagx{position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:#DC2626;color:#fff;border:2px solid #fff;font-size:11px;font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-family:inherit;box-shadow:0 2px 6px rgba(0,0,0,.25);transition:background 160ms ease,transform 160ms ease,box-shadow 160ms ease}
+        .sp-tagx:hover{background:#B91C1C;transform:scale(1.08);box-shadow:0 3px 10px rgba(220,38,38,.4)}
+        .sp-tagx:focus-visible{outline:2px solid #7C3AED;outline-offset:1px}
         .sp-orb{width:54px;height:54px;border-radius:50%;flex-shrink:0;position:relative;background:conic-gradient(from 0deg,#8B5CF6,#EC4899,#22D3EE,#8B5CF6);box-shadow:0 0 28px rgba(139,92,246,.45),0 0 60px rgba(34,211,238,.14);animation:spOrbFloat 2.5s ease-in-out infinite}
         .sp-orb::after{content:"";position:absolute;inset:6px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#2A2140,#120E24 70%)}
         @keyframes spOrbFloat{50%{transform:translateY(-4px) scale(1.04)}}
@@ -1418,28 +1422,40 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   {p.activePreviewPlatform !== 'whatsapp' && (
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, margin: '20px 0 4px' }}>HASHTAGS</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 14px' }}>
                         {chipTags.length === 0 && <span style={{ fontSize: 12, color: C.faint }}>Hashtags appear here after generation.</span>}
                         {chipTags.map((t) => {
                           const tagText = '#' + String(t).replace(/^#+/, '');
                           const inCaption = p.content.includes(tagText);
                           return (
-                            <button key={tagText} onClick={() => {
-                              if (p.activePreviewPlatform === 'whatsapp') return;
-                              const v = inCaption
-                                ? p.content.split(tagText).join('').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
-                                : `${p.content.trim()} ${tagText}`.trim();
-                              p.setContent(v);
-                              if (p.activePreviewPlatform && p.platformContent[p.activePreviewPlatform]) {
-                                p.setPlatformContent({
-                                  ...p.platformContent,
-                                  [p.activePreviewPlatform]: {
-                                    ...p.platformContent[p.activePreviewPlatform],
-                                    caption: v.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/, '').trim(),
-                                  },
-                                });
-                              }
-                            }} title={inCaption ? 'Click to remove from caption' : 'Click to add to caption'} style={{ fontSize: 12, fontWeight: 700, backgroundColor: inCaption ? C.primary : C.primarySoft, color: inCaption ? '#fff' : C.primaryDark, border: `1.5px solid ${inCaption ? C.primary : C.primaryBorder}`, padding: '7px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit', boxShadow: inCaption ? '0 3px 10px rgba(124,58,237,0.3)' : 'none' }}>{tagText}{inCaption ? ' ✓' : ''}</button>
+                            <span key={tagText} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 700, backgroundColor: inCaption ? C.primary : C.primarySoft, color: inCaption ? '#fff' : C.primaryDark, border: `1.5px solid ${inCaption ? C.primary : C.primaryBorder}`, padding: '7px 14px', borderRadius: 999, boxShadow: inCaption ? '0 3px 10px rgba(124,58,237,0.3)' : 'none' }}>
+                              {tagText}{inCaption ? ' ✓' : ''}
+                              <button
+                                onClick={() => {
+                                  if (p.activePreviewPlatform === 'whatsapp') return;
+                                  // Remove from the caption …
+                                  const v = p.content.split(tagText).join('').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+                                  p.setContent(v);
+                                  // … and from this platform's hashtag list, so the
+                                  // chip itself disappears. Regenerating restores it.
+                                  if (p.activePreviewPlatform && p.platformContent[p.activePreviewPlatform]) {
+                                    const cur = p.platformContent[p.activePreviewPlatform];
+                                    const bare = tagText.slice(1).toLowerCase();
+                                    p.setPlatformContent({
+                                      ...p.platformContent,
+                                      [p.activePreviewPlatform]: {
+                                        ...cur,
+                                        caption: v.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/, '').trim(),
+                                        hashtags: (cur.hashtags || []).filter(h => String(h).replace(/^#+/, '').toLowerCase() !== bare),
+                                      },
+                                    });
+                                  }
+                                }}
+                                title="Remove hashtag"
+                                aria-label={`Remove ${tagText}`}
+                                className="sp-tagx"
+                              >×</button>
+                            </span>
                           );
                         })}
                       </div>
@@ -1447,7 +1463,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         <input value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }} placeholder="Add a hashtag…" aria-label="Add a hashtag" style={{ flex: '1 1 140px', minWidth: 0, border: `1.5px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', color: C.ink }} />
                         <button onClick={addTag} style={{ ...ghostBtn, minHeight: 40, fontSize: 12.5, padding: '9px 18px' }}>Add</button>
                       </div>
-                      <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>Click a hashtag to add it to (or remove it from) your caption.</div>
+                      <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>Click × on a hashtag to remove it from your caption.</div>
                     </div>
                   )}
                     </div>
