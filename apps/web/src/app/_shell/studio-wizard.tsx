@@ -920,8 +920,10 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-soc { position: absolute; width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #fff; cursor: default; transition: transform 180ms ease, box-shadow 180ms ease; will-change: transform; }
         .sp-soc:hover { transform: scale(1.06); }
         .sp-robot { position: absolute; left: 50%; top: 50%; width: 74px; height: 74px; margin-left: -37px; margin-top: -37px; border-radius: 24px; background: linear-gradient(135deg,#7C3AED,#A855F7); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: 0 10px 28px rgba(124,58,237,.45), inset 0 1px 0 rgba(255,255,255,.35); z-index: 2; }
-        .sp-duo{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));align-items:start;min-width:0}
-        .sp-duo > *{min-width:0;max-width:100%}
+        .sp-duo2{display:grid;gap:20px 28px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start;min-width:0}
+        .sp-duo2side{min-width:0;max-width:100%}
+        @media(min-width:700px){.sp-duo2side + .sp-duo2side{border-left:1px solid #F1F3F9;padding-left:28px}}
+        @media(max-width:699px){.sp-duo2{grid-template-columns:minmax(0,1fr)}.sp-duo2side + .sp-duo2side{border-top:1px solid #F1F3F9;padding-top:20px}}
         .sp-orbit { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; margin-left: -75px; margin-top: -75px; border: 1.5px dashed rgba(124,58,237,.35); border-radius: 50%; pointer-events: none; animation: spSpinSlow 24s linear infinite; }
         @keyframes spDriftLi { 0%,100% { transform: translate(0,0) rotate(-3deg); } 50% { transform: translate(9px,10px) rotate(3deg); } }
         @keyframes spDriftIg { 0%,100% { transform: translate(0,0) rotate(3deg); } 50% { transform: translate(-9px,10px) rotate(-3deg); } }
@@ -2185,9 +2187,10 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 </div>
               </div>
 
-              <div className="sp-duo">
-              {/* ---- Section 1: Brand Identity ---- */}
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+              {/* ---- Sections 1+2: Brand Identity + Describe, side by side ---- */}
+              <div className="sp-duo2">
+              <div className="sp-duo2side">
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
                   <div style={{ flex: '1 1 200px', minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Logo & Visual Identity</div>
@@ -2235,10 +2238,11 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   );
                 })()}
               </div>
-              <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+              <div className="sp-duo2side">
                 <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Describe Your Image</div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Add a short description to help people using screen readers understand your image.</div>
                 {altTextControls}
+              </div>
               </div>
               </div>
 
