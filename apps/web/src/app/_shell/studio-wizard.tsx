@@ -534,7 +534,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   // All panels stay reachable — nothing is unmounted for good, and every
   // action below calls the existing page.tsx handlers (no new APIs).
   const [mediaTab, setMediaTab] = field<'ai' | 'upload' | 'library'>('mediaTab', 'ai');
-  const [useContentContext, setUseContentContext] = field('useContentContext', true);
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [genGate, setGenGate] = useState(false);
   const [genRunId, setGenRunId] = useState(0);
@@ -1482,10 +1481,9 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                 <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🖼️</div>
                 <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Media Studio</div>
-                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Step 4 of 8: Create or select visuals for your post</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Image Generation</div>
+                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Create or select visuals for your post.</div>
                 </div>
-                <span style={{ fontSize: 11, fontWeight: 800, color: C.primaryDark, background: 'linear-gradient(135deg,#F5F0FF,#FCE7F3)', border: '1px solid #DDD6FE', padding: '6px 13px', borderRadius: 999, whiteSpace: 'nowrap' }}>✨ AI Media Ready</span>
                 <button onClick={saveDraft} style={{ ...ghostBtn, minHeight: 38, fontSize: 12, padding: '10px 16px' }}>💾 Save Draft</button>
               </div>
               <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginTop: 20, marginBottom: 4 }}>Choose Your Media</div>
@@ -1518,33 +1516,41 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
             {mediaTab === 'ai' && (
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
                 <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Describe Your Visual</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>Tell AI what you want the image to look like.</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>Tell AI what you want the image to look like. You can edit this anytime.</div>
                 {(() => {
                   const derived = p.content.trim().split('\n')[0].substring(0, 200) || p.prompt.trim();
-                  const shown = useContentContext ? (p.imagePrompt || derived) : p.imagePrompt;
+                  // Display falls back to the AI-derived suggestion, but every
+                  // keystroke is owned by the user via imagePrompt — the field
+                  // is never overwritten except by Reset below.
+                  const shown = p.imagePrompt || derived;
                   return (
                     <>
                       <textarea
                         ref={promptInputRef}
                         value={shown}
-                        readOnly={useContentContext}
-                        onChange={e => { setUseContentContext(false); p.setImagePrompt(e.target.value); }}
+                        onChange={e => { p.setImagePrompt(e.target.value.slice(0, 500)); }}
+                        maxLength={500}
                         placeholder="e.g. A modern professional workspace with a laptop, creative lighting, and a futuristic technology feel…"
                         className="sp-s1-ta"
-                        style={{ width: '100%', boxSizing: 'border-box', minHeight: 120, padding: '16px 18px', border: `1.5px solid ${C.border}`, borderRadius: 14, fontSize: 13.5, lineHeight: 1.7, color: useContentContext && !p.imagePrompt ? C.muted : C.ink, backgroundColor: useContentContext ? '#F8FAFC' : '#FCFCFE', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }}
+                        style={{ width: '100%', boxSizing: 'border-box', minHeight: 120, padding: '16px 18px', border: `1.5px solid ${C.border}`, borderRadius: 14, fontSize: 13.5, lineHeight: 1.7, color: C.ink, backgroundColor: '#FCFCFE', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }}
                       />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                        <span style={{ fontSize: 11.5, color: C.faint, fontWeight: 600 }}>{shown.length} / 500</span>
+                        <span style={{ flex: 1 }} />
+                        <button onClick={() => p.setImagePrompt('')} title="Restore the AI-derived prompt suggestion" style={{ border: 'none', background: 'none', color: C.primaryDark, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', padding: '6px 4px' }}>Reset to AI suggestion</button>
+                      </div>
                       {/* Visual settings moved here from Step 2 — aspect ratio and
                           image style are chosen where the image is generated. */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, marginTop: 12 }}>
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.05em', color: C.muted, marginBottom: 6 }}>ASPECT RATIO</div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                            {['1:1', '9:16', '16:9', '4:3'].filter(k => p.aspectRatioMap[k]).map(key => (
-                              <button key={key} onClick={() => p.setAspectRatio(key)} title={p.aspectRatioMap[key].label} style={{ padding: '7px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', border: p.aspectRatio === key ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`, backgroundColor: p.aspectRatio === key ? C.primarySoft : '#fff', color: p.aspectRatio === key ? C.primaryDark : C.muted }}>{key}</button>
-                            ))}
-                          </div>
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.05em', color: C.muted, marginBottom: 6 }}>ASPECT RATIO</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {['1:1', '9:16', '16:9', '4:3'].filter(k => p.aspectRatioMap[k]).map(key => (
+                            <button key={key} onClick={() => p.setAspectRatio(key)} title={p.aspectRatioMap[key].label} style={{ padding: '7px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', border: p.aspectRatio === key ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`, backgroundColor: p.aspectRatio === key ? C.primarySoft : '#fff', color: p.aspectRatio === key ? C.primaryDark : C.muted }}>{key}</button>
+                          ))}
                         </div>
-                        <div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.05em', color: C.muted, marginBottom: 6 }}>IMAGE STYLE</div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                             {['Photographic', 'Digital Art', 'Cinematic', 'Anime'].map(k => (
@@ -1552,21 +1558,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                             ))}
                           </div>
                         </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 11.5, color: C.faint, fontWeight: 600 }}>{shown.length}/500</span>
-                        <button
-                          onClick={() => { if (useContentContext) { setUseContentContext(false); } else { setUseContentContext(true); p.setImagePrompt(''); } }}
-                          title={useContentContext ? 'Write a custom prompt instead' : 'Use your post content as the prompt context'}
-                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px 7px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 800, border: `1.5px solid ${useContentContext ? C.primary : C.border}`, backgroundColor: useContentContext ? C.primarySoft : '#fff', color: useContentContext ? C.primaryDark : C.muted, cursor: 'pointer', fontFamily: 'inherit' }}
-                        >
-                          Use Content Context
-                          <span style={{ width: 30, height: 17, borderRadius: 999, backgroundColor: useContentContext ? C.primary : '#CBD5E1', display: 'flex', alignItems: 'center', padding: '0 2px', justifyContent: useContentContext ? 'flex-end' : 'flex-start', transition: 'all 0.16s' }}>
-                            <span style={{ width: 13, height: 13, borderRadius: '50%', backgroundColor: '#fff' }} />
-                          </span>
-                        </button>
-                        <div style={{ flex: 1 }} />
-                        <button onClick={p.generateImage} disabled={!canGenImage} title={!p.aspectRatio ? 'Select an aspect ratio above first' : !p.content.trim() ? 'Add content first' : 'Generate AI image'} style={{ minHeight: 46, padding: '12px 28px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, border: 'none', cursor: canGenImage ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: canGenImage ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#DDD6FE', color: '#fff', boxShadow: canGenImage ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}>
+                        <button onClick={p.generateImage} disabled={!canGenImage} title={!p.aspectRatio ? 'Select an aspect ratio above first' : !p.content.trim() ? 'Add content first' : 'Generate AI image'} style={{ minHeight: 46, padding: '12px 28px', borderRadius: 12, fontSize: 13.5, fontWeight: 800, border: 'none', cursor: canGenImage ? 'pointer' : 'not-allowed', fontFamily: 'inherit', flexShrink: 0, background: canGenImage ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#DDD6FE', color: '#fff', boxShadow: canGenImage ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}>
                           {p.isGeneratingImage ? 'Generating…' : '✨ Generate Image'}
                         </button>
                       </div>
@@ -1615,16 +1607,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         : <img src={p.generatedImage} alt="AI generated visual" style={{ width: '100%', maxHeight: 420, objectFit: 'contain', display: 'block', backgroundColor: '#0F172A' }} />}
                       <div style={{ position: 'absolute', left: 10, right: 10, bottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button onClick={p.generateImage} disabled={!canGenImage} title="Generate again with the current prompt" style={{ flex: 1, minWidth: 110, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(15,23,42,0.72)', color: '#fff', cursor: canGenImage ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canGenImage ? 1 : 0.6 }}>↻ Regenerate</button>
-                        <button onClick={() => {
-                          if (useContentContext) {
-                            setUseContentContext(false);
-                            if (!p.imagePrompt) {
-                              const derived = p.content.trim().split('\n')[0].substring(0, 200) || p.prompt.trim();
-                              if (derived) p.setImagePrompt(derived);
-                            }
-                          }
-                          promptInputRef.current?.focus();
-                        }} title="Edit the prompt above" style={{ flex: 1, minWidth: 110, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}>✏️ Edit Prompt</button>
+                        <button onClick={() => promptInputRef.current?.focus()} title="Edit the prompt above" style={{ flex: 1, minWidth: 110, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}>✏️ Edit Prompt</button>
                         <button onClick={downloadGeneratedMedia} title="Download this file to your device" style={{ flex: 1, minWidth: 90, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}>📥 Download</button>
                         {!p.generatedVideo && (
                           <button onClick={() => p.clearGeneratedImage()} title="Remove the generated visual" style={{ flex: 1, minWidth: 90, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(220,38,38,0.85)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>🗑️ Remove</button>
@@ -1819,39 +1802,42 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
             </div>
             {/* ============ RIGHT — AI ASSISTANT PANEL ============ */}
             <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-              <div style={{ position: 'relative', borderRadius: 20, padding: '26px 22px 22px', background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
-                <span style={{ position: 'absolute', top: 14, left: 16, width: 30, height: 30, borderRadius: '50%', background: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>📸</span>
-                <span style={{ position: 'absolute', top: 44, right: 14, width: 30, height: 30, borderRadius: '50%', background: '#EDE9FE', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(124,58,237,0.2)' }}>✨</span>
-                <span style={{ position: 'absolute', bottom: 84, left: 12, width: 30, height: 30, borderRadius: '50%', background: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>🎨</span>
-                <span style={{ position: 'absolute', bottom: 108, right: 18, width: 30, height: 30, borderRadius: '50%', background: '#EDE9FE', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(124,58,237,0.2)' }}>🖼️</span>
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto', boxShadow: '0 8px 24px rgba(124,58,237,0.22)', border: '1px solid #E9D5FF' }}>🤖</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: C.ink, marginTop: 14, letterSpacing: '-0.01em', lineHeight: 1.4 }}>Bring Your Ideas<br />To Life ✨</div>
-                <div style={{ fontSize: 12, color: '#64748B', marginTop: 6, lineHeight: 1.65 }}>AI creates visuals that match your content, tone, and brand.</div>
+              <div style={{ borderRadius: 20, background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
+                <div className="sp-soc-visual" aria-hidden="true">
+                  <span className="sp-orbit" />
+                  <span className="sp-soc" title="LinkedIn" style={{ left: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(10,102,194,0.4)', animation: 'spDriftLi 6.5s ease-in-out infinite' }}><p.PlatformIcon platform="linkedin" size={22} /><img src="/brand-icons/linkedin.webp" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#0A66C2'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="Instagram" style={{ right: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(209,42,123,0.4)', animation: 'spDriftIg 7.2s ease-in-out infinite', animationDelay: '0.8s' }}><p.PlatformIcon platform="instagram" size={22} /><img src="/brand-icons/instagram.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#E1306C'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="Facebook" style={{ left: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(24,119,242,0.4)', animation: 'spFloatY 5.2s ease-in-out infinite', animationDelay: '0.3s' }}><p.PlatformIcon platform="facebook" size={22} /><img src="/brand-icons/facebook.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#1877F2'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="WhatsApp" style={{ right: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(37,211,102,0.42)', animation: 'spFloatDiag 6s ease-in-out infinite', animationDelay: '1.4s' }}><p.PlatformIcon platform="whatsapp" size={22} /><img src="/brand-icons/whatsapp.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#25D366'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-robot sp-robot-logo" style={{ animation: 'spBreathe 5.5s ease-in-out infinite' }}><img src="/sp-logo.png" alt="SocialPulse AI" width={74} height={74} /></span>
+                </div>
+                <div style={{ padding: '18px 16px 20px', borderTop: '1px solid rgba(233,213,255,0.7)' }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>Bring Your Visual To Life ✨</div>
+                  <div style={{ fontSize: 12, color: '#64748B', marginTop: 8, lineHeight: 1.65 }}>AI turns your content into a visual that matches your tone, platform and style.</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12, textAlign: 'left' }}>
+                    {['Content understood', 'Style selected', 'Ready to generate'].map(b => (
+                      <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✓</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>{b}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 12 }}>🎨 Current Style</div>
+              <div style={{ ...card, borderRadius: 16, padding: '18px 20px', boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Current Style</div>
                 {[
                   ['Tone', p.tone || 'Not set'],
                   ['Image Style', p.imageStyle || 'Not set'],
                   ['Aspect Ratio', p.aspectRatio ? `${p.aspectRatio}${p.aspectRatioMap[p.aspectRatio] ? ` ${p.aspectRatioMap[p.aspectRatio].label}` : ''}` : 'Not set'],
                 ].map(([label, value]) => (
-                  <div key={label} style={{ border: `1px solid ${C.borderSoft}`, background: '#FCFCFE', borderRadius: 12, padding: '9px 12px', marginBottom: 8 }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: C.primaryDark, marginTop: 2 }}>{value}</div>
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '5px 0' }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: C.faint, letterSpacing: '0.06em' }}>{label.toUpperCase()}</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink }}>{value}</div>
                   </div>
                 ))}
-                <button onClick={() => setCurrentStep(2)} style={{ width: '100%', marginTop: 4, padding: '10px 14px', borderRadius: 10, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.primaryBorder}`, backgroundColor: '#fff', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit' }}>Change Settings →</button>
-              </div>
-
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 10 }}>💡 Visual Tips</div>
-                {['Keep visuals relevant to your message', 'Use high-quality images', 'Match visuals with your brand', 'Choose the right aspect ratio', 'Avoid overcrowded designs'].map(tip => (
-                  <div key={tip} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
-                    <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✓</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: '#334155' }}>{tip}</span>
-                  </div>
-                ))}
+                <button onClick={() => setCurrentStep(2)} style={{ width: '100%', marginTop: 10, padding: '10px 14px', borderRadius: 10, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.primaryBorder}`, backgroundColor: '#fff', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit' }}>Change Settings →</button>
               </div>
             </aside>
           </div>
