@@ -920,6 +920,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-soc { position: absolute; width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #fff; cursor: default; transition: transform 180ms ease, box-shadow 180ms ease; will-change: transform; }
         .sp-soc:hover { transform: scale(1.06); }
         .sp-robot { position: absolute; left: 50%; top: 50%; width: 74px; height: 74px; margin-left: -37px; margin-top: -37px; border-radius: 24px; background: linear-gradient(135deg,#7C3AED,#A855F7); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: 0 10px 28px rgba(124,58,237,.45), inset 0 1px 0 rgba(255,255,255,.35); z-index: 2; }
+        .sp-duo{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));align-items:start;min-width:0}
+        .sp-duo > *{min-width:0;max-width:100%}
         .sp-orbit { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; margin-left: -75px; margin-top: -75px; border: 1.5px dashed rgba(124,58,237,.35); border-radius: 50%; pointer-events: none; animation: spSpinSlow 24s linear infinite; }
         @keyframes spDriftLi { 0%,100% { transform: translate(0,0) rotate(-3deg); } 50% { transform: translate(9px,10px) rotate(3deg); } }
         @keyframes spDriftIg { 0%,100% { transform: translate(0,0) rotate(3deg); } 50% { transform: translate(-9px,10px) rotate(-3deg); } }
@@ -2183,6 +2185,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 </div>
               </div>
 
+              <div className="sp-duo">
               {/* ---- Section 1: Brand Identity ---- */}
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
@@ -2191,7 +2194,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Upload your brand logo once and apply it to this image or all images.</div>
                   </div>
                 </div>
-                <div className="sp-wiz-grid3" style={{ marginTop: 12 }}>
+                <div style={{ marginTop: 12 }}>
                   <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, backgroundColor: '#FCFCFE', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand Logo</div>
                     <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Upload your brand logo once and apply it to this image or all images.</div>
@@ -2231,6 +2234,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     </div>
                   );
                 })()}
+              </div>
+              <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Describe Your Image</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Add a short description to help people using screen readers understand your image.</div>
+                {altTextControls}
+              </div>
               </div>
 
               {/* ---- Section 2: Image Preview ---- */}
@@ -2373,12 +2382,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 })()}
               </div>
 
-              {/* ---- Section 4: Describe Your Image ---- */}
-              <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Describe Your Image</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Add a short description to help people using screen readers understand your image.</div>
-                {altTextControls}
-              </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
                 <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
