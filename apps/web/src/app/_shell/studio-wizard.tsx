@@ -1934,12 +1934,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🎨</div>
                   <div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Design & Branding Studio</div>
-                    <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Step 5 of 8: Design your visuals, apply your brand, and prepare your post</div>
                   </div>
-                </div>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#F5F0FF', border: '1px solid #DDD6FE', borderRadius: 14, padding: '12px 16px', marginTop: 18 }}>
-                  <span style={{ fontSize: 16, lineHeight: 1.4 }}>✨</span>
-                  <span style={{ fontSize: 12.5, color: C.primaryDark, fontWeight: 600, lineHeight: 1.6 }}>Make your content visually consistent before publishing.</span>
                 </div>
               </div>
 
@@ -2024,17 +2019,19 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <button onClick={() => p.setIsCarousel(false)} className="sp-s2-opt" style={selectCardPremium(!p.isCarousel)}>
                     <span style={checkBadge(!p.isCarousel)}>{!p.isCarousel ? '✓' : ''}</span>
                     <span style={{ fontSize: 24 }}>🖼️</span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: !p.isCarousel ? C.primaryDark : C.ink }}>Single Post</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: !p.isCarousel ? C.primaryDark : C.ink }}>Single Image</span>
                     <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Publish one hero visual</span>
+                    <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Best for announcements, promotions, quotes, or single-image posts.</span>
                   </button>
                   <button onClick={() => p.setIsCarousel(true)} className="sp-s2-opt" style={selectCardPremium(p.isCarousel)}>
                     <span style={checkBadge(p.isCarousel)}>{p.isCarousel ? '✓' : ''}</span>
                     <span style={{ fontSize: 24 }}>🎠</span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: p.isCarousel ? C.primaryDark : C.ink }}>Carousel{p.isCarousel ? ` · ${p.carouselSlides.length}` : ''}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: p.isCarousel ? C.primaryDark : C.ink }}>Multiple Images{p.isCarousel ? ` · ${p.carouselSlides.length}` : ''}</span>
                     <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Combine 2–9 images into one swipeable post</span>
+                    <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Best for tutorials, step-by-step guides, product showcases, or visual stories.</span>
                   </button>
                 </div>
-                {p.isCarousel && <div style={{ fontSize: 12, color: C.primaryDark, fontWeight: 700, marginTop: 10 }}>Carousel supports 2–9 images.</div>}
+                {p.isCarousel && <div style={{ fontSize: 12, color: C.primaryDark, fontWeight: 700, marginTop: 10 }}>Multiple Images supports 2–9 images.</div>}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>Supported on:</span>
                   {(['LinkedIn', 'Facebook', 'Instagram'] as const).map(pl => (
@@ -2045,7 +2042,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   ))}
                 </div>
                 {!p.isCarousel ? (
-                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginTop: 12 }}>One post, one hero visual — switch to Carousel to bundle slides into a swipeable album.</div>
+                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginTop: 12 }}>One post, one hero visual — switch to Multiple Images to bundle slides into a swipeable album.</div>
                 ) : (
                   <div style={{ marginTop: 14 }}>
                     <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 10 }}>Swipe order = numbered order. Image-only (videos can&apos;t join a carousel). Drag slides to reorder.</div>
@@ -2134,32 +2131,25 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
                 <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
                 <div style={{ flex: 1 }} />
-                <button onClick={() => setCurrentStep(7)} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14, width: 'auto' }}>Preview</button>
                 <button onClick={goNext} style={{ minHeight: 50, padding: '14px 38px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Next →</button>
               </div>
             </div>
             {/* ============ RIGHT — AI ASSISTANT PANEL ============ */}
             <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-              <div style={{ position: 'relative', borderRadius: 20, padding: '26px 22px 22px', background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
-                <span style={{ position: 'absolute', top: 14, left: 16, width: 30, height: 30, borderRadius: 10, background: 'linear-gradient(135deg,#00C4CC,#7C3AED)', color: '#fff', fontSize: 14, fontWeight: 800, fontStyle: 'italic', fontFamily: 'Georgia, serif', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(124,58,237,0.3)' }}>C</span>
-                <span style={{ position: 'absolute', top: 44, right: 14, width: 30, height: 30, borderRadius: '50%', background: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>🖼️</span>
-                <span style={{ position: 'absolute', bottom: 84, left: 12, width: 30, height: 30, borderRadius: '50%', background: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>🎨</span>
-                <span style={{ position: 'absolute', bottom: 108, right: 18, width: 30, height: 30, borderRadius: '50%', background: '#EDE9FE', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(124,58,237,0.2)' }}>✨</span>
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto', boxShadow: '0 8px 24px rgba(124,58,237,0.22)', border: '1px solid #E9D5FF' }}>🤖</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: C.ink, marginTop: 14, letterSpacing: '-0.01em', lineHeight: 1.4 }}>Create Beautiful<br />Visuals That Stand Out ✨</div>
-                <div style={{ fontSize: 12, color: '#64748B', marginTop: 6, fontWeight: 600 }}>Design. Brand. Publish.</div>
+              <div style={{ borderRadius: 20, background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
+                <div className="sp-soc-visual" aria-hidden="true">
+                  <span className="sp-orbit" />
+                  <span className="sp-soc" title="LinkedIn" style={{ left: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(10,102,194,0.4)', animation: 'spDriftLi 6.5s ease-in-out infinite' }}><p.PlatformIcon platform="linkedin" size={22} /><img src="/brand-icons/linkedin.webp" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#0A66C2'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="Instagram" style={{ right: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(209,42,123,0.4)', animation: 'spDriftIg 7.2s ease-in-out infinite', animationDelay: '0.8s' }}><p.PlatformIcon platform="instagram" size={22} /><img src="/brand-icons/instagram.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#E1306C'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="Facebook" style={{ left: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(24,119,242,0.4)', animation: 'spFloatY 5.2s ease-in-out infinite', animationDelay: '0.3s' }}><p.PlatformIcon platform="facebook" size={22} /><img src="/brand-icons/facebook.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#1877F2'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-soc" title="WhatsApp" style={{ right: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(37,211,102,0.42)', animation: 'spFloatDiag 6s ease-in-out infinite', animationDelay: '1.4s' }}><p.PlatformIcon platform="whatsapp" size={22} /><img src="/brand-icons/whatsapp.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#25D366'; e.currentTarget.style.display = 'none'; }} /></span>
+                  <span className="sp-robot sp-robot-logo" style={{ animation: 'spBreathe 5.5s ease-in-out infinite' }}><img src="/sp-logo.png" alt="SocialPulse AI" width={74} height={74} /></span>
+                </div>
+                <div style={{ padding: '18px 16px 20px', borderTop: '1px solid rgba(233,213,255,0.7)' }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>Create Beautiful Visuals That Stand Out ✨</div>
+                  <div style={{ fontSize: 12, color: '#64748B', marginTop: 8, lineHeight: 1.65 }}>Design. Brand. Publish.</div>
+                </div>
               </div>
-
-              <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 10 }}>💡 Design Tips</div>
-                {['Keep your branding consistent', 'Use readable fonts', 'Maintain good color contrast', 'Choose high-quality visuals', 'Preview before publishing'].map(tip => (
-                  <div key={tip} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
-                    <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✓</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: '#334155' }}>{tip}</span>
-                  </div>
-                ))}
-              </div>
-
             </aside>
           </div>
         )}

@@ -40,6 +40,7 @@ export default function PreviewClient() {
   const [style, setStyle] = useState('Photographic');
   const [genImg, setGenImg] = useState('');
   const [busyImg, setBusyImg] = useState(false);
+  const [carousel, setCarousel] = useState(false);
   const noop = () => {};
   const words = content.trim() ? content.trim().split(/\s+/).length : 0;
 
@@ -104,7 +105,7 @@ export default function PreviewClient() {
     generatedImage: genImg, generatedVideo: '', mediaType: null,
     clearGeneratedImage: () => setGenImg(''),
     burnedLogoIds: {},
-    isCarousel: false, carouselSlides: [] as unknown[], carouselValidation: { valid: true, reason: '' },
+    isCarousel: carousel, setIsCarousel: (v: boolean) => setCarousel(v), carouselSlides: [] as unknown[], carouselValidation: { valid: true, reason: '' },
     isGeneratingContent: generating,
     generateContent: () => {
       setGenErr(''); setGenerating(true); setContentState('');
@@ -143,7 +144,7 @@ export default function PreviewClient() {
     logoImage: '',
     generationError: genErr, setGenerationError: (v: string) => setGenErr(v),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words]);
+  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel]);
 
   return (
     <div style={{ background: '#F4F5FA', minHeight: '100vh' }}>
