@@ -2193,7 +2193,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 </div>
                 <div className="sp-wiz-grid3" style={{ marginTop: 12 }}>
                   <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, backgroundColor: '#FCFCFE', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand Logo (Optional)</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand Logo</div>
                     <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Upload your brand logo once and apply it to this image or all images.</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {p.logoImage
