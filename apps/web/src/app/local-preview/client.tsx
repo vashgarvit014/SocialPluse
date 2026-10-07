@@ -57,9 +57,12 @@ export default function PreviewClient() {
   useEffect(() => {
     if (!demoBrand) return;
     if (wantLogo) setLogoImg('/sp-logo.png');
+    const demoPlats = platsParam.length ? platsParam : ['instagram', 'facebook', 'linkedin', 'whatsapp'];
+    setPlats(demoPlats);
+    setActive(demoPlats[0]);
     setGallery([
-      { id: 'mock-1', url: mockVisual('Brand visual'), type: 'image', name: 'mock-visual-1' },
-      ...(wantMulti ? [{ id: 'mock-2', url: mockVisual('Second visual'), type: 'image' as const, name: 'mock-visual-2' }] : []),
+      { id: 'mock-1', url: mockVisual('Brand visual'), type: 'image', name: 'mock-visual-1', altText: 'A brand visual showing the SocialPulse mark over a purple gradient.' },
+      ...(wantMulti ? [{ id: 'mock-2', url: mockVisual('Second visual'), type: 'image' as const, name: 'mock-visual-2', altText: 'A second brand visual over a pink and orange gradient.' }] : []),
     ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -145,7 +145,7 @@ const STEPS = [
   { n: 3, t: 'Content' },
   { n: 4, t: 'Media' },
   { n: 5, t: 'Design' },
-  { n: 6, t: 'Personalization' },
+  { n: 6, t: 'Branding' },
   { n: 7, t: 'Preview' },
   { n: 8, t: 'Publish' },
 ];
@@ -539,6 +539,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   // list at render time so removing slides can never strand it out of range.
   const [carouselPreviewIndex, setCarouselPreviewIndex] = field('carouselPreviewIndex', 0);
   const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
+  const [brandPanelOpen, setBrandPanelOpen] = useState(false);
   // ---- Step 4 local UI state (workspace mode + AI prompt editor only) ----
   // mediaTab switches the featured workspace panel (AI / upload / library).
   // All panels stay reachable — nothing is unmounted for good, and every
@@ -941,19 +942,26 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-robot { position: absolute; left: 50%; top: 50%; width: 74px; height: 74px; margin-left: -37px; margin-top: -37px; border-radius: 24px; background: linear-gradient(135deg,#7C3AED,#A855F7); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: 0 10px 28px rgba(124,58,237,.45), inset 0 1px 0 rgba(255,255,255,.35); z-index: 2; }
         .sp-duo2{display:grid;gap:20px 28px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start;min-width:0}
         .sp-duo2side{min-width:0;max-width:100%}
-        .sp-plat-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-        .sp-plat-tab{display:inline-flex;align-items:center;gap:6px;padding:6px 14px 6px 8px;border-radius:999px;border:1.5px solid #E5E7EB;background:#fff;color:#64748B;font-weight:800;font-size:12.5px;text-transform:capitalize;cursor:pointer;font-family:inherit}
-        .sp-plat-tab svg{width:22px;height:22px}
+        .sp-plat-tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+        @media(max-width:640px){.sp-plat-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+        .sp-plat-tabs::-webkit-scrollbar{display:none}.sp-plat-tabs>*{flex:0 0 auto;min-width:132px}}
+        .sp-plat-tab{flex:1 1 150px;min-width:0;max-width:280px;display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:11px 16px;border-radius:13px;border:1.5px solid #E5E7EB;background:#fff;color:#334155;font-weight:800;font-size:13.5px;text-transform:capitalize;cursor:pointer;font-family:inherit;transition:border-color .18s,background .18s,color .18s,transform .18s}
+        .sp-plat-tab:hover{border-color:#C4B5FD;transform:translateY(-1px)}
+        .sp-plat-tab img{width:24px;height:24px;border-radius:7px;object-fit:contain}
         .sp-plat-tab.sp-on{border:2px solid #7C3AED;background:#F5F0FF;color:#5B21B6}
-        .sp-prev-viewport{overflow:hidden;border-radius:16px;border:1px solid #E5E7EB;background:#F8FAFC;touch-action:pan-y}
-        .sp-prev-track{display:flex;transition:transform 0.35s ease}
-        .sp-prev-slide{flex:0 0 100%;min-width:0;display:flex;justify-content:center;padding:12px}
-        .sp-prev-slide>div{width:100%}
-        .sp-prev-arrow{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:none;background:rgba(15,23,42,0.55);color:#fff;font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2}
-        .sp-prev-dots{display:flex;gap:6px;justify-content:center;margin-top:10px}
-        .sp-prev-dot{width:8px;height:8px;border-radius:999px;border:none;padding:0;background:#DDD6FE;cursor:pointer}
-        .sp-prev-dot.sp-on{background:#7C3AED}
-        .sp-prev-tools{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+        .sp-prev-canvas{position:relative;border-radius:24px;padding:38px 34px;background:linear-gradient(135deg,#7C3AED 0%,#A855F7 26%,#D946EF 52%,#FB7185 74%,#FBBF24 100%);overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,0.35)}
+        .sp-prev-viewport{overflow:hidden;touch-action:pan-y}
+        .sp-prev-track{display:flex;transition:transform 0.3s cubic-bezier(.22,1,.36,1)}
+        .sp-prev-slide{flex:0 0 100%;min-width:0;display:flex;justify-content:center}
+        .sp-prev-arrow{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;border:none;background:#fff;color:#1E293B;font-size:22px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;box-shadow:0 6px 18px rgba(15,23,42,0.22);transition:transform .18s,box-shadow .18s}
+        .sp-prev-arrow:hover{transform:translateY(-50%) scale(1.08);box-shadow:0 10px 26px rgba(15,23,42,0.3)}
+        .sp-prev-arrow:disabled{opacity:0;pointer-events:none}
+        @media(max-width:640px){.sp-prev-canvas{padding:24px 18px;border-radius:18px}.sp-prev-arrow{width:34px;height:34px;font-size:17px}}
+        .sp-prev-dots{display:flex;gap:7px;justify-content:center;margin-top:16px}
+        .sp-prev-dot{width:9px;height:9px;border-radius:999px;border:none;padding:0;background:#D1D5DB;cursor:pointer;transition:background .18s,transform .18s}
+        .sp-prev-dot.sp-on{background:#7C3AED;transform:scale(1.15)}
+        .sp-panel-btn{display:flex;align-items:center;gap:10px;width:100%;padding:14px 18px;border-radius:14px;border:1px solid #E5E7EB;background:#fff;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:800;color:#334155;text-align:left}
+        .sp-panel-btn:hover{border-color:#C4B5FD;background:#FAF8FF}
         @media(min-width:700px){.sp-duo2side + .sp-duo2side{border-left:1px solid #F1F3F9;padding-left:28px}}
         @media(max-width:699px){.sp-duo2{grid-template-columns:minmax(0,1fr)}.sp-duo2side + .sp-duo2side{border-top:1px solid #F1F3F9;padding-top:20px}}
         .sp-orbit { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; margin-left: -75px; margin-top: -75px; border: 1.5px dashed rgba(124,58,237,.35); border-radius: 50%; pointer-events: none; animation: spSpinSlow 24s linear infinite; }
@@ -2212,9 +2220,9 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
               <div style={{ ...card, borderRadius: 20, padding: '28px 30px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🎨</div>
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>👁️</div>
                   <div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Branding Preview</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>BRANDING PREVIEW</div>
                     <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Preview your branded visual and make final adjustments before publishing.</div>
                   </div>
                 </div>
@@ -2222,54 +2230,62 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
               {/* ---- Section 1: Branded Preview (platform slider) ---- */}
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Image Preview</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>See how your logo looks on your selected image.</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>{p.aspectRatio ? `${p.aspectRatio}${p.aspectRatioMap[p.aspectRatio] ? ` • ${p.aspectRatioMap[p.aspectRatio].label}` : ''}` : 'No aspect ratio'}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>{p.imageStyle}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>Caption • {p.content.trim().length} chars</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>{(p.platformContent[p.activePreviewPlatform]?.hashtags || []).length} hashtags</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 11, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>👁️</div>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>Platform Preview</div>
+                    <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>See how your image will look on each platform with your logo.</div>
+                  </div>
                 </div>
                 {(() => {
                   const hero = canvaEditTarget || p.mediaItems.find(m => m.type === 'image') || p.mediaItems[0] || null;
                   const heroUrl = hero?.url || p.generatedImage || p.generatedVideo || '';
                   const heroIsVideo = hero ? hero.type === 'video' : !!p.generatedVideo && !hero;
                   const heroKey = hero?.id || 'gen';
-                  const thumbs = (p.isCarousel ? p.carouselSlides : p.mediaItems).slice(0, 8);
-                  const previewOpts = (['linkedin', 'facebook', 'instagram', 'whatsapp'] as const).filter(pl => p.selectedPlatforms.includes(pl));
+                  const brandIcon: Record<string, string> = { linkedin: '/brand-icons/linkedin.webp', facebook: '/brand-icons/facebook.png', instagram: '/brand-icons/instagram.png', whatsapp: '/brand-icons/whatsapp.png' };
+                  const previewOpts = (['instagram', 'facebook', 'linkedin', 'whatsapp'] as const).filter(pl => p.selectedPlatforms.includes(pl));
                   const safePreviewIdx = Math.min(previewSlideIdx, Math.max(previewOpts.length - 1, 0));
                   const capNoTags = (() => { const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || []; if (!p.content.trim()) return ''; return tags.length ? p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim() : p.content; })();
                   const waCap = (() => { const c = p.platformContent[p.activePreviewPlatform]?.caption || p.content; return c.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim(); })();
                   const tagList = p.platformContent[p.activePreviewPlatform]?.hashtags || [];
                   const unburnedLogo = p.logoImage && !heroIsVideo && !p.burnedLogoIds[heroKey] ? p.logoImage : undefined;
-                  const toolTarget = canvaEditTarget || hero;
-                  const canEditTool = !!toolTarget && toolTarget.type !== 'video' && !p.isSendingToCanva;
-                  const canDeleteTool = !!toolTarget && !!toolTarget.id && p.mediaItems.some(m => m.id === toolTarget.id);
+                  const gotoSlide = (nn: number) => {
+                    setPreviewSlideIdx(nn);
+                    const pl = previewOpts[nn];
+                    setPreviewPlatform(pl);
+                    if (p.platformContent[pl]) p.switchPreviewPlatform(pl);
+                  };
                   if (!heroUrl) {
-                    return <div style={{ border: '2px dashed #C4B5FD', borderRadius: 16, backgroundColor: '#FAF8FF', padding: 40, textAlign: 'center' }}>
-                      <div style={{ fontSize: 32 }}>🖼️</div>
-                      <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginTop: 8 }}>No visual yet</div>
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Create one in Media (Step 4), then return here.</div>
-                    </div>;
+                    return (
+                      <div style={{ marginTop: 18, borderRadius: 24, padding: 54, textAlign: 'center', background: 'linear-gradient(135deg,#7C3AED,#D946EF 55%,#FBBF24)' }}>
+                        <div style={{ background: '#fff', borderRadius: 20, padding: 40, boxShadow: '0 12px 36px rgba(15,23,42,0.18)' }}>
+                          <div style={{ fontSize: 34 }}>🖼️</div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginTop: 8 }}>No visual yet</div>
+                          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Create one in Media (Step 4), then return here.</div>
+                        </div>
+                      </div>
+                    );
                   }
                   return (
-                    <div>
-                      {previewOpts.length > 1 && (
-                        <div className="sp-plat-tabs">
-                          {previewOpts.map((pps, i) => (
-                            <button key={pps} className={'sp-plat-tab' + (i === safePreviewIdx ? ' sp-on' : '')} onClick={() => { setPreviewSlideIdx(i); setPreviewPlatform(pps); if (p.platformContent[pps]) p.switchPreviewPlatform(pps); }} aria-label={`Preview ${pps}`}>
-                              <p.PlatformIcon platform={pps} size={22} />
-                              {pps}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <div style={{ position: 'relative' }}>
-                        <div className="sp-prev-viewport" onTouchStart={e => { e.currentTarget.dataset.sx = String(e.touches[0].clientX); }} onTouchEnd={e => { const sx = parseFloat(e.currentTarget.dataset.sx || 'x'); if (Number.isNaN(sx) || previewOpts.length < 2) return; const dx = e.changedTouches[0].clientX - sx; delete e.currentTarget.dataset.sx; if (Math.abs(dx) < 40) return; const nn = dx < 0 ? (safePreviewIdx + 1) % previewOpts.length : (safePreviewIdx - 1 + previewOpts.length) % previewOpts.length; setPreviewSlideIdx(nn); const pl = previewOpts[nn]; setPreviewPlatform(pl); if (p.platformContent[pl]) p.switchPreviewPlatform(pl); }}>
+                    <>
+                      <div className="sp-plat-tabs" style={{ marginTop: 18 }}>
+                        {previewOpts.map((pps, i) => (
+                          <button key={pps} className={'sp-plat-tab' + (i === safePreviewIdx ? ' sp-on' : '')} onClick={() => gotoSlide(i)} aria-label={`Preview ${pps}`} aria-pressed={i === safePreviewIdx}>
+                            <img src={brandIcon[pps]} alt="" aria-hidden="true" width={24} height={24} />
+                            {pps}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="sp-prev-canvas">
+                        {previewOpts.length > 1 && (
+                          <button className="sp-prev-arrow" style={{ left: 14 }} aria-label="Previous platform" onClick={() => gotoSlide((safePreviewIdx - 1 + previewOpts.length) % previewOpts.length)}>‹</button>
+                        )}
+                        <div className="sp-prev-viewport" onTouchStart={e => { e.currentTarget.dataset.sx = String(e.touches[0].clientX); }} onTouchEnd={e => { const sx = parseFloat(e.currentTarget.dataset.sx || 'x'); if (Number.isNaN(sx) || previewOpts.length < 2) return; const dx = e.changedTouches[0].clientX - sx; delete e.currentTarget.dataset.sx; if (Math.abs(dx) < 40) return; gotoSlide(dx < 0 ? (safePreviewIdx + 1) % previewOpts.length : (safePreviewIdx - 1 + previewOpts.length) % previewOpts.length); }}>
                           <div className="sp-prev-track" style={{ transform: `translateX(-${safePreviewIdx * 100}%)` }}>
                             {previewOpts.map(pps => (
                               <div key={pps} className="sp-prev-slide">
-                                <div style={{ position: 'relative', width: '100%', maxWidth: pps === 'instagram' ? 480 : pps === 'whatsapp' ? 400 : 660 }}>
+                                <div style={{ width: '100%', maxWidth: pps === 'instagram' ? 430 : pps === 'whatsapp' ? 380 : 560 }}>
                                   {pps === 'instagram' ? (
                                     <InstagramPhonePreview
                                       username={(p.accounts.find(a => a.platform === 'instagram' && a.connected) as any)?.instagramUsername || p.accounts.find(a => a.platform === 'instagram' && a.connected)?.name || p.accounts.find(a => a.platform === 'facebook' && a.connected)?.name || 'socialpulse'}
@@ -2308,7 +2324,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                                       profileName="SocialPulse"
                                       profileSubtitle="Social Media Content Manager"
                                       avatarUrl={p.logoImage || undefined}
-                                      logoUrl={p.logoImage || undefined}
+                                      logoUrl={unburnedLogo}
                                       logoPosition={p.logoPosition}
                                       logoScale={p.logoScale}
                                       logoOpacity={p.logoOpacity}
@@ -2336,96 +2352,32 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                           </div>
                         </div>
                         {previewOpts.length > 1 && (
-                          <>
-                            <button className="sp-prev-arrow" style={{ left: 8 }} aria-label="Previous platform" onClick={() => { const nn = (safePreviewIdx - 1 + previewOpts.length) % previewOpts.length; setPreviewSlideIdx(nn); const pl = previewOpts[nn]; setPreviewPlatform(pl); if (p.platformContent[pl]) p.switchPreviewPlatform(pl); }}>‹</button>
-                            <button className="sp-prev-arrow" style={{ right: 8 }} aria-label="Next platform" onClick={() => { const nn = (safePreviewIdx + 1) % previewOpts.length; setPreviewPlatform(previewOpts[nn]); setPreviewSlideIdx(nn); const pl = previewOpts[nn]; if (p.platformContent[pl]) p.switchPreviewPlatform(pl); }}>›</button>
-                          </>
+                          <button className="sp-prev-arrow" style={{ right: 14 }} aria-label="Next platform" onClick={() => gotoSlide((safePreviewIdx + 1) % previewOpts.length)}>›</button>
                         )}
                       </div>
+
                       {previewOpts.length > 1 && (
                         <div className="sp-prev-dots">
                           {previewOpts.map((pps, i) => (
-                            <button key={pps} aria-label={`Go to ${pps} preview`} className={'sp-prev-dot' + (i === safePreviewIdx ? ' sp-on' : '')} onClick={() => { setPreviewSlideIdx(i); setPreviewPlatform(pps); if (p.platformContent[pps]) p.switchPreviewPlatform(pps); }} />
+                            <button key={pps} aria-label={`Go to ${pps} preview`} className={'sp-prev-dot' + (i === safePreviewIdx ? ' sp-on' : '')} onClick={() => gotoSlide(i)} />
                           ))}
                         </div>
                       )}
-                      <div className="sp-prev-tools">
-                        <button onClick={() => { if (toolTarget) p.openInCanva(toolTarget.url); }} disabled={!canEditTool} title={!toolTarget ? 'Generate or upload an image first' : toolTarget.type === 'video' ? 'Videos cannot be edited in Canva' : 'Open the featured visual in Canva'} style={{ ...ghostBtn, minHeight: 40, padding: '10px 18px', fontSize: 12.5, fontWeight: 800, opacity: canEditTool ? 1 : 0.55, cursor: canEditTool ? 'pointer' : 'not-allowed' }}>Edit</button>
-                        <button onClick={() => { if (toolTarget && toolTarget.id) { p.removeMediaItem(toolTarget.id); if (selectedMediaId === toolTarget.id) setSelectedMediaId(null); } }} disabled={!canDeleteTool} title={canDeleteTool ? 'Delete the featured visual' : 'Only gallery uploads can be deleted here'} style={{ minHeight: 40, padding: '10px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: '1px solid #FECACA', backgroundColor: '#FEF2F2', color: '#DC2626', cursor: canDeleteTool ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canDeleteTool ? 1 : 0.55 }}>Delete</button>
-                      </div>
-                      {p.isCarousel && thumbs.length > 0 && (
-                        <div style={{ display: 'flex', gap: 8, marginTop: 10, overflowX: 'auto', padding: '2px 2px 4px' }}>
-                          {thumbs.map((m, i) => {
-                            const selected = selectedMediaId === m.id || canvaEditTarget?.url === m.url;
-                            return (
-                              <button key={m.id} draggable
-                                onClick={() => setSelectedMediaId(m.id)}
-                                onDragStart={() => setDragSlideId(m.id)}
-                                onDragOver={e => { e.preventDefault(); if (dragSlideId && dragSlideId !== m.id) setDragOverSlideId(m.id); }}
-                                onDrop={() => { if (dragSlideId) p.reorderCarouselSlide(dragSlideId, m.id); setDragSlideId(null); setDragOverSlideId(null); }}
-                                onDragEnd={() => { setDragSlideId(null); setDragOverSlideId(null); }}
-                                title={`Slide ${i + 1} — click to feature, drag to reorder`}
-                                style={{ flex: '0 0 72px', width: 72, height: 72, borderRadius: 10, overflow: 'hidden', border: dragOverSlideId === m.id ? `2px solid ${C.primary}` : selected ? `2px solid ${C.primary}` : `1px solid ${C.border}`, padding: 0, cursor: 'grab', backgroundColor: '#000', position: 'relative', boxShadow: selected ? '0 3px 10px rgba(124,58,237,0.3)' : 'none', opacity: dragSlideId === m.id ? 0.5 : 1 }}>
-                                {m.type === 'video' ? <video src={m.url} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} muted /> : <img src={m.url} alt={m.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />}
-                                <span style={{ position: 'absolute', top: 3, left: 3, minWidth: 18, height: 18, borderRadius: 999, background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, padding: '0 4px' }}>{i + 1}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                      {!p.isCarousel && thumbs.length > 1 && (
-                        <div style={{ display: 'flex', gap: 8, marginTop: 10, overflowX: 'auto', padding: '2px 2px 4px' }}>
-                          {thumbs.map(m => {
-                            const selected = selectedMediaId === m.id || canvaEditTarget?.url === m.url;
-                            return (
-                              <button key={m.id} onClick={() => setSelectedMediaId(m.id)} title={`Feature “${mediaFileName(m)}”`} style={{ flex: '0 0 72px', width: 72, height: 72, borderRadius: 10, overflow: 'hidden', border: selected ? `2px solid ${C.primary}` : `1px solid ${C.border}`, padding: 0, cursor: 'pointer', backgroundColor: '#000', position: 'relative', boxShadow: selected ? '0 3px 10px rgba(124,58,237,0.3)' : 'none' }}>
-                                {m.type === 'video' ? <video src={m.url} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} muted /> : <img src={m.url} alt={m.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                      {(() => {
-                        // Apply targets mirror the burn: all image media, or the
-                        // single generated visual when the gallery is empty.
-                        const imageCount = p.isCarousel
-                          ? p.carouselSlides.length
-                          : (p.mediaItems.filter(m => m.type === 'image').length || ((p.generatedImage || p.generatedVideo) ? 1 : 0));
-                        const heroId = hero && hero.id && p.mediaItems.some(m => m.id === hero.id) ? hero.id : null;
-                        const canApply = !!p.logoImage && !p.isApplyingLogo && !!heroUrl && !heroIsVideo;
-                        const applyToHero = () => {
-                          // Deferred one tick so the target selection above has
-                          // committed before the burn reads it (same pattern as
-                          // the logo dialog's delayed apply).
-                          if (heroId) {
-                            p.setLogoTargetId(heroId);
-                            setTimeout(() => p.applyLogoToAllMedia(), 60);
-                          } else {
-                            p.applyLogoToAllMedia();
-                          }
-                        };
-                        const applyToAll = () => {
-                          p.setLogoTargetId(null);
-                          setTimeout(() => p.applyLogoToAllMedia(), 60);
-                        };
-                        return (
-                          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                            <button onClick={applyToHero} disabled={!canApply} title={!p.logoImage ? 'Upload a brand logo first' : 'Burn the logo into the featured visual'} style={{ flex: 1, minWidth: 150, minHeight: 44, padding: '12px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: 'none', cursor: canApply ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: canApply ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#DDD6FE', color: '#fff', boxShadow: canApply ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}>
-                              {p.isApplyingLogo ? 'Applying…' : 'Apply Logo to This Image'}
-                            </button>
-                            {imageCount > 1 && (
-                              <button onClick={applyToAll} disabled={!canApply} title="Burn the logo into all images" style={{ flex: 1, minWidth: 150, minHeight: 44, padding: '12px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.primary}`, backgroundColor: '#fff', color: C.primaryDark, cursor: canApply ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canApply ? 1 : 0.6 }}>
-                                {p.isApplyingLogo ? 'Applying…' : 'Apply to All Images'}
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
+                    </>
                   );
                 })()}
               </div>
 
+              <button className="sp-panel-btn" onClick={() => setBrandPanelOpen(o => !o)} aria-expanded={brandPanelOpen}>
+                <span style={{ width: 30, height: 30, borderRadius: 9, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🎨</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 13.5 }}>Logo &amp; Image Description</span>
+                  <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: C.muted, marginTop: 1 }}>Upload or replace your logo, set its placement, and write ALT text.</span>
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: C.primaryDark, display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>{brandPanelOpen ? 'Hide' : 'Edit'}<span style={{ display: 'inline-block', transition: 'transform .2s', transform: brandPanelOpen ? 'rotate(180deg)' : 'none' }}>⌄</span></span>
+              </button>
+
+              {brandPanelOpen && (
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
               {/* ---- Section 2: Brand Identity + Describe, side by side ---- */}
               <div className="sp-duo2">
@@ -2476,6 +2428,40 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     </div>
                   );
                 })()}
+                {(() => {
+                  const applyHero = canvaEditTarget || p.mediaItems.find(m => m.type === 'image') || p.mediaItems[0] || null;
+                  const applyUrl = applyHero?.url || p.generatedImage || p.generatedVideo || '';
+                  const applyIsVideo = applyHero ? applyHero.type === 'video' : !!p.generatedVideo && !applyHero;
+                  const imageCount = p.isCarousel
+                    ? p.carouselSlides.length
+                    : (p.mediaItems.filter(m => m.type === 'image').length || ((p.generatedImage || p.generatedVideo) ? 1 : 0));
+                  const applyHeroId = applyHero && applyHero.id && p.mediaItems.some(m => m.id === applyHero.id) ? applyHero.id : null;
+                  const canApply = !!p.logoImage && !p.isApplyingLogo && !!applyUrl && !applyIsVideo;
+                  const applyToHero = () => {
+                    if (applyHeroId) {
+                      p.setLogoTargetId(applyHeroId);
+                      setTimeout(() => p.applyLogoToAllMedia(), 60);
+                    } else {
+                      p.applyLogoToAllMedia();
+                    }
+                  };
+                  const applyToAll = () => {
+                    p.setLogoTargetId(null);
+                    setTimeout(() => p.applyLogoToAllMedia(), 60);
+                  };
+                  return (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                      <button onClick={applyToHero} disabled={!canApply} title={!p.logoImage ? 'Upload a brand logo first' : 'Burn the logo into the featured visual'} style={{ flex: 1, minWidth: 150, minHeight: 44, padding: '12px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: 'none', cursor: canApply ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: canApply ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#DDD6FE', color: '#fff', boxShadow: canApply ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}>
+                        {p.isApplyingLogo ? 'Applying…' : 'Apply Logo to This Image'}
+                      </button>
+                      {imageCount > 1 && (
+                        <button onClick={applyToAll} disabled={!canApply} title="Burn the logo into all images" style={{ flex: 1, minWidth: 150, minHeight: 44, padding: '12px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.primary}`, backgroundColor: '#fff', color: C.primaryDark, cursor: canApply ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canApply ? 1 : 0.6 }}>
+                          {p.isApplyingLogo ? 'Applying…' : 'Apply to All Images'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               <div className="sp-duo2side">
                 <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Describe Your Image</div>
@@ -2484,6 +2470,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               </div>
               </div>
               </div>
+              )}
 
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
@@ -2510,29 +2497,36 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               </div>
 
               <div style={{ ...card, borderRadius: 16, padding: '18px 20px', boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Accessibility Check</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <span style={{ width: 22, height: 22, borderRadius: 7, background: '#059669', color: '#fff', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⬇</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Accessibility Check</span>
+                </div>
                 {(() => {
                   const checkImages = [...p.mediaItems, ...postExtraImages].filter(m => m.type === 'image');
-                  const altOk = checkImages.length > 0 && checkImages.every(m => m.altText?.trim());
+                  const hasVisual = checkImages.length > 0 || !!p.generatedImage || !!p.generatedVideo;
+                  const altOk = hasVisual && (checkImages.length === 0 || checkImages.every(m => m.altText?.trim()));
                   const rows: Array<[string, boolean, string]> = [
                     p.logoImage
-                      ? ['Logo is visible', true, '']
-                      : ['Logo is optional', false, ''],
-                    checkImages.length === 0
-                      ? ['No visuals yet', false, '']
+                      ? ['Logo is visible', true, 'Your logo will appear on the image.']
+                      : ['Logo is optional', false, 'Add a logo to brand your visuals.'],
+                    !hasVisual
+                      ? ['No image yet', false, 'Create a visual in Media (Step 4).']
                       : altOk
-                        ? ['Descriptions added', true, '']
-                        : ['Add image description', false, ''],
-                    checkImages.length === 0
-                      ? ['Waiting for visual', false, '']
-                      : ['Preview ready', true, ''],
+                        ? ['Image description added', true, 'ALT text is ready for screen readers.']
+                        : ['Add image description', false, 'Describe the image for screen readers.'],
+                    hasVisual
+                      ? ['Readable layout', true, 'Good contrast and clear content.']
+                      : ['Layout check pending', false, 'Waiting for a visual to check.'],
                   ];
                   return (
                     <div>
-                      {rows.map(([label, ok]) => (
-                        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
-                          <span style={{ width: 17, height: 17, borderRadius: '50%', background: ok ? '#ECFDF5' : '#F1F3F9', border: `1px solid ${ok ? '#A7F3D0' : '#E2E8F0'}`, color: ok ? '#059669' : '#B6BDCC', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{ok ? '✓' : '·'}</span>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: ok ? '#334155' : C.faint }}>{label}</span>
+                      {rows.map(([label, ok, sub]) => (
+                        <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '7px 0' }}>
+                          <span style={{ width: 19, height: 19, borderRadius: '50%', background: ok ? '#D1FAE5' : '#F1F5F9', color: ok ? '#059669' : '#94A3B8', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{ok ? '✓' : '○'}</span>
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: ok ? '#334155' : C.faint }}>{label}</span>
+                            <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>{sub}</span>
+                          </span>
                         </div>
                       ))}
                     </div>
