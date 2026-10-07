@@ -1625,12 +1625,10 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       {p.generatedVideo
                         ? <video src={p.generatedVideo} controls style={{ width: '100%', maxHeight: 420, display: 'block', backgroundColor: '#000' }} />
                         : <img src={p.generatedImage} alt="AI generated visual" style={{ width: '100%', maxHeight: 420, objectFit: 'contain', display: 'block', backgroundColor: '#0F172A' }} />}
-                      <div style={{ position: 'absolute', left: 10, right: 10, bottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button onClick={p.generateImage} disabled={!canGenImage} title="Generate again with the current prompt" style={{ flex: 1, minWidth: 110, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(15,23,42,0.72)', color: '#fff', cursor: canGenImage ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canGenImage ? 1 : 0.6 }}>↻ Regenerate</button>
-                        <button onClick={() => promptInputRef.current?.focus()} title="Edit the prompt above" style={{ flex: 1, minWidth: 110, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}>✏️ Edit Prompt</button>
-                        <button onClick={downloadGeneratedMedia} title="Download this file to your device" style={{ flex: 1, minWidth: 90, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.92)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit' }}>📥 Download</button>
+                      <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 8 }}>
+                        <button onClick={downloadGeneratedMedia} title="Download" aria-label="Download generated image" style={{ minWidth: 38, height: 38, padding: '0 10px', borderRadius: 10, fontSize: 15, fontWeight: 800, border: '1px solid #E2E8F0', background: 'rgba(255,255,255,0.94)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit', backdropFilter: 'blur(6px)', boxShadow: '0 4px 14px rgba(15,23,42,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⬇</button>
                         {!p.generatedVideo && (
-                          <button onClick={() => p.clearGeneratedImage()} title="Remove the generated visual" style={{ flex: 1, minWidth: 90, padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(220,38,38,0.85)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>🗑️ Remove</button>
+                          <button onClick={() => p.clearGeneratedImage()} title="Remove" aria-label="Remove generated image" style={{ minWidth: 38, height: 38, padding: '0 10px', borderRadius: 10, fontSize: 15, fontWeight: 800, border: '1px solid #E2E8F0', background: 'rgba(255,255,255,0.94)', color: '#475569', cursor: 'pointer', fontFamily: 'inherit', backdropFilter: 'blur(6px)', boxShadow: '0 4px 14px rgba(15,23,42,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.16s' }} onMouseEnter={e => { e.currentTarget.style.background = '#FECACA'; e.currentTarget.style.color = '#B91C1C'; e.currentTarget.style.borderColor = '#FCA5A5'; }} onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.94)'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.borderColor = '#E2E8F0'; }}>🗑</button>
                         )}
                       </div>
                     </div>
@@ -1640,7 +1638,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         `Style: ${p.imageStyle}`,
                         `Size: ${p.aspectRatio && p.aspectRatioMap[p.aspectRatio] ? `${p.aspectRatioMap[p.aspectRatio].width}×${p.aspectRatioMap[p.aspectRatio].height}` : '—'}`,
                       ].map(d => (
-                        <span key={d} style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>{d}</span>
+                        <span key={d} style={{ fontSize: 10.5, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '4px 10px', borderRadius: 999 }}>{d}</span>
                       ))}
                     </div>
                   </div>
@@ -1813,12 +1811,11 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
             )}
             <input ref={p.fileInputRef} type="file" accept="image/*,video/*" multiple onChange={p.handleUploadImage} style={{ display: 'none' }} />
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
-              <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
-              <div style={{ flex: 1 }} />
-              <button onClick={() => setCurrentStep(7)} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14, width: 'auto' }}>Preview</button>
-              <button onClick={goNext} style={{ minHeight: 50, padding: '14px 38px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Next →</button>
-            </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
+                <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
+                <div style={{ flex: 1 }} />
+                <button onClick={goNext} style={{ minHeight: 50, padding: '14px 38px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Next →</button>
+              </div>
             </div>
             {/* ============ RIGHT — AI ASSISTANT PANEL ============ */}
             <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
