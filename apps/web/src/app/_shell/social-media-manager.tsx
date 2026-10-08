@@ -3357,11 +3357,6 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               </div>
             </>
           )}
-          {!railMode && <div style={{ marginTop: '12px', padding: '14px 12px', borderRadius: '12px', background: 'linear-gradient(135deg, #7C3AED, #8B5CF6)', display: 'flex', flexDirection: 'column', gap: '4px', boxShadow: '0 4px 14px rgba(124,58,237,0.3)' }}>
-            <span style={{ fontSize: '10px', fontWeight: 800, color: 'rgba(255,255,255,0.75)', letterSpacing: '0.08em' }}>AI-POWERED</span>
-            <span style={{ fontSize: '13px', fontWeight: 800, color: '#fff', lineHeight: 1.3 }}>Social Media<br />Made Simple</span>
-            <button onClick={() => goToTab('studio')} style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', border: 'none', backgroundColor: 'rgba(255,255,255,0.18)', color: '#fff', fontSize: '11px', fontWeight: 700, cursor: 'pointer', borderWidth: 0 }}>Try Studio →</button>
-          </div>}
         </div>
       </aside>
 
