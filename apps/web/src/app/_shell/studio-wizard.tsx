@@ -788,19 +788,48 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
     if (calm) { setCapReveal(summaryCaption.length); return; }
     let i = 0;
     setCapReveal(0);
-    const id = setInterval(() => {
-      i += 3;
-      setCapReveal(Math.min(i, summaryCaption.length));
-      if (i >= summaryCaption.length) clearInterval(id);
-    }, 26);
-    return () => clearInterval(id);
+    // Reference timing: 700ms lead-in, then one character every 28ms.
+    let tick: ReturnType<typeof setInterval> | undefined;
+    const lead = setTimeout(() => {
+      tick = setInterval(() => {
+        i += 1;
+        setCapReveal(i);
+        if (i >= summaryCaption.length && tick) clearInterval(tick);
+      }, 28);
+    }, 700);
+    return () => { clearTimeout(lead); if (tick) clearInterval(tick); };
   }, [currentStep, summaryCaption]);
   const capTyping = capReveal < summaryCaption.length;
-  const summaryCardRef = useRef<HTMLDivElement | null>(null);
   // Selected-but-unconnected platforms. Previously publishing was allowed as
   // long as ONE platform was connected, which silently dropped the others -
   // the user saw "published" without realising a platform was skipped.
   const disconnectedSelected = p.selectedPlatforms.filter(pl => !isPlatformConnected(pl));
+  // Reference animates this ring to a hardcoded 75%. That number is fabricated,
+  // so the animation is identical but the target is derived from the real
+  // required checks: content, media, and every selected platform connected.
+  const readinessChecks = [
+    hasContent,
+    hasMedia || postExtraImages.length > 0,
+    p.selectedPlatforms.length > 0 && disconnectedSelected.length === 0,
+  ];
+  const readinessPct = Math.round((readinessChecks.filter(Boolean).length / readinessChecks.length) * 100);
+  const [ringPct, setRingPct] = useState(0);
+  useEffect(() => {
+    if (currentStep !== 8) return;
+    if (typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setRingPct(readinessPct);
+      return;
+    }
+    let n = 0;
+    setRingPct(0);
+    const id = setInterval(() => {
+      n += 3;
+      setRingPct(Math.min(n, readinessPct));
+      if (n >= readinessPct) clearInterval(id);
+    }, 40);
+    return () => clearInterval(id);
+  }, [currentStep, readinessPct]);
+  const summaryCardRef = useRef<HTMLDivElement | null>(null);
   // Correct brand casing — "LinkedIn", not "Linkedin".
   const platformLabel = (pl: string) => (pl === 'linkedin' ? 'LinkedIn' : pl === 'whatsapp' ? 'WhatsApp' : pl.charAt(0).toUpperCase() + pl.slice(1));
   const disconnectedNames = disconnectedSelected.map(platformLabel).join(', ');
@@ -991,24 +1020,78 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-soc:hover { transform: scale(1.06); }
         .sp-robot { position: absolute; left: 50%; top: 50%; width: 74px; height: 74px; margin-left: -37px; margin-top: -37px; border-radius: 24px; background: linear-gradient(135deg,#7C3AED,#A855F7); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: 0 10px 28px rgba(124,58,237,.45), inset 0 1px 0 rgba(255,255,255,.35); z-index: 2; }
         .sp-s8-sticky{position:sticky;top:16px}
-        .sp-s8-card{transform-style:preserve-3d;will-change:transform}
-        .sp-s8-card:hover{box-shadow:0 1px 2px rgba(15,23,42,0.05),0 18px 46px rgba(15,23,42,0.12)}
-        .sp-s8-caret{display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;background:#7C3AED;animation:spS8Caret .9s steps(2,start) infinite}
-        @keyframes spS8Caret{0%,100%{opacity:1}50%{opacity:0}}
-        @media(prefers-reduced-motion:reduce){.sp-s8-caret{animation:none}}
         @media(max-width:1024px){.sp-s8-sticky{position:static}}
-        .sp-s8-blob{position:absolute;border-radius:50%;filter:blur(26px);opacity:.42;pointer-events:none}
-        .sp-s8-b1{width:150px;height:150px;background:#C084FC;top:-52px;right:-26px}
-        .sp-s8-b2{width:118px;height:118px;background:#F0ABFC;bottom:-46px;left:-18px}
-        .sp-s8-b3{width:92px;height:92px;background:#818CF8;top:44%;left:38%}
-        .sp-s8-spark{position:absolute;color:rgba(255,255,255,.85);pointer-events:none;animation:spS8Spark 5s ease-in-out infinite}
-        .sp-s8-sp1{top:12px;left:32%;font-size:14px}
-        .sp-s8-sp2{bottom:16px;right:26%;font-size:12px;animation-delay:1.6s}
-        @keyframes spS8Spark{0%,100%{opacity:.35;transform:translateY(0)}50%{opacity:.9;transform:translateY(-4px)}}
-        .sp-s8-thumb{animation:spS8Float 7s ease-in-out infinite}
-        @keyframes spS8Float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+        @media(max-width:640px){.sp-s8-card::before{display:none}}
+        /* ---- Post Summary highlight animation (ported from the reference) ---- */
+        @property --sp-s8-a{syntax:"<angle>";inherits:false;initial-value:0deg}
+        .sp-s8-card{position:relative;border:0;padding:0;isolation:isolate;overflow:visible;transform-style:preserve-3d;
+          animation:spS8In .9s cubic-bezier(.2,.9,.25,1.15) both,spS8Glow 3s ease-in-out infinite;transition:transform .15s ease-out}
+        .sp-s8-card::before{content:"";position:absolute;inset:-3px;border-radius:24px;z-index:-2;
+          background:conic-gradient(from var(--sp-s8-a),#7c3aed,#ec4899,#f59e0b,#38bdf8,#7c3aed);
+          animation:spS8Spin 3.5s linear infinite;filter:blur(.3px)}
+        .sp-s8-card::after{content:"";position:absolute;inset:0;border-radius:21px;z-index:-1;background:#fff}
+        .sp-s8-card>*{position:relative}
+        .sp-s8-hero{position:relative;overflow:hidden;border-radius:21px 21px 0 0;padding:18px 18px 22px;
+          background:linear-gradient(135deg,#1e1042,#4c1d95 55%,#7c3aed);color:#fff}
+        .sp-s8-hero::after{content:"";position:absolute;top:0;bottom:0;width:60px;left:-80px;
+          background:linear-gradient(100deg,transparent,#ffffff66,transparent);transform:skewX(-20deg);
+          animation:spS8Sweep 3.6s ease-in-out infinite}
+        .sp-s8-blob{position:absolute;border-radius:50%;filter:blur(28px);opacity:.75;mix-blend-mode:screen;pointer-events:none}
+        .sp-s8-b1{width:140px;height:140px;background:#ec4899;top:-40px;right:-30px;animation:spS8Drift1 7s ease-in-out infinite}
+        .sp-s8-b2{width:120px;height:120px;background:#38bdf8;bottom:-50px;left:-20px;animation:spS8Drift2 8s ease-in-out infinite}
+        .sp-s8-b3{width:90px;height:90px;background:#f59e0b;top:30%;left:45%;animation:spS8Drift1 9s ease-in-out infinite reverse;opacity:.5}
+        .sp-s8-spark{position:absolute;color:#fff;font-size:16px;opacity:0;animation:spS8Twinkle 3s ease-in-out infinite;pointer-events:none}
+        .sp-s8-sp1{top:14%;left:12%}.sp-s8-sp2{top:28%;right:16%;animation-delay:.8s;font-size:22px}
+        .sp-s8-sp3{bottom:22%;left:30%;animation-delay:1.6s;font-size:12px}.sp-s8-sp4{bottom:12%;right:10%;animation-delay:2.2s}
+        .sp-s8-thumbwrap{display:flex;gap:14px;align-items:center;position:relative}
+        .sp-s8-thumb{width:150px;height:110px;border-radius:16px;border:3px solid #ffffffcc;box-shadow:0 14px 30px #0006;
+          animation:spS8Float 3.4s ease-in-out infinite;transform:rotate(-3deg);position:relative;overflow:hidden;flex-shrink:0;background:rgba(255,255,255,.14)}
+        .sp-s8-thumb::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,#ffffff88 50%,transparent 65%);
+          transform:translateX(-120%);animation:spS8Shine 3.6s ease-in-out infinite 1.2s}
+        .sp-s8-ring{position:relative;width:78px;height:78px;background:#ffffff1f;border-radius:50%;backdrop-filter:blur(6px);display:grid;place-items:center;flex-shrink:0}
+        .sp-s8-ring svg{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);transform:rotate(-90deg)}
+        .sp-s8-ring circle{fill:none;stroke:#ffffff33;stroke-width:3}
+        .sp-s8-ring .arc{stroke:#a7f3d0;stroke-linecap:round;stroke-dasharray:97.4;stroke-dashoffset:97.4;
+          transition:stroke-dashoffset 1.6s cubic-bezier(.2,.8,.2,1)}
+        .sp-s8-ring b{font-size:17px;font-weight:800}
+        .sp-s8-live{width:10px;height:10px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 0 #4ade80aa;animation:spS8Pulse 1.8s infinite}
+        .sp-s8-badge{display:inline-flex;align-items:center;gap:7px;background:#ffffff1f;border:1px solid #ffffff33;
+          border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:800;color:#fff}
+        .sp-s8-edit{display:inline-flex;align-items:center;gap:5px;background:#ffffff1f;border:1px solid #ffffff33;
+          border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:800;color:#fff;cursor:pointer;font-family:inherit}
+        .sp-s8-edit:hover{background:#ffffff33}
+        .sp-s8-tags span{font-size:10.5px;font-weight:700;color:#5B21B6;background:#F5F0FF;border:1px solid #DDD6FE;padding:4px 10px;border-radius:999px}
+        .sp-s8-body{padding:20px 22px 0}
+        .sp-s8-cap{display:block;font-size:15px;line-height:1.5;min-height:66px;color:#0f172a}
+        .sp-s8-cap::after{content:"\u25AD";color:#7C3AED;animation:spS8Blink .8s steps(1) infinite;margin-left:2px}
+        .sp-s8-cap.sp-done::after{display:none}
+        .sp-s8-tags{position:relative;display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 14px}
+        .sp-s8-tags span{opacity:0;animation:spS8Pop .5s cubic-bezier(.2,.9,.3,1.5) forwards;transition:.2s}
+        .sp-s8-tags span:hover{transform:translateY(-3px) scale(1.08);background:#7C3AED;color:#fff}
+        .sp-s8-tags span:nth-child(1){animation-delay:.9s}.sp-s8-tags span:nth-child(2){animation-delay:1s}
+        .sp-s8-tags span:nth-child(3){animation-delay:1.1s}.sp-s8-tags span:nth-child(4){animation-delay:1.2s}
+        .sp-s8-ready{animation:spS8Rise .6s both 1.3s}
+        .sp-s8-cta-on{animation:spS8Ready 1.6s ease-in-out infinite}
+        @keyframes spS8Spin{to{--sp-s8-a:360deg}}
+        @keyframes spS8In{from{opacity:0;transform:translateX(60px) rotateY(-18deg) scale(.92)}to{opacity:1;transform:none}}
+        @keyframes spS8Glow{0%,100%{box-shadow:0 10px 34px #7c3aed30}50%{box-shadow:0 16px 60px #ec489960}}
+        @keyframes spS8Float{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-7px) rotate(-1deg)}}
+        @keyframes spS8Sweep{0%,55%{left:-80px}100%{left:120%}}
+        @keyframes spS8Shine{0%,40%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
+        @keyframes spS8Drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(-30px,25px)}}
+        @keyframes spS8Drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(40px,-20px)}}
+        @keyframes spS8Twinkle{0%,100%{opacity:0;transform:scale(.4) rotate(0)}50%{opacity:1;transform:scale(1.2) rotate(90deg)}}
+        @keyframes spS8Blink{50%{opacity:0}}
+        @keyframes spS8Pop{from{opacity:0;transform:scale(.4) translateY(8px)}to{opacity:1;transform:none}}
+        @keyframes spS8Pulse{70%{box-shadow:0 0 0 10px #4ade8000}100%{box-shadow:0 0 0 0 #4ade8000}}
+        @keyframes spS8Rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+        @keyframes spS8Ready{0%,100%{box-shadow:0 10px 22px #7c3aed44}50%{box-shadow:0 0 0 6px #7c3aed22,0 12px 30px #7c3aed88}}
         @media(prefers-reduced-motion:reduce){
-          .sp-s8-spark,.sp-s8-thumb{animation:none!important}
+          .sp-s8-card,.sp-s8-card::before,.sp-s8-hero::after,.sp-s8-blob,.sp-s8-spark,
+          .sp-s8-thumb,.sp-s8-thumb::after,.sp-s8-live,.sp-s8-ready,.sp-s8-cta-on,.sp-s8-tags span{animation:none!important}
+          .sp-s8-card::before{display:none}
+          .sp-s8-cap::after{display:none}
+          .sp-s8-tags span{opacity:1}
         }
         .sp-plat-tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
         @media(max-width:640px){.sp-plat-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -3211,53 +3294,55 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       const r = el.getBoundingClientRect();
                       const x = (e.clientX - r.left) / r.width - 0.5;
                       const y = (e.clientY - r.top) / r.height - 0.5;
-                      el.style.transform = `perspective(900px) rotateY(${x * 6}deg) rotateX(${-y * 4}deg) translateZ(6px)`;
+                      el.style.transform = `perspective(900px) rotateY(${x * 8}deg) rotateX(${-y * 6}deg)`;
                     }}
                     onMouseLeave={() => { const el = summaryCardRef.current; if (el) el.style.transform = ''; }}
-                    style={{ ...card, borderRadius: 20, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)', transition: 'transform .25s ease' }}
+                    style={{ borderRadius: 21, background: '#fff' }}
                   >
-                    <div style={{ position: 'relative', padding: '16px 18px', background: 'linear-gradient(135deg,#7C3AED 0%,#A855F7 45%,#D946EF 100%)' }}>
+                    <div className="sp-s8-hero">
                       <div className="sp-s8-blob sp-s8-b1" /><div className="sp-s8-blob sp-s8-b2" /><div className="sp-s8-blob sp-s8-b3" />
-                      <span className="sp-s8-spark sp-s8-sp1">✦</span><span className="sp-s8-spark sp-s8-sp2">✧</span>
+                      <span className="sp-s8-spark sp-s8-sp1">✦</span><span className="sp-s8-spark sp-s8-sp2">✧</span><span className="sp-s8-spark sp-s8-sp3">✦</span><span className="sp-s8-spark sp-s8-sp4">✧</span>
                       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 9, marginBottom: 13 }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.22)', border: '1px solid rgba(255,255,255,0.4)', color: '#fff', fontSize: 11.5, fontWeight: 800, padding: '5px 11px', borderRadius: 999 }}>
-                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ADE80' }} />
+                        <span className="sp-s8-badge">
+                          <span className="sp-s8-live" />
                           Post Summary
                         </span>
                         <div style={{ flex: 1 }} />
-                        <button onClick={() => setCurrentStep(3)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.24)', border: '1px solid rgba(255,255,255,0.45)', color: '#fff', fontSize: 11.5, fontWeight: 800, padding: '5px 11px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit' }}>✏️ Edit</button>
+                        <button onClick={() => setCurrentStep(3)} className="sp-s8-edit" aria-label="Edit content">✏️ Edit</button>
                       </div>
-                      {(() => {
-                        const thumb = (p.isCarousel ? p.carouselSlides : p.mediaItems)[0] || null;
-                        const thumbUrl = thumb?.url || p.generatedImage || p.generatedVideo || postExtraImages[0]?.url || '';
-                        const thumbIsVideo = thumb ? thumb.type === 'video' : !!p.generatedVideo && !thumb;
-                        return (
-                          <div className="sp-s8-thumb" style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.16)', aspectRatio: '16 / 9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {thumbUrl ? (
-                              thumbIsVideo
-                                ? <video src={thumbUrl} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                : <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                            ) : (
-                              <span style={{ fontSize: 26, opacity: 0.85 }}>🖼️</span>
-                            )}
-                          </div>
-                        );
-                      })()}
+                      <div className="sp-s8-thumbwrap">
+                        {(() => {
+                          const thumb = (p.isCarousel ? p.carouselSlides : p.mediaItems)[0] || null;
+                          const thumbUrl = thumb?.url || p.generatedImage || p.generatedVideo || postExtraImages[0]?.url || '';
+                          const thumbIsVideo = thumb ? thumb.type === 'video' : !!p.generatedVideo && !thumb;
+                          return (
+                            <div className="sp-s8-thumb">
+                              {thumbUrl ? (
+                                thumbIsVideo
+                                  ? <video src={thumbUrl} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  : <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              ) : (
+                                <span style={{ fontSize: 26, opacity: 0.85 }}>🖼️</span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        <div className="sp-s8-ring" title="Content readiness" role="img" aria-label={`Content readiness ${ringPct} percent`}>
+                          <svg viewBox="0 0 36 36" aria-hidden="true">
+                            <circle cx="18" cy="18" r="15.5" />
+                            <circle className="arc" cx="18" cy="18" r="15.5" style={{ strokeDashoffset: 97.4 * (1 - ringPct / 100) }} />
+                          </svg>
+                          <b>{ringPct}%</b>
+                        </div>
+                      </div>
                     </div>
 
-                    <div style={{ padding: '15px 18px 18px' }}>
-                      <div style={{ fontSize: 12.5, color: C.ink, lineHeight: 1.6, minHeight: 42 }}>
-                        {!summaryCaption ? (
-                          <span style={{ color: C.faint }}>No caption yet.</span>
-                        ) : (
-                          <>
-                            {summaryCaption.slice(0, capReveal)}
-                            {capTyping && <span aria-hidden="true" className="sp-s8-caret" />}
-                          </>
-                        )}
-                      </div>
+                    <div className="sp-s8-body" style={{ paddingBottom: 18 }}>
+                      <span className={'sp-s8-cap' + (!capTyping ? ' sp-done' : '')}>
+                        {!summaryCaption ? <span style={{ color: C.faint }}>No caption yet.</span> : summaryCaption.slice(0, capReveal)}
+                      </span>
 
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+                      <div className="sp-s8-tags">
                         {[
                           p.selectedPlatforms.length ? p.selectedPlatforms.map(platformLabel).join(' • ') : 'No platforms',
                           // User-facing wording: "Single Post" and "Carousel" are internal terms.
@@ -3312,7 +3397,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   </div>
 
                   {/* ---- Content Readiness (real checks only, no fake score) ---- */}
-                  <div style={{ ...card, borderRadius: 20, padding: '18px 20px', marginTop: 14 }}>
+                  <div className="sp-s8-ready" style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 20, padding: '18px 20px', marginTop: 14 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 10 }}>Content Readiness</div>
                     {(() => {
                       const contentOk = hasContent;
@@ -3418,6 +3503,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   disabled={p.isPublishing || p.publishCooldown > 0 || !canPublish}
                   title={!canPublish ? publishBlocker : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s before publishing again` : 'Publish now'}
                   aria-busy={p.isPublishing}
+                  className={canPublish && !p.isPublishing && p.publishCooldown === 0 ? 'sp-s8-cta-on' : undefined}
                   style={{ minHeight: 52, padding: '14px 32px', borderRadius: 13, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', background: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? '#DDD6FE' : 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? 'none' : '0 6px 22px rgba(124,58,237,0.42)' }}
                 >
                   {p.isPublishing ? 'Publishing…' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : '🚀 Publish Now →'}
