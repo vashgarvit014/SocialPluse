@@ -2057,7 +2057,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ ...card, borderRadius: 20, padding: '28px 30px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-                    <img src="/sp-logo.png" alt="" aria-hidden="true" width={44} height={44} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 11 }} />
+                    <img src="/studio-mark.png" alt="" aria-hidden="true" width={44} height={44} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 11 }} />
                   </div>
                   <div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Design & Branding Studio</div>
@@ -2289,7 +2289,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ ...card, borderRadius: 20, padding: '28px 30px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-                    <img src="/sp-logo.png" alt="" aria-hidden="true" width={44} height={44} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 11 }} />
+                    <img src="/studio-mark.png" alt="" aria-hidden="true" width={44} height={44} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 11 }} />
                   </div>
                   <div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Personalization</div>
@@ -2688,9 +2688,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
             </div>
 
             <button className="sp-panel-btn" onClick={() => setBrandPanelOpen(o => !o)} aria-expanded={brandPanelOpen}>
-              <span style={{ width: 30, height: 30, borderRadius: 9, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-                <img src="/sp-logo.png" alt="" aria-hidden="true" width={26} height={26} style={{ width: 26, height: 26, objectFit: 'cover', borderRadius: 7 }} />
-              </span>
+              <span style={{ width: 30, height: 30, borderRadius: 9, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🎨</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 13.5 }}>Logo &amp; Image Description</span>
                 <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: C.muted, marginTop: 1 }}>Upload or replace your logo, set its placement, and write ALT text.</span>
