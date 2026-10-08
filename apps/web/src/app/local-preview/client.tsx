@@ -30,7 +30,7 @@ export default function PreviewClient() {
   // Step 6 demo state (?step=6): mock gallery visual + uploaded logo so
   // placement, preview, apply and ALT flows are reviewable instantly.
   // ?logo=0 simulates "no logo uploaded"; ?multi=1 simulates 2 images.
-  const demoBrand = stepParam === 6 || stepParam === 7 || stepParam === 8;
+  const demoBrand = stepParam === 4 || stepParam === 6 || stepParam === 7 || stepParam === 8;
   const wantLogo = search.get('logo') !== '0';
   const wantMulti = search.get('multi') === '1';
   const mockVisual = (label: string) =>
@@ -74,12 +74,21 @@ export default function PreviewClient() {
   const [schedBusy, setSchedBusy] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
   const [collab, setCollab] = useState('');
+  const imgBlock = search.get('imgblock') === '1';
   useEffect(() => {
     if (!demoBrand) return;
     if (wantLogo) setLogoImg(SP_LOGO);
     const demoPlats = platsRaw === 'none' ? [] : (platsParam.length ? platsParam : ['instagram', 'facebook', 'linkedin', 'whatsapp']);
     setPlats(demoPlats);
     setActive(demoPlats[0]);
+    // Step 4 needs real content or its Generate button stays disabled
+    // ('Add content first'), so the image-generation panel is unreachable.
+    if (stepParam === 4) {
+      setPlats(demoPlats);
+      setActive(demoPlats[0]);
+      setContentState(SEED[demoPlats[0]]?.caption || SEED.instagram.caption);
+      setPlatContent(SEED);
+    }
     if (demoPublish) {
       const conn = connRaw === 'none' ? [] : (connParam.length ? connParam : ['linkedin', 'instagram']);
       setConnPlats(conn);
@@ -126,7 +135,7 @@ export default function PreviewClient() {
     prompt, setPrompt: (v: string) => setPrompt(v),
     content, setContent: (v: string) => setContentState(v),
     charCount: content.length, wordCount: words,
-    imagePrompt: imgPrompt, setImagePrompt: (v: string) => setImgPrompt(v),
+    imagePrompt: imgPrompt, setImagePrompt: (v: string) => { setImgPrompt(v); setGenErr(''); },
     tone, setTone: (v: string) => setTone(v),
     imageStyle: style, setImageStyle: (v: string) => setStyle(v),
     aspectRatio: ratio, setAspectRatio: (v: string) => setRatio(v),
@@ -180,7 +189,12 @@ export default function PreviewClient() {
     },
     isGeneratingImage: busyImg,
     generateImage: () => {
+      if (busyImg) return;
       setBusyImg(true);
+      setGenErr('');
+      // ?imgblock=1 simulates the gateway refusing the prompt, so the stale
+      // "image can't be generated" panel can be reproduced and retested.
+      if (imgBlock) { setTimeout(() => { setGenErr('This request cannot be processed.'); setBusyImg(false); }, 700); return; }
       setTimeout(() => {
         setGenImg('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="teal"/></svg>');
         setBusyImg(false);
@@ -236,7 +250,7 @@ export default function PreviewClient() {
     applyLogoToAllMedia: noop, isApplyingLogo: false,
     generationError: genErr, setGenerationError: (v: string) => setGenErr(v),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel, logoImg, logoPos, gallery, altBusyMock, connPlats, whapiOn, failParam, collab, schedDate, schedTime, pubStatuses, pubBusy, schedBusy, draftSaved]);
+  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel, logoImg, logoPos, gallery, altBusyMock, connPlats, whapiOn, failParam, collab, imgBlock, schedDate, schedTime, pubStatuses, pubBusy, schedBusy, draftSaved]);
 
   return (
     <div style={{ background: '#F4F5FA', minHeight: '100vh' }}>

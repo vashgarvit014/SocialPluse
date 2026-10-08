@@ -330,7 +330,7 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const fileInputRef = useRef<HTMLInputElement>(null);
   const topicFileInputRef = useRef<HTMLInputElement>(null);
   const [platformContent, setPlatformContent] = useState<Record<string, { caption: string; hashtags: string[] }>>({});
-  const [imagePrompt, setImagePrompt] = useState('');
+  const [imagePrompt, setImagePromptRaw] = useState('');
   const [activePreviewPlatform, setActivePreviewPlatform] = useState('linkedin');
   const [generationError, setGenerationError] = useState('');
   // Safety-filter popup: the image model refused the prompt (not an outage).
@@ -340,6 +340,24 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   // request before generation, which also advances the account's warning
   // counter, so the copy has to say so.
   const [moderationWarning, setModerationWarning] = useState<{ message: string; violationCount: number; flagged: boolean; severity: string } | null>(null);
+  // Changing the visual prompt must always drop the previous refusal.
+  //
+  // The raw setter left generationError and any open denial dialog in place, so
+  // after a blocked request the Step 4 panel kept rendering
+  // "the image can't be generated" and the warning dialogs kept stacking up
+  // even once the user had rewritten the prompt. The error text looked live
+  // because nothing invalidated it, which reads as "I changed the prompt and it
+  // is still failing" rather than "my previous attempt failed".
+  //
+  // generationError is shared with content generation, so this also clears an
+  // unrelated stale content error that would otherwise be shown in the image
+  // preview slot.
+  const setImagePrompt = (v: string) => {
+    setImagePromptRaw(v);
+    setGenerationError('');
+    setModerationWarning(null);
+    setSafetyBlockedOpen(false);
+  };
   const SAFETY_EXAMPLE_PROMPT = 'Modern office desk with a sleek tablet displaying a colorful analytics dashboard, warm morning light, photorealistic';
   const [statusMessage, setStatusMessage] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
