@@ -150,6 +150,15 @@ const STEPS = [
   { n: 8, t: 'Publish' },
 ];
 
+// Real brand marks for the Step 8 platform cards. These are the actual platform
+// logos rather than the letter-mark PlatformIcon glyphs.
+const S8_BRAND_ICON: Record<string, string> = {
+  instagram: '/brand-icons/instagram.png',
+  facebook: '/brand-icons/facebook.png',
+  linkedin: '/brand-icons/linkedin.webp',
+  whatsapp: '/brand-icons/whatsapp.png',
+};
+
 // Compact ring stepper — layout and motion ported from CompactRing.dc.html.
 // Progress is a single SVG ring (r=28, dasharray 175.9) rather than the old
 // rail of numbered circles plus a separate progressbar, so the wizard reads as
@@ -869,7 +878,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-s8-plat:hover{border-color:#ddd0fb;box-shadow:0 8px 20px rgba(17,24,39,.05)}
         .sp-s8-plat.selected{border-color:#7c3aed;background:#faf7ff;box-shadow:0 0 0 3px rgba(124,58,237,.12)}
         .sp-s8-plat .top{display:flex;align-items:center;gap:14px}
-        .sp-s8-logo-p{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;flex-shrink:0}
+        .sp-s8-logo-p{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:#fff;border:1px solid #e8eaf2;flex-shrink:0;overflow:hidden}
+        .sp-s8-logo-p img{width:100%;height:100%;object-fit:contain;display:block}
         .sp-s8-plat b{display:block;font-size:16px;color:#111827}
         .sp-s8-status{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#5b6475;background:#f1f3f9;border-radius:999px;padding:3px 10px;margin-top:4px}
         .sp-s8-status::before{content:"";width:7px;height:7px;border-radius:50%;background:#94a3b8}
@@ -2996,8 +3006,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); p.togglePlatform(pl); } }}
                         >
                           <div className="top">
-                            <div className="sp-s8-logo-p" style={{ background: brand }}>
-                              <p.PlatformIcon platform={pl} size={21} />
+                            <div className="sp-s8-logo-p">
+                              <img src={S8_BRAND_ICON[pl]} alt={`${label} logo`} width={48} height={48} loading="lazy" />
                             </div>
                             <div style={{ minWidth: 0 }}>
                               <b>{label}</b>
@@ -3028,8 +3038,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   {p.selectedPlatforms.includes('whatsapp') && p.whapiConnected && (
                     <div className="sp-s8-whatsapp">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: p.whapiDestinations.length > 0 ? 12 : 0 }}>
-                        <div className="sp-s8-logo-p" style={{ background: '#25D366', width: 38, height: 38, borderRadius: 11, fontSize: 15 }}>
-                          <p.PlatformIcon platform="whatsapp" size={15} />
+                        <div className="sp-s8-logo-p" style={{ width: 38, height: 38, borderRadius: 11 }}>
+                          <img src={S8_BRAND_ICON.whatsapp} alt="WhatsApp logo" width={38} height={38} loading="lazy" />
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <b style={{ display: 'block', fontSize: 15, color: '#111827' }}>WhatsApp destination</b>
