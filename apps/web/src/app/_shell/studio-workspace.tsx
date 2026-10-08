@@ -173,10 +173,15 @@ export interface StudioWorkspaceProps {
   canvaSession: { mode: string; openedAt: number } | null;
   disconnectCanva: () => void;
   // publish
-  publishToAll: () => void; isPublishing: boolean; publishSuccessFlash: boolean;
+  publishToAll: (targets?: string[]) => void; isPublishing: boolean; publishSuccessFlash: boolean;
+  publishStatuses: Record<string, { state: 'pending' | 'success' | 'failed'; message?: string }>;
+  retryFailedPublish: () => void;
   publishCooldown: number;
   hoveredBtn: string | null; setHoveredBtn: (v: string | null) => void;
   setScheduleModalOpen: (v: boolean) => void;
+  scheduleDate: string; setScheduleDate: (v: string) => void;
+  schedulePost: () => Promise<void>; isScheduling: boolean;
+  scheduleTime: string; setScheduleTime: (v: string) => void;
   pendingPosts: Array<{ id: string }>;
   publishResult: string; setPublishResult: (v: string) => void;
   setPublishResultType: (v: 'success' | 'error') => void;

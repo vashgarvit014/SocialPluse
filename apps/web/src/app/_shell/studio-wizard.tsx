@@ -762,17 +762,47 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   const hasMedia = p.mediaItems.length > 0 || !!p.generatedImage || !!p.generatedVideo;
   // Publishing needs a CONNECTED platform (the OAuth token actually posts).
   // Unlike generation, selection alone is not enough here.
-  const connectedSelected = p.selectedPlatforms.filter(pl =>
-    pl === 'whatsapp' ? p.whapiConnected : p.accounts.some(a => a.platform === pl && a.connected));
+  const isPlatformConnected = (pl: string) =>
+    pl === 'whatsapp' ? p.whapiConnected : p.accounts.some(a => a.platform === pl && a.connected);
+  const connectedSelected = p.selectedPlatforms.filter(isPlatformConnected);
+  // Schedule validation mirrors the Scheduler rule: at least 5 minutes ahead,
+  // evaluated in the browser's LOCAL timezone (never silently treated as UTC).
+  const minScheduleMs = Date.now() + 5 * 60 * 1000;
+  const minScheduleDateStr = new Date(minScheduleMs).toLocaleDateString('en-CA');
+  const scheduledAtLocal = (() => {
+    if (!p.scheduleDate || !p.scheduleTime) return NaN;
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(`${p.scheduleDate}T${p.scheduleTime}`);
+    if (!m) return NaN;
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).getTime();
+  })();
+  const scheduleIsValid = Number.isFinite(scheduledAtLocal) && scheduledAtLocal >= minScheduleMs;
+  const userTimeZone = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local time'; } catch { return 'Local time'; } })();
+  // Selected-but-unconnected platforms. Previously publishing was allowed as
+  // long as ONE platform was connected, which silently dropped the others -
+  // the user saw "published" without realising a platform was skipped.
+  const disconnectedSelected = p.selectedPlatforms.filter(pl => !isPlatformConnected(pl));
+  // Correct brand casing — "LinkedIn", not "Linkedin".
+  const platformLabel = (pl: string) => (pl === 'linkedin' ? 'LinkedIn' : pl === 'whatsapp' ? 'WhatsApp' : pl.charAt(0).toUpperCase() + pl.slice(1));
+  const disconnectedNames = disconnectedSelected.map(platformLabel).join(', ');
   // Carousel posts additionally need 2+ image slides before publishing.
-  const canPublish = hasContent && connectedSelected.length > 0 && (!p.isCarousel || p.carouselValidation.valid);
+  const canPublish = hasContent
+    && p.selectedPlatforms.length > 0
+    && disconnectedSelected.length === 0
+    && (!p.isCarousel || p.carouselValidation.valid)
+    && (publishMode !== 'later' || scheduleIsValid);
   const publishBlocker = !hasContent
     ? 'Generate content first'
     : p.selectedPlatforms.length === 0
       ? 'Select a platform above first'
       : p.isCarousel && !p.carouselValidation.valid
         ? p.carouselValidation.reason
-        : 'Connect the selected platform first';
+        : disconnectedSelected.length === 1
+          ? `Connect ${disconnectedNames} or remove it from this publish before continuing.`
+          : disconnectedSelected.length > 1
+            ? `Connect ${disconnectedNames} or remove them from this publish before continuing.`
+            : publishMode === 'later' && !scheduleIsValid
+              ? 'Please choose a future date and time.'
+              : '';
   // Content generation needs only a SELECTED platform - no connection
   // required (connection is only needed later, to publish). Any selected
   // platform unlocks it, so the button state stays honest.
@@ -940,6 +970,21 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-soc { position: absolute; width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #fff; cursor: default; transition: transform 180ms ease, box-shadow 180ms ease; will-change: transform; }
         .sp-soc:hover { transform: scale(1.06); }
         .sp-robot { position: absolute; left: 50%; top: 50%; width: 74px; height: 74px; margin-left: -37px; margin-top: -37px; border-radius: 24px; background: linear-gradient(135deg,#7C3AED,#A855F7); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: 0 10px 28px rgba(124,58,237,.45), inset 0 1px 0 rgba(255,255,255,.35); z-index: 2; }
+        .sp-s8-sticky{position:sticky;top:16px}
+        @media(max-width:1024px){.sp-s8-sticky{position:static}}
+        .sp-s8-blob{position:absolute;border-radius:50%;filter:blur(26px);opacity:.42;pointer-events:none}
+        .sp-s8-b1{width:150px;height:150px;background:#C084FC;top:-52px;right:-26px}
+        .sp-s8-b2{width:118px;height:118px;background:#F0ABFC;bottom:-46px;left:-18px}
+        .sp-s8-b3{width:92px;height:92px;background:#818CF8;top:44%;left:38%}
+        .sp-s8-spark{position:absolute;color:rgba(255,255,255,.85);pointer-events:none;animation:spS8Spark 5s ease-in-out infinite}
+        .sp-s8-sp1{top:12px;left:32%;font-size:14px}
+        .sp-s8-sp2{bottom:16px;right:26%;font-size:12px;animation-delay:1.6s}
+        @keyframes spS8Spark{0%,100%{opacity:.35;transform:translateY(0)}50%{opacity:.9;transform:translateY(-4px)}}
+        .sp-s8-thumb{animation:spS8Float 7s ease-in-out infinite}
+        @keyframes spS8Float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+        @media(prefers-reduced-motion:reduce){
+          .sp-s8-spark,.sp-s8-thumb{animation:none!important}
+        }
         .sp-plat-tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
         @media(max-width:640px){.sp-plat-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
         .sp-plat-tabs::-webkit-scrollbar{display:none}.sp-plat-tabs>*{flex:0 0 auto;min-width:132px}}
@@ -2882,114 +2927,107 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
                 {/* ================= STEP 8 — PUBLISH ================= */}
         {currentStep === 8 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          // paddingBottom keeps the last card clear of the sticky action bar.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 8 }}>
             <div className="sp-s2-grid">
+              {/* ================= LEFT — WHERE + WHEN ================= */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-                <div style={{ ...card, borderRadius: 20, padding: '28px 30px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                    <div style={{ width: 52, height: 52, borderRadius: 15, background: 'linear-gradient(135deg,#7C3AED,#A855F7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0, boxShadow: '0 8px 22px rgba(124,58,237,0.4)' }}>✈️</div>
-                    <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+                    <div style={{ width: 46, height: 46, borderRadius: 14, background: 'linear-gradient(135deg,#7C3AED,#A855F7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, flexShrink: 0, boxShadow: '0 6px 18px rgba(124,58,237,0.34)' }}>✈️</div>
+                    <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Publish Your Post</div>
-                      <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Step 8 of 8: Share your content now or schedule it for later</div>
-                    </div>
-                    <div style={{ flex: '0 1 250px', minWidth: 200, display: 'flex', gap: 10, alignItems: 'flex-start', background: '#F5F0FF', border: '1px solid #DDD6FE', borderRadius: 14, padding: '12px 14px' }}>
-                      <span style={{ fontSize: 18, lineHeight: 1.3 }}>👑</span>
-                      <span>
-                        <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: C.primaryDark }}>Great content is meant to be shared!</span>
-                        <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 2 }}>Choose your platform and timing.</span>
-                      </span>
+                      <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Your content is ready. Choose where and when you want to publish.</div>
                     </div>
                   </div>
                 </div>
 
+                {/* ---- 1. WHERE ---- */}
                 <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Publishing Platforms</div>
-                  <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 14 }}>Connect your social media accounts to publish your content.</div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11, marginBottom: 14 }}>
+                    <span style={{ width: 26, height: 26, borderRadius: 9, background: '#EDE9FE', border: '1px solid #DDD6FE', color: C.primaryDark, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: C.ink }}>Choose where to publish</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Select the platforms you want to publish this post to.</div>
+                    </div>
+                    <button onClick={p.refreshWhapiStatus} disabled={p.whapiLoading} title="Refresh connection status" aria-label="Refresh connection status" style={{ ...ghostBtn, minHeight: 34, padding: '8px 14px', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>↻ Refresh</button>
+                  </div>
+
+                  {p.selectedPlatforms.length === 0 && (
+                    <div style={{ fontSize: 12.5, color: C.muted, border: `1.5px dashed ${C.border}`, borderRadius: 14, padding: 16, textAlign: 'center' }}>
+                      No platforms selected — <button onClick={() => setCurrentStep(2)} style={{ background: 'none', border: 'none', padding: 0, color: C.primaryDark, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5 }}>choose platforms in Settings</button>
+                    </div>
+                  )}
+
                   <div className="sp-wiz-grid2" style={{ gap: 12 }}>
-                    {p.selectedPlatforms.length === 0 && (
-                      <div style={{ gridColumn: '1 / -1', fontSize: 12.5, color: C.muted, border: `1.5px dashed ${C.border}`, borderRadius: 14, padding: '18px', textAlign: 'center' }}>
-                        No platforms selected — <button onClick={() => setCurrentStep(2)} style={{ background: 'none', border: 'none', padding: 0, color: C.primaryDark, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5 }}>pick platforms in Settings →</button>
-                      </div>
-                    )}
-                    {['linkedin', 'instagram', 'facebook', 'whatsapp'].filter(pl => p.selectedPlatforms.includes(pl)).map(pl => {
-                      const label = pl === 'whatsapp' ? 'WhatsApp' : pl.charAt(0).toUpperCase() + pl.slice(1);
-                      const isWhapi = pl === 'whatsapp';
-                      const selected = p.selectedPlatforms.includes(pl);
-                      const connected = isWhapi ? p.whapiConnected : p.accounts.some(a => a.platform === pl && a.connected);
+                    {p.selectedPlatforms.map(pl => {
+                      const label = pl === 'whatsapp' ? 'WhatsApp' : platformLabel(pl);
+                      const connected = isPlatformConnected(pl);
                       const brand = p.platformColors[pl] || C.primary;
-                      return (
-                        <button key={pl} onClick={() => p.togglePlatform(pl)} className="sp-s2-opt" style={{
-                          position: 'relative', padding: '20px 18px', borderRadius: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', fontFamily: 'inherit',
-                          border: `2px solid ${selected ? brand : `${brand}45`}`,
-                          background: selected ? `${brand}0D` : '#fff',
-                          boxShadow: selected ? `0 8px 22px ${brand}35` : '0 1px 2px rgba(15,23,42,0.05)',
-                        }}>
-                          <span style={{
-                            position: 'absolute', top: 12, right: 12, width: 24, height: 24, borderRadius: '50%', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: selected ? brand : '#fff', color: selected ? '#fff' : '#CBD5E1',
-                            border: selected ? 'none' : '2px solid #E2E8F0',
-                            boxShadow: selected ? `0 3px 10px ${brand}55` : 'none',
-                          }}>✓</span>
-                          <span style={{ width: 54, height: 54, borderRadius: 15, background: `linear-gradient(135deg,${brand},${brand}CC)`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 6px 16px ${brand}45` }}>
-                            <p.PlatformIcon platform={pl} size={24} />
-                          </span>
-                          <span style={{ minWidth: 0 }}>
-                            <span style={{ display: 'block', fontSize: 14.5, fontWeight: 800, color: C.ink }}>{label}</span>
-                            <span style={{ display: 'inline-block', marginTop: 5, fontSize: 10.5, fontWeight: 700, padding: '3px 10px', borderRadius: 999, color: connected ? '#059669' : '#64748B', backgroundColor: connected ? '#ECFDF5' : '#F1F5F9', border: `1px solid ${connected ? '#A7F3D0' : '#E2E8F0'}` }}>{connected ? '● Connected' : '● Not connected'}</span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Connected Accounts</div>
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Accounts ready to publish.</div>
-                    </div>
-                    <button onClick={() => p.refreshWhapiStatus()} disabled={p.whapiLoading} title="Refresh WhatsApp connection status" style={{ padding: '8px 14px', borderRadius: 9, fontSize: 11.5, fontWeight: 800, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: p.whapiLoading ? C.faint : C.primaryDark, cursor: p.whapiLoading ? 'wait' : 'pointer', fontFamily: 'inherit' }}>{p.whapiLoading ? 'Checking…' : '↻ Refresh'}</button>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
-                    {(['linkedin', 'facebook', 'instagram'] as const).map(pl => {
                       const acc = p.accounts.find(a => a.platform === pl && a.connected);
-                      const label = pl.charAt(0).toUpperCase() + pl.slice(1);
-                      if (!acc) return (
-                        <div key={pl} style={{ border: `1.5px dashed ${C.border}`, borderRadius: 14, padding: 16, textAlign: 'center', backgroundColor: '#FCFCFE' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                            <span style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: p.platformColors[pl], color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <p.PlatformIcon platform={pl} size={13} />
-                            </span>
-                            <span style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>{label}</span>
-                          </div>
-                          <div style={{ fontSize: 11.5, color: C.muted, marginTop: 6 }}>{pl === 'instagram' ? 'Connect a Business or Creator account linked to your Facebook Page.' : `No ${label} account connected yet`}</div>
-                          <button onClick={() => p.connectPlatform(pl)} style={{ marginTop: 10, padding: '9px 20px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 3px 10px rgba(124,58,237,0.3)' }}>Connect {label}</button>
-                        </div>
-                      );
                       return (
-                        <div key={pl} style={{ padding: 14, border: `1.5px solid ${C.border}`, borderRadius: 14, backgroundColor: '#F8FAFC' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <span style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: p.platformColors[pl], color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <p.PlatformIcon platform={pl} size={16} />
+                        <div
+                          key={pl}
+                          role="group"
+                          aria-label={`${label} publishing target`}
+                          style={{
+                            padding: 16, borderRadius: 18,
+                            border: `2px solid ${connected ? brand : `${brand}45`}`,
+                            background: connected ? `${brand}0D` : '#fff',
+                            boxShadow: connected ? `0 8px 22px ${brand}30` : '0 1px 2px rgba(15,23,42,0.05)',
+                            display: 'flex', flexDirection: 'column', gap: 10,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                            <span style={{ width: 42, height: 42, borderRadius: 13, background: '#fff', border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <p.PlatformIcon platform={pl} size={19} />
                             </span>
-                            <span style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: C.ink }}>{acc.name || 'Admin / SocialPulse'}</span>
-                              <span style={{ display: 'block', fontSize: 11, color: '#059669', fontWeight: 700, marginTop: 1 }}>✓ Connected{acc.email ? ` • ${acc.email}` : ''}{pl === 'facebook' && acc.pages?.length ? ` • ${(acc.pages.find(pg => pg.id === acc.pageId) || acc.pages[0]).name}` : ''}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 14.5, fontWeight: 800, color: C.ink }}>{label}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
+                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#10B981' : '#CBD5E1', flexShrink: 0 }} />
+                                <span style={{ fontSize: 11, fontWeight: 700, color: connected ? '#047857' : C.faint }}>
+                                  {connected ? 'Connected' : 'Not connected'}
+                                </span>
+                              </div>
+                            </div>
+                            <span aria-label={`${label} selected for publishing`} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 800, color: brand, flexShrink: 0 }}>
+                              <span style={{ width: 20, height: 20, borderRadius: 6, background: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>✓</span>
+                              Selected
                             </span>
-                            <button onClick={() => p.disconnectPlatform(pl)} style={{ fontSize: 11, fontWeight: 800, color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 9, padding: '7px 13px', cursor: 'pointer', fontFamily: 'inherit' }}>{pl === 'instagram' ? 'Deselect' : 'Disconnect'}</button>
                           </div>
-                          {pl === 'facebook' && (acc.pages?.length || 0) > 1 && (
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 11, fontWeight: 700, color: C.muted }}>
+
+                          <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>
+                            {connected
+                              ? (pl === 'whatsapp'
+                                ? (p.whapiSelectedGroupId ? 'Destination selected — ready to publish.' : 'Connected. Pick a destination below to publish.')
+                                : (acc?.name || 'Account ready to publish.'))
+                              : `Connect a ${label} account to publish here.`}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {connected ? (
+                              <>
+                                <button onClick={() => setCurrentStep(pl === 'whatsapp' ? 8 : 7)} style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 800, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, cursor: 'pointer', fontFamily: 'inherit' }}>Manage</button>
+                                {pl !== 'whatsapp' && (
+                                  <button onClick={() => p.disconnectPlatform(pl)} style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 700, border: '1px solid #FECACA', backgroundColor: '#fff', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>Disconnect</button>
+                                )}
+                              </>
+                            ) : (
+                              <button onClick={() => (pl === 'whatsapp' ? p.startWhatsAppConnect() : p.connectPlatform(pl))} style={{ padding: '9px 16px', borderRadius: 10, fontSize: 11.5, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>
+                                Connect {label}
+                              </button>
+                            )}
+                            <button onClick={() => p.togglePlatform(pl)} aria-label={`Remove ${label} from this publish`} style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 700, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.muted, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              {connected ? 'Remove' : 'Remove'}
+                            </button>
+                          </div>
+
+                          {pl === 'facebook' && connected && (acc?.pages?.length || 0) > 1 && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, fontSize: 11.5, fontWeight: 700, color: C.muted }}>
                               Page
-                              <select
-                                value={acc.pageId || acc.pages![0].id}
-                                onChange={e => p.setAccountPageId('facebook', e.target.value)}
-                                style={{ flex: 1, padding: '8px 12px', borderRadius: 9, border: `1px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}
-                              >
-                                {acc.pages!.map(pg => (
-                                  <option key={pg.id} value={pg.id}>{pg.name}</option>
-                                ))}
+                              <select value={acc!.pageId || acc!.pages![0].id} onChange={e => p.setAccountPageId('facebook', e.target.value)} style={{ flex: 1, minWidth: 0, padding: '8px 12px', borderRadius: 9, border: `1px solid ${C.border}`, backgroundColor: '#fff', fontSize: 11.5, fontWeight: 700, color: C.ink, fontFamily: 'inherit' }}>
+                                {acc!.pages!.map(pg => <option key={pg.id} value={pg.id}>{pg.name}</option>)}
                               </select>
                             </label>
                           )}
@@ -2998,249 +3036,336 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     })}
                   </div>
 
-                  <div style={{ marginTop: 12, border: `1.5px solid ${C.border}`, borderRadius: 16, padding: 16, backgroundColor: p.whapiConnected ? '#F0FDF4' : '#FFFBEB' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: p.whapiConnected ? 12 : 0 }}>
-                      <span style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: p.whapiConnected ? '#25D366' : '#E2E8F0', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>💬</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>WhatsApp</div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: p.whapiConnected ? '#059669' : '#92400E' }}>
-                          {p.whapiLoading ? 'Checking…' : p.whapiConnected ? `✓ Connected${p.whapiAccountName ? ` • ${p.whapiAccountName}` : ''}${p.whapiPhoneMasked ? ` • ${p.whapiPhoneMasked}` : ''}` : '● Not connected'}
+                  {p.selectedPlatforms.includes('whatsapp') && p.whapiConnected && (
+                    <div style={{ marginTop: 14, border: `1.5px solid ${C.border}`, borderRadius: 16, padding: 16 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: p.whapiSelectedDestinations.size > 0 ? 10 : 0 }}>
+                        <span style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: '#fff', border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><p.PlatformIcon platform="whatsapp" size={15} /></span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>WhatsApp destination</div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#059669', marginTop: 2 }}>
+                            {p.whapiLoading ? 'Checking…' : p.whapiSelectedDestinations.size > 0 ? `✓ ${p.whapiSelectedDestinations.size} destination${p.whapiSelectedDestinations.size === 1 ? '' : 's'} selected` : 'Connected — pick where to send'}
+                          </div>
                         </div>
                       </div>
-                      {!p.whapiConnected && p.whapiCanConnect && (
-                        <button onClick={() => p.startWhatsAppConnect()} disabled={p.whapiLoading} style={{ padding: '9px 18px', borderRadius: 10, fontSize: 12, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 3px 10px rgba(124,58,237,0.3)' }}>Connect WhatsApp</button>
+
+                      <WhatsAppDestinationPicker
+                        destinations={p.whapiDestinations}
+                        loading={p.whapiGroupsLoading}
+                        error={p.whapiGroupsError}
+                        selected={p.whapiSelectedDestinations}
+                        onChange={p.setWhapiSelectedDestinations}
+                        onRefresh={p.loadWhapiDestinations}
+                      />
+
+                      {p.whapiDestinations.length === 0 && !p.whapiGroupsLoading && !p.whapiGroupsError && (
+                        <button onClick={() => p.loadWhapiDestinations()} style={{ width: '100%', marginTop: 8, padding: '11px 14px', borderRadius: 11, border: `1.5px dashed ${C.primaryBorder}`, backgroundColor: '#FAF8FF', color: C.primaryDark, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Load WhatsApp chats</button>
                       )}
-                      {p.whapiConnected && (
-                        <button onClick={() => p.disconnectWhatsApp()} disabled={p.whatsappDisconnecting || p.whapiLoading} title="Disconnect WhatsApp" style={{ padding: '8px 14px', borderRadius: 9, fontSize: 11.5, fontWeight: 800, border: '1px solid #FECACA', backgroundColor: '#FEF2F2', color: '#DC2626', cursor: (p.whatsappDisconnecting || p.whapiLoading) ? 'wait' : 'pointer', fontFamily: 'inherit', opacity: (p.whatsappDisconnecting || p.whapiLoading) ? 0.6 : 1 }}>{p.whatsappDisconnecting ? 'Disconnecting…' : 'Disconnect'}</button>
+
+                      {postPublishMedia.length > 1 && (
+                        <div style={{ marginTop: 10, fontSize: 11, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '9px 12px', lineHeight: 1.55 }}>
+                          ⚠️ WhatsApp sends <strong>1 image per message</strong> — {postPublishMedia.length - 1} extra image{postPublishMedia.length - 1 === 1 ? '' : 's'} will not be sent to WhatsApp.
+                        </div>
                       )}
                     </div>
-
-                    {p.whapiConnected ? (
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginBottom: 6 }}>Destination: <span style={{ fontWeight: 600, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '1px 7px', borderRadius: 999 }}>WhatsApp</span></div>
-
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, minWidth: 78 }}>Send to:</label>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <WhatsAppDestinationPicker
-                              destinations={p.whapiDestinations}
-                              loading={p.whapiGroupsLoading}
-                              error={p.whapiGroupsError}
-                              selected={p.whapiSelectedDestinations}
-                              onChange={p.setWhapiSelectedDestinations}
-                              onRefresh={p.loadWhapiDestinations}
-                            />
-                          </div>
-                        </div>
-
-                        {p.whapiDestinations.length === 0 && !p.whapiGroupsLoading && !p.whapiGroupsError && (
-                          <button onClick={() => p.loadWhapiDestinations()} style={{ width: '100%', padding: 9, borderRadius: 9, fontSize: 12, fontWeight: 600, border: `1px dashed ${C.border}`, backgroundColor: '#fff', color: C.muted, cursor: 'pointer', marginBottom: 8, fontFamily: 'inherit' }}>Load WhatsApp chats, groups &amp; communities</button>
-                        )}
-                        {p.whapiGroupsError && <div style={{ fontSize: 11, color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', padding: '6px 8px', borderRadius: 8, marginBottom: 8 }}>⚠️ {p.whapiGroupsError}</div>}
-
-                        <div style={{ fontSize: 11, color: '#065F46', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '7px 10px', borderRadius: 8, marginBottom: 10 }}>
-                          Status: WhatsApp Connected {p.whapiSelectedDestinations.size
-                            ? `• ${p.whapiSelectedDestinations.size} destination${p.whapiSelectedDestinations.size === 1 ? '' : 's'} selected`
-                            : '• No destination selected'}
-                        </div>
-
-                        {/* Whapi's sendMessage takes a single media attachment and has
-                            no album/carousel call, so extra media is silently dropped by
-                            the client (.slice(0, 1)) and the server. Say so up front
-                            instead of letting the post look like it lost an image. */}
-                        {postPublishMedia.length > 1 && (
-                          <div style={{ fontSize: 11, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '7px 10px', borderRadius: 8, marginBottom: 10 }}>
-                            ⚠️ WhatsApp sends <strong>1 image per message</strong> &mdash; {postPublishMedia.length} are attached, so only{' '}
-                            <strong>{postPublishMedia[0].name || 'the first one'}</strong> will be sent. Remove the others in Media (step 4) to change which one goes out.
-                          </div>
-                        )}
-
-                        {(() => {
-                          const hasDestinations = p.whapiSelectedDestinations.size > 0;
-                          return (
-                            <>
-                              <div style={{ display: 'flex', gap: 8 }}>
-                                <button
-                                  onClick={() => p.publishToWhapi()}
-                                  disabled={p.whapiPublishing || p.isPublishing || p.publishCooldown > 0 || !hasDestinations || (!p.content.trim() && p.mediaItems.length === 0 && !p.generatedImage)}
-                                  title={!hasDestinations ? 'Select at least one chat, group or community' : !p.content.trim() && p.mediaItems.length === 0 && !p.generatedImage ? 'Add content or media first' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : `Publish to ${p.whapiSelectedDestinations.size} destination(s)`}
-                                  style={{ flex: 1, minHeight: 38, padding: '9px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, border: 'none', background: (p.whapiPublishing || p.isPublishing || p.publishCooldown > 0 || !hasDestinations || (!p.content.trim() && p.mediaItems.length === 0 && !p.generatedImage)) ? '#DDD6FE' : 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', cursor: (p.whapiPublishing || p.isPublishing || p.publishCooldown > 0 || !hasDestinations) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', boxShadow: (p.whapiPublishing || p.isPublishing) ? 'none' : '0 3px 12px rgba(37,211,102,0.3)' }}
-                                >
-                                  {p.whapiPublishing ? 'Sending…' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : `📨 Publish to ${p.whapiSelectedDestinations.size || ''} WhatsApp ${p.whapiSelectedDestinations.size === 1 ? 'destination' : 'destinations'}`}
-                                </button>
-                              </div>
-                              <div style={{ fontSize: 10, color: C.faint, marginTop: 6, lineHeight: 1.5 }}>One click = one message per selected destination. No hidden retries.</div>
-                            </>
-                          );
-                        })()}
-                      </div>
-                    ) : (
-                      <div style={{ marginTop: 8, fontSize: 11, color: '#92400E', lineHeight: 1.6 }}>
-                        Connect your WhatsApp account to publish directly from SocialPulse.
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
 
+                {/* ---- 2. WHEN ---- */}
                 <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Publishing Options</div>
-                  <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>Choose when to share your post.</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11, marginBottom: 14 }}>
+                    <span style={{ width: 26, height: 26, borderRadius: 9, background: '#EDE9FE', border: '1px solid #DDD6FE', color: C.primaryDark, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>2</span>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: C.ink }}>Choose when to publish</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Share right away or pick a date and time.</div>
+                    </div>
+                  </div>
+
+                  <div role="radiogroup" aria-label="Publish timing" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 12 }}>
                     {([
                       ['now', '🚀', 'Publish Now', 'Share immediately across selected platforms'],
                       ['later', '📅', 'Schedule for Later', 'Pick a date and time to publish'],
-                    ] as const).map(([k, icon, t, s]) => (
-                      <button key={k} onClick={() => setPublishMode(k)} className="sp-s2-opt" style={{
-                        padding: 16, borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', fontFamily: 'inherit',
-                        border: publishMode === k ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`,
-                        background: publishMode === k ? 'linear-gradient(180deg,#F6F1FF,#EDE9FE)' : '#fff',
-                        boxShadow: publishMode === k ? '0 6px 20px rgba(124,58,237,0.18)' : '0 1px 2px rgba(15,23,42,0.04)',
-                      }}>
-                        <span style={{ fontSize: 26 }}>{icon}</span>
-                        <span style={{ flex: 1 }}>
-                          <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: publishMode === k ? C.primaryDark : C.ink }}>{t}</span>
-                          <span style={{ display: 'block', fontSize: 11, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>{s}</span>
-                        </span>
-                        <span style={{ width: 20, height: 20, borderRadius: '50%', border: publishMode === k ? `2px solid ${C.primary}` : `1.5px solid #CBD5E1`, backgroundColor: publishMode === k ? C.primary : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{publishMode === k ? '●' : ''}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {publishMode === 'later' && (
-                    <button onClick={() => p.setScheduleModalOpen(true)} style={{ marginTop: 10, width: '100%', padding: 13, borderRadius: 12, border: `1.5px dashed ${C.primaryBorder}`, backgroundColor: '#FAF8FF', color: C.primaryDark, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>📅 Pick a date & time (5+ min ahead)</button>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-                <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, flex: 1 }}>Post Summary</div>
-                    <button onClick={() => setCurrentStep(3)} title="Edit content" style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11.5, fontWeight: 800, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit' }}>✏️ Edit</button>
-                  </div>
-                  {(() => {
-                    const thumb = (p.isCarousel ? p.carouselSlides : p.mediaItems)[0] || null;
-                    const thumbUrl = thumb?.url || p.generatedImage || p.generatedVideo || postExtraImages[0]?.url || '';
-                    const thumbIsVideo = thumb ? thumb.type === 'video' : !!p.generatedVideo && !thumb;
-                    const title = (p.content.split('\n')[0] || p.prompt.split('\n')[0] || 'Untitled post').slice(0, 60);
-                    return (
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                        {thumbUrl ? (
-                          <span style={{ width: 76, height: 76, borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, backgroundColor: '#000', flexShrink: 0, display: 'block' }}>
-                            {thumbIsVideo ? <video src={thumbUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted /> : <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                    ] as const).map(([k, icon, t, sub]) => {
+                      const on = publishMode === k;
+                      return (
+                        <button
+                          key={k}
+                          role="radio"
+                          aria-checked={on}
+                          onClick={() => setPublishMode(k)}
+                          style={{
+                            padding: 16, borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', fontFamily: 'inherit',
+                            border: on ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`,
+                            background: on ? 'linear-gradient(180deg,#F6F1FF,#EDE9FE)' : '#fff',
+                            boxShadow: on ? '0 6px 20px rgba(124,58,237,0.18)' : '0 1px 2px rgba(15,23,42,0.05)',
+                          }}
+                        >
+                          <span style={{ fontSize: 24 }}>{icon}</span>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800, color: on ? C.primaryDark : C.ink }}>{t}</span>
+                            <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 2 }}>{sub}</span>
                           </span>
-                        ) : (
-                          <span style={{ width: 76, height: 76, borderRadius: 14, background: '#F1F3F9', border: `1.5px dashed ${C.border}`, color: C.faint, fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🖼️</span>
-                        )}
-                        <span style={{ minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: C.ink, lineHeight: 1.4 }}>{title}</span>
-                          <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 4, lineHeight: 1.6 }}>{((p.content.split('\n').slice(1).join(' ') || p.content).trim() || 'No caption yet').slice(0, 140)}</span>
-                        </span>
-                      </div>
-                    );
-                  })()}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
-                    {[
-                      p.selectedPlatforms.length ? p.selectedPlatforms.map(pl => pl.charAt(0).toUpperCase() + pl.slice(1)).join(' • ') : 'No platform selected',
-                      p.isCarousel ? `Carousel • ${p.carouselSlides.length}` : 'Single Post',
-                      p.aspectRatio || 'No ratio',
-                      p.imageStyle,
-                      ...(p.trialReel && p.instagramReelReady ? ['Trial Reel'] : []),
-                      ...(p.collaborator && p.selectedPlatforms.includes('instagram') ? [`@${p.collaborator}`] : []),
-                    ].map(chip => (
-                      <span key={chip} style={{ fontSize: 10.5, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '4px 11px', borderRadius: 999 }}>{chip}</span>
-                    ))}
+                          <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${on ? C.primary : '#CBD5E1'}`, background: on ? C.primary : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            {on && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  {p.isCarousel && (
-                    <div style={{ marginTop: 10, fontSize: 11, fontWeight: 700, padding: '7px 10px', borderRadius: 8, border: `1px solid ${p.carouselValidation.valid ? '#A7F3D0' : '#FDE68A'}`, backgroundColor: p.carouselValidation.valid ? '#ECFDF5' : '#FFFBEB', color: p.carouselValidation.valid ? '#065F46' : '#92400E' }}>
-                      {p.carouselValidation.valid ? `🎠 Carousel: ${p.carouselSlides.length} slides ✓ ready` : `🎠 Carousel: ${p.carouselValidation.reason}`}
-                    </div>
-                  )}
-                  {p.instagramReelReady && (
-                    <div style={{ marginTop: 10 }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 13px', borderRadius: 11, border: `1.5px solid ${p.trialReel ? C.primary : C.border}`, backgroundColor: p.trialReel ? C.primarySoft : '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-                        <input type="checkbox" checked={p.trialReel} onChange={e => p.setTrialReel(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#7C3AED', cursor: 'pointer' }} />
-                        <span style={{ fontSize: 12.5, fontWeight: 800, color: p.trialReel ? C.primaryDark : C.ink }}>Post as Trial Reel</span>
+
+                  {publishMode === 'later' && (
+                    <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12, alignItems: 'start' }}>
+                      <label style={{ display: 'block' }}>
+                        <span style={{ display: 'block', fontSize: 11.5, fontWeight: 800, color: C.muted, marginBottom: 5 }}>Date</span>
+                        <input
+                          type="date"
+                          value={p.scheduleDate}
+                          min={minScheduleDateStr}
+                          onChange={e => p.setScheduleDate(e.target.value)}
+                          aria-label="Schedule date"
+                          style={{ width: '100%', padding: '11px 13px', borderRadius: 11, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'inherit' }}
+                        />
                       </label>
-                      {p.trialReel && (
-                        <div style={{ marginTop: 7, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>Trial Reels are shown to non-followers first (single video only, never a normal Reel to followers).</div>
+                      <label style={{ display: 'block' }}>
+                        <span style={{ display: 'block', fontSize: 11.5, fontWeight: 800, color: C.muted, marginBottom: 5 }}>Time</span>
+                        <input
+                          type="time"
+                          value={p.scheduleTime}
+                          onChange={e => p.setScheduleTime(e.target.value)}
+                          aria-label="Schedule time"
+                          style={{ width: '100%', padding: '11px 13px', borderRadius: 11, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'inherit' }}
+                        />
+                      </label>
+                      <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: C.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        🕒 Time zone: <strong style={{ color: C.ink }}>{userTimeZone}</strong>
+                      </div>
+                      {(!p.scheduleDate || !p.scheduleTime || !scheduleIsValid) && (
+                        <div role="alert" style={{ gridColumn: '1 / -1', fontSize: 12, fontWeight: 700, color: '#B45309', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '9px 12px' }}>
+                          Please choose a future date and time (at least 5 minutes from now).
+                        </div>
                       )}
                     </div>
                   )}
-                  {p.selectedPlatforms.includes('instagram') && (
-                    <div style={{ marginTop: 10 }}>
-                      <label htmlFor="sp-collab" style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: C.ink, marginBottom: 6 }}>Instagram collaborator (optional)</label>
-                      <input
-                        id="sp-collab"
-                        value={p.collaborator}
-                        onChange={e => p.setCollaborator(e.target.value.replace(/^@+/, '').slice(0, 30))}
-                        placeholder="username (without @)"
-                        autoComplete="off"
-                        style={{ width: '100%', padding: '10px 13px', borderRadius: 11, border: `1.5px solid ${p.collaborator ? C.primary : C.border}`, backgroundColor: '#fff', color: C.ink, fontSize: 12.5, outline: 'none', fontFamily: 'inherit' }}
-                      />
-                      <div style={{ marginTop: 6, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>They get an invite inside Instagram and must accept before the collab shows on the post.</div>
+                </div>
+              </div>
+
+              {/* ================= RIGHT — SUMMARY + READINESS ================= */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+                <div className="sp-s8-sticky" style={{ paddingBottom: 4 }}>
+                  {/* ---- Post Summary ---- */}
+                  <div style={{ ...card, borderRadius: 20, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+                    <div style={{ position: 'relative', padding: '16px 18px', background: 'linear-gradient(135deg,#7C3AED 0%,#A855F7 45%,#D946EF 100%)' }}>
+                      <div className="sp-s8-blob sp-s8-b1" /><div className="sp-s8-blob sp-s8-b2" /><div className="sp-s8-blob sp-s8-b3" />
+                      <span className="sp-s8-spark sp-s8-sp1">✦</span><span className="sp-s8-spark sp-s8-sp2">✧</span>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 9, marginBottom: 13 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.22)', border: '1px solid rgba(255,255,255,0.4)', color: '#fff', fontSize: 11.5, fontWeight: 800, padding: '5px 11px', borderRadius: 999 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ADE80' }} />
+                          Post Summary
+                        </span>
+                        <div style={{ flex: 1 }} />
+                        <button onClick={() => setCurrentStep(3)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.24)', border: '1px solid rgba(255,255,255,0.45)', color: '#fff', fontSize: 11.5, fontWeight: 800, padding: '5px 11px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit' }}>✏️ Edit</button>
+                      </div>
+                      {(() => {
+                        const thumb = (p.isCarousel ? p.carouselSlides : p.mediaItems)[0] || null;
+                        const thumbUrl = thumb?.url || p.generatedImage || p.generatedVideo || postExtraImages[0]?.url || '';
+                        const thumbIsVideo = thumb ? thumb.type === 'video' : !!p.generatedVideo && !thumb;
+                        return (
+                          <div className="sp-s8-thumb" style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.16)', aspectRatio: '16 / 9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {thumbUrl ? (
+                              thumbIsVideo
+                                ? <video src={thumbUrl} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                : <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            ) : (
+                              <span style={{ fontSize: 26, opacity: 0.85 }}>🖼️</span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div style={{ padding: '15px 18px 18px' }}>
+                      <div style={{ fontSize: 12.5, color: C.ink, lineHeight: 1.6, maxHeight: 74, overflow: 'hidden' }}>
+                        {(() => {
+                          const caption = (p.platformContent[p.activePreviewPlatform]?.caption || p.content || '').trim();
+                          if (!caption) return <span style={{ color: C.faint }}>No caption yet.</span>;
+                          return caption.length > 220 ? `${caption.slice(0, 220)}…` : caption;
+                        })()}
+                      </div>
+
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+                        {[
+                          p.selectedPlatforms.length ? p.selectedPlatforms.map(platformLabel).join(' • ') : 'No platforms',
+                          // User-facing wording: "Single Post" and "Carousel" are internal terms.
+                          p.isCarousel ? `Multiple Images • ${p.carouselSlides.length} images` : 'Single Image',
+                          p.aspectRatio || 'No ratio',
+                          p.imageStyle,
+                          ...(p.trialReel && p.instagramReelReady ? ['Trial Reel'] : []),
+                          ...(p.collaborator && p.selectedPlatforms.includes('instagram') ? [`@${p.collaborator}`] : []),
+                        ].map(chip => (
+                          <span key={chip} style={{ fontSize: 10.5, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '4px 10px', borderRadius: 999 }}>{chip}</span>
+                        ))}
+                      </div>
+
+                      {p.isCarousel && (
+                        <div style={{ marginTop: 10, fontSize: 11, fontWeight: 700, padding: '7px 10px', borderRadius: 9, background: p.carouselValidation.valid ? '#ECFDF5' : '#FEF2F2', color: p.carouselValidation.valid ? '#065F46' : '#991B1B', border: `1px solid ${p.carouselValidation.valid ? '#A7F3D0' : '#FECACA'}` }}>
+                          {p.carouselValidation.valid ? `✓ Multiple Images: ${p.carouselSlides.length} slides ready` : `⚠ ${p.carouselValidation.reason}`}
+                        </div>
+                      )}
+
+                      {p.instagramReelReady && (
+                        <div style={{ marginTop: 12 }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 13px', borderRadius: 11, border: `1.5px solid ${p.trialReel ? C.primary : C.border}`, backgroundColor: p.trialReel ? C.primarySoft : '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            <input type="checkbox" checked={p.trialReel} onChange={e => p.setTrialReel(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#7C3AED', cursor: 'pointer' }} />
+                            <span style={{ fontSize: 12.5, fontWeight: 800, color: p.trialReel ? C.primaryDark : C.ink }}>Post as Trial Reel</span>
+                          </label>
+                          {p.trialReel && (
+                            <div style={{ marginTop: 7, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>
+                              A trial reel is visible only to invited people until you publish it to everyone.
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {p.selectedPlatforms.includes('instagram') && (
+                        <div style={{ marginTop: 12 }}>
+                          <label htmlFor="sp-collab" style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: C.ink, marginBottom: 5 }}>Instagram Collaborator (Optional)</label>
+                          <input
+                            id="sp-collab"
+                            value={p.collaborator}
+                            onChange={e => p.setCollaborator(e.target.value.replace(/^@+/, '').slice(0, 40))}
+                            placeholder="Username without @"
+                            autoComplete="off"
+                            aria-describedby="sp-collab-help"
+                            style={{ width: '100%', padding: '10px 13px', borderRadius: 11, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', fontSize: 13, color: C.ink, fontFamily: 'inherit' }}
+                          />
+                          <div id="sp-collab-help" style={{ marginTop: 6, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>
+                            Instagram will send the collaborator invitation. The collaborator must accept it before the collaboration appears on the post.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ---- Content Readiness (real checks only, no fake score) ---- */}
+                  <div style={{ ...card, borderRadius: 20, padding: '18px 20px', marginTop: 14 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 10 }}>Content Readiness</div>
+                    {(() => {
+                      const contentOk = hasContent;
+                      const mediaOk = hasMedia || postExtraImages.length > 0;
+                      const rows: Array<{ state: 'ok' | 'warn' | 'neutral'; label: string; detail: string; run?: () => void; action?: string }> = [
+                        { state: contentOk ? 'ok' : 'warn', label: contentOk ? 'Content ready' : 'Content missing', detail: contentOk ? 'Caption generated for your platforms.' : 'Head back to Step 3 to generate content.', run: () => setCurrentStep(3), action: contentOk ? 'Edit' : 'Generate' },
+                        { state: mediaOk ? 'ok' : 'warn', label: mediaOk ? 'Media ready' : 'Media missing', detail: mediaOk ? 'Your visual is attached.' : 'Add a visual in Step 4.', run: () => setCurrentStep(4), action: 'Edit' },
+                        { state: p.logoImage ? 'ok' : 'neutral', label: p.logoImage ? 'Branding applied' : 'No logo (optional)', detail: p.logoImage ? 'Your logo is on the visual.' : 'Branding is optional — you can publish without it.', run: () => setCurrentStep(7), action: 'Brand' },
+                      ];
+                      return (
+                        <div>
+                          {rows.map(r => (
+                            <div key={r.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 0' }}>
+                              <span style={{
+                                width: 20, height: 20, borderRadius: '50%', fontSize: 11, fontWeight: 800, flexShrink: 0, marginTop: 1,
+                                background: r.state === 'ok' ? '#ECFDF5' : r.state === 'warn' ? '#FFFBEB' : '#F1F3F9',
+                                border: `1px solid ${r.state === 'ok' ? '#A7F3D0' : r.state === 'warn' ? '#FDE68A' : '#E2E8F0'}`,
+                                color: r.state === 'ok' ? '#059669' : r.state === 'warn' ? '#B45309' : '#94A3B8',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}>{r.state === 'ok' ? '✓' : r.state === 'warn' ? '⚠' : '○'}</span>
+                              <span style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: C.ink }}>{r.label}</span>
+                                <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 1 }}>{r.detail}</span>
+                              </span>
+                              {r.run && <button onClick={r.run} style={{ fontSize: 11, fontWeight: 800, background: 'none', border: 'none', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>{r.action}</button>}
+                            </div>
+                          ))}
+                          {/* Per-platform connection readiness — never collapsed into one generic row */}
+                          {p.selectedPlatforms.map(pl => {
+                            const on = isPlatformConnected(pl);
+                            return (
+                              <div key={`conn-${pl}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 0' }}>
+                                <span style={{
+                                  width: 20, height: 20, borderRadius: '50%', fontSize: 11, fontWeight: 800, flexShrink: 0, marginTop: 1,
+                                  background: on ? '#ECFDF5' : '#FEF2F2',
+                                  border: `1px solid ${on ? '#A7F3D0' : '#FECACA'}`,
+                                  color: on ? '#059669' : '#DC2626',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}>{on ? '✓' : '!'}</span>
+                                <span style={{ flex: 1, minWidth: 0 }}>
+                                  <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: C.ink }}>{platformLabel(pl)} {on ? 'connected' : 'not connected'}</span>
+                                  {!on && <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 1 }}>Connect it or remove it from this publish.</span>}
+                                </span>
+                                {!on && (
+                                  <button onClick={() => (pl === 'whatsapp' ? p.startWhatsAppConnect() : p.connectPlatform(pl))} style={{ fontSize: 11, fontWeight: 800, background: 'none', border: 'none', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>Connect</button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* ---- Per-platform publish results ---- */}
+                  {Object.keys(p.publishStatuses).length > 0 && (
+                    <div style={{ ...card, borderRadius: 20, padding: '18px 20px', marginTop: 14 }} aria-live="polite">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, flex: 1 }}>Publish Results</span>
+                        {Object.values(p.publishStatuses).some(v => v.state === 'failed') && (
+                          <button onClick={p.retryFailedPublish} disabled={p.isPublishing} style={{ ...ghostBtn, minHeight: 32, padding: '7px 13px', fontSize: 11.5, fontWeight: 800 }}>↻ Retry Failed</button>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        {Object.entries(p.publishStatuses).map(([pl, st]) => (
+                          <div key={pl} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12.5 }}>
+                            <span style={{
+                              width: 19, height: 19, borderRadius: '50%', fontSize: 10.5, fontWeight: 800, flexShrink: 0,
+                              background: st.state === 'success' ? '#ECFDF5' : st.state === 'failed' ? '#FEF2F2' : '#FFFBEB',
+                              border: `1px solid ${st.state === 'success' ? '#A7F3D0' : st.state === 'failed' ? '#FECACA' : '#FDE68A'}`,
+                              color: st.state === 'success' ? '#059669' : st.state === 'failed' ? '#DC2626' : '#B45309',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>{st.state === 'success' ? '✓' : st.state === 'failed' ? '!' : '⋯'}</span>
+                            <span style={{ fontWeight: 800, color: C.ink }}>{platformLabel(pl)}</span>
+                            <span style={{ color: st.state === 'success' ? '#059669' : st.state === 'failed' ? '#DC2626' : '#B45309', fontWeight: 700 }}>
+                              {st.state === 'success' ? 'Published' : st.state === 'pending' ? 'Publishing…' : 'Failed'}
+                            </span>
+                            {st.state === 'failed' && st.message && (
+                              <span style={{ color: C.muted, fontSize: 11.5, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>— {st.message}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
-                </div>
-
-                <div style={{ ...card, borderRadius: 20, padding: '20px 22px' }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Content Readiness</div>
-                  {(() => {
-                    const contentOk = !!p.content.trim();
-                    const mediaOk = p.mediaItems.length > 0 || postExtraImages.length > 0 || !!p.generatedImage || !!p.generatedVideo;
-                    const connectTarget = (['linkedin', 'facebook', 'instagram'] as const).find(pl => p.selectedPlatforms.includes(pl) && !p.accounts.some(a => a.platform === pl && a.connected))
-                      || (p.selectedPlatforms.includes('whatsapp') && !p.whapiConnected ? 'whatsapp' as const : null);
-                    const rows: Array<{ state: 'ok' | 'warn' | 'neutral'; label: string; action: string; run: () => void }> = [
-                      { state: contentOk ? 'ok' : 'warn', label: contentOk ? 'Content ready' : 'Content missing', action: 'Edit Content →', run: () => setCurrentStep(3) },
-                      { state: mediaOk ? 'ok' : 'warn', label: mediaOk ? 'Media ready' : 'Media missing', action: 'Edit Media →', run: () => setCurrentStep(4) },
-                      { state: p.logoImage ? 'ok' : 'neutral', label: p.logoImage ? 'Branding applied' : 'No logo (optional)', action: 'Edit Branding →', run: () => setCurrentStep(6) },
-                      connectedSelected.length > 0
-                        ? { state: 'ok' as const, label: `${connectedSelected.length} connected platform${connectedSelected.length === 1 ? '' : 's'}`, action: 'Review →', run: () => setCurrentStep(7) }
-                        : { state: 'warn' as const, label: 'Connect platform to publish', action: 'Connect Now →', run: () => { if (connectTarget === 'whatsapp' && p.whapiCanConnect) p.startWhatsAppConnect(); else if (connectTarget === 'whatsapp') setCurrentStep(2); else if (connectTarget) p.connectPlatform(connectTarget); else setCurrentStep(2); } },
-                    ];
-                    return rows.map(r => (
-                      <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${C.borderSoft}` }}>
-                        <span style={{
-                          width: 20, height: 20, borderRadius: '50%', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                          background: r.state === 'ok' ? '#ECFDF5' : r.state === 'warn' ? '#FFFBEB' : '#F1F3F9',
-                          border: `1px solid ${r.state === 'ok' ? '#A7F3D0' : r.state === 'warn' ? '#FDE68A' : '#E2E8F0'}`,
-                          color: r.state === 'ok' ? '#059669' : r.state === 'warn' ? '#92400E' : '#94A3B8',
-                        }}>{r.state === 'ok' ? '✓' : r.state === 'warn' ? '⚠' : '○'}</span>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: r.state === 'warn' ? '#92400E' : C.ink, flex: 1 }}>{r.label}</span>
-                        <button onClick={r.run} style={{ fontSize: 11, fontWeight: 800, background: 'none', border: 'none', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{r.action}</button>
-                      </div>
-                    ));
-                  })()}
-                </div>
-
-                <div style={{ position: 'relative', borderRadius: 20, padding: '26px 22px 22px', background: 'linear-gradient(135deg,#EDE9FE 0%,#DDD6FE 100%)', border: '1px solid #C4B5FD', overflow: 'hidden', textAlign: 'center' }}>
-                  <span style={{ position: 'absolute', top: 14, left: 16, width: 30, height: 30, borderRadius: '50%', background: '#0A66C2', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(10,102,194,0.35)' }}>in</span>
-                  <span style={{ position: 'absolute', top: 44, right: 14, width: 30, height: 30, borderRadius: '50%', background: '#fff', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(15,23,42,0.12)' }}>📸</span>
-                  <span style={{ position: 'absolute', bottom: 72, left: 12, width: 30, height: 30, borderRadius: '50%', background: '#1877F2', color: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(24,119,242,0.35)' }}>f</span>
-                  <span style={{ position: 'absolute', bottom: 96, right: 18, width: 30, height: 30, borderRadius: '50%', background: '#25D366', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 8px rgba(37,211,102,0.35)' }}>💬</span>
-                  <span style={{ position: 'absolute', top: 12, right: 52, fontSize: 15 }}>✨</span>
-                  <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto', boxShadow: '0 8px 24px rgba(124,58,237,0.25)', border: '1px solid #E9D5FF' }}>🤖</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: C.ink, marginTop: 14, letterSpacing: '-0.01em', lineHeight: 1.4 }}>Share Your Story<br />with the World! ✨</div>
-                  <div style={{ fontSize: 12, color: '#64748B', marginTop: 6, fontWeight: 600 }}>Create. Connect. Grow.</div>
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 14, fontSize: 12.5, fontWeight: 700, border: `1px solid ${canPublish ? '#A7F3D0' : '#FDE68A'}`, backgroundColor: canPublish ? '#ECFDF5' : '#FFFBEB', color: canPublish ? '#065F46' : '#92400E' }}>
-              <span style={{ fontSize: 15 }}>{canPublish ? '✓' : '✨'}</span>
-              <span>{canPublish ? 'Ready to publish' : `Everything looks good. ${publishBlocker.charAt(0).toUpperCase() + publishBlocker.slice(1)} to continue.`}</span>
+            {/* ---- hint + nav ---- */}
+            <div aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 14, fontSize: 12.5, fontWeight: 700, border: `1px solid ${canPublish ? '#A7F3D0' : '#FDE68A'}`, backgroundColor: canPublish ? '#ECFDF5' : '#FFFBEB', color: canPublish ? '#065F46' : '#92400E' }}>
+              <span style={{ fontSize: 15 }}>{canPublish ? '✓' : '⚠'}</span>
+              <span>{canPublish ? 'Ready to publish' : publishBlocker}</span>
             </div>
 
-            <div style={{ position: 'sticky', bottom: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 10, padding: '14px 6px', background: 'rgba(247,248,252,0.92)', backdropFilter: 'blur(8px)', borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
+            <div style={{ position: 'sticky', bottom: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', background: 'linear-gradient(180deg,rgba(248,250,252,0) 0%,#F8FAFC 30%)', flexWrap: 'wrap' }}>
               <button onClick={goBack} style={{ ...ghostBtn, minHeight: 52, padding: '14px 26px', fontSize: 14 }}>← Back</button>
+              <button onClick={saveDraft} style={{ ...ghostBtn, minHeight: 52, padding: '14px 24px', fontSize: 14 }}>💾 Save as Draft</button>
               <div style={{ flex: 1 }} />
-              <button onClick={saveDraft} style={{ ...ghostBtn, minHeight: 52, padding: '14px 24px', fontSize: 14, width: 'auto' }}>💾 Save as Draft</button>
               {publishMode === 'now' ? (
-                <button onClick={p.publishToAll} disabled={p.isPublishing || p.publishCooldown > 0 || !canPublish} title={!canPublish ? publishBlocker : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s before publishing again` : 'Publish now'}
-                  style={{ minHeight: 52, padding: '14px 32px', borderRadius: 13, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', background: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? '#DDD6FE' : 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? 'none' : '0 6px 22px rgba(124,58,237,0.42)' }}>
+                <button
+                  onClick={() => p.publishToAll()}
+                  disabled={p.isPublishing || p.publishCooldown > 0 || !canPublish}
+                  title={!canPublish ? publishBlocker : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s before publishing again` : 'Publish now'}
+                  aria-busy={p.isPublishing}
+                  style={{ minHeight: 52, padding: '14px 32px', borderRadius: 13, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', background: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? '#DDD6FE' : 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? 'none' : '0 6px 22px rgba(124,58,237,0.42)' }}
+                >
                   {p.isPublishing ? 'Publishing…' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : '🚀 Publish Now →'}
                 </button>
               ) : (
-                <button onClick={() => p.setScheduleModalOpen(true)} disabled={!canPublish} title={!canPublish ? publishBlocker : 'Schedule post'} style={{ minHeight: 52, padding: '14px 32px', borderRadius: 13, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: !canPublish ? 'not-allowed' : 'pointer', fontFamily: 'inherit', background: !canPublish ? '#DDD6FE' : 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: !canPublish ? 'none' : '0 6px 22px rgba(124,58,237,0.42)' }}>📅 Schedule Post →</button>
+                <button
+                  onClick={() => { void p.schedulePost(); }}
+                  disabled={p.isScheduling || !canPublish}
+                  title={!canPublish ? publishBlocker : 'Schedule post'}
+                  aria-busy={p.isScheduling}
+                  style={{ minHeight: 52, padding: '14px 32px', borderRadius: 13, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: (p.isScheduling || !canPublish) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', background: (p.isScheduling || !canPublish) ? '#DDD6FE' : 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: (p.isScheduling || !canPublish) ? 'none' : '0 6px 22px rgba(124,58,237,0.42)' }}
+                >
+                  {p.isScheduling ? 'Scheduling…' : '📅 Schedule Post →'}
+                </button>
               )}
             </div>
           </div>

@@ -219,6 +219,10 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [publishResult, setPublishResult] = useState('');
   const [publishResultType, setPublishResultType] = useState<'success' | 'error'>('success');
+  // Per-platform publish outcomes. A multi-platform publish can partially
+  // fail, so a single global success/fail string would hide real failures.
+  // 'pending' rows are re-used on retry so only failed targets are attempted.
+  const [publishStatuses, setPublishStatuses] = useState<Record<string, { state: 'pending' | 'success' | 'failed'; message?: string }>>({});
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   // Per-account multi-select. A platform can have several connected accounts
   // (e.g. two LinkedIn logins); previously publish used
@@ -2950,7 +2954,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     }
   };
 
-  const publishToAll = async () => {
+  const publishToAll = async (targets?: string[]) => {
     // ONE USER ACTION = ONE PUBLISH REQUEST. Ref guard stops rapid
     // repeated clicks even before React re-renders the disabled button.
     if (publishingRef.current || isPublishing || publishCooldown > 0) return;
@@ -2980,11 +2984,21 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     setIsPublishing(true);
     const results: string[] = [];
     let hasError = false;
+    // Mark only the platforms this request will attempt.
+    const attemptTargets = targets && targets.length ? targets : connectedSelected;
+    setPublishStatuses(prev => {
+      const next = { ...prev };
+      attemptTargets.forEach(pl => { next[pl] = { state: 'pending' }; });
+      return next;
+    });
+    const markPlatform = (platform: string, state: 'pending' | 'success' | 'failed', message?: string) =>
+      setPublishStatuses(prev => ({ ...prev, [platform]: { state, message } }));
 
-    for (const platform of connectedSelected) {
+    for (const platform of attemptTargets) {
       if (platform === 'whatsapp') {
         if (!whapiSelectedGroupId) {
           results.push('whatsapp: No WhatsApp chat selected');
+          markPlatform('whatsapp', 'failed', 'No WhatsApp chat selected');
           hasError = true;
           continue;
         }
@@ -3004,13 +3018,16 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           });
           if (res.ok) {
             results.push('whatsapp: Success');
+            markPlatform('whatsapp', 'success');
           } else {
             const err = await readPublishResponse(res);
             results.push(`whatsapp: ${publishReason(err, res, 'WhatsApp publish failed')}`);
+            markPlatform('whatsapp', 'failed', publishReason(err, res, 'WhatsApp publish failed'));
             hasError = true;
           }
         } catch {
           results.push('whatsapp: Network error — no retry was attempted');
+          markPlatform('whatsapp', 'failed', 'Network error');
           hasError = true;
         }
         continue;
@@ -3026,6 +3043,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       const targets = chosen.length > 0 ? chosen : platformAccounts;
       if (targets.length === 0) {
         results.push(`${platform}: Not connected — reconnect through OAuth`);
+        markPlatform(platform, 'failed', 'Connection expired — reconnect to continue');
         hasError = true;
         continue;
       }
@@ -3068,32 +3086,51 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           // No automatic retry on any failure — the user decides.
           if (res.ok) {
             results.push(`${label}: Success`);
+            markPlatform(platform, 'success');
           } else {
             const err = await readPublishResponse(res);
             const reason = publishErrorText(typeof err.code === 'string' ? err.code : undefined, typeof err.message === 'string' ? err.message : undefined);
             results.push(`${label}: ${reason === 'Publish failed. Please try again.' ? publishReason(err, res, 'Publish failed') : reason}`);
+            markPlatform(platform, 'failed', reason);
             hasError = true;
           }
         } catch {
           results.push(`${label}: Network error — no retry was attempted`);
+          markPlatform(platform, 'failed', 'Network error');
           hasError = true;
         }
       }
     }
 
-    setPublishResult(results.join(' | '));
+    // Safe events only — never log tokens, cookies, OTPs or raw credentials.
+    console.info(`[publish] PUBLISH_${targets ? 'RETRY' : 'STARTED'}_RESULT ok=${!hasError} targets=${attemptTargets.join(',')}`);
+    const okCount = attemptTargets.length - results.filter(r => !r.endsWith('Success')).length;
+    const failedCount = results.filter(r => !r.endsWith('Success')).length;
+    setPublishResult(
+      hasError
+        ? `Published to ${okCount} of ${attemptTargets.length} platform${attemptTargets.length === 1 ? '' : 's'}.`
+        : `Published to ${failedCount === 0 ? attemptTargets.length : okCount} of ${attemptTargets.length} platform${attemptTargets.length === 1 ? '' : 's'}.`
+    );
     setPublishResultType(hasError ? 'error' : 'success');
     setShowToast(true);
     publishingRef.current = false;
     setIsPublishing(false);
     if (!hasError) {
       setPublishSuccessFlash(true);
-      // 10-second post-publish cooldown: no second request can be sent.
-      setPublishResult('Post published successfully. You can publish again in 10 seconds.');
       setPublishCooldown(10);
       setTimeout(() => setPublishSuccessFlash(false), 2200);
     }
     setTimeout(() => setShowToast(false), 5000);
+  };
+
+  // Retry only the platforms that actually failed. Platforms already marked
+  // 'success' are never re-sent, so a retry cannot duplicate a live post.
+  const retryFailedPublish = () => {
+    const failed = Object.entries(publishStatuses)
+      .filter(([, v]) => v.state === 'failed')
+      .map(([k]) => k);
+    if (failed.length === 0) return;
+    void publishToAll(failed);
   };
 
   // Earliest moment a post may be scheduled for: now + 5 minutes.
@@ -3434,8 +3471,12 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             disconnectCanva={disconnectCanva}
             publishToAll={publishToAll} isPublishing={isPublishing} publishSuccessFlash={publishSuccessFlash}
             publishCooldown={publishCooldown}
+            publishStatuses={publishStatuses} retryFailedPublish={retryFailedPublish}
             hoveredBtn={hoveredBtn} setHoveredBtn={setHoveredBtn}
             setScheduleModalOpen={setScheduleModalOpen}
+            scheduleDate={scheduleDate} setScheduleDate={setScheduleDate}
+            scheduleTime={scheduleTime} setScheduleTime={setScheduleTime}
+            schedulePost={schedulePost} isScheduling={isScheduling}
             pendingPosts={pendingPosts}
             publishResult={publishResult} setPublishResult={setPublishResult}
             setPublishResultType={setPublishResultType} setShowToast={setShowToast}

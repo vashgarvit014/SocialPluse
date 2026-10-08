@@ -29,7 +29,7 @@ export default function PreviewClient() {
   // Step 6 demo state (?step=6): mock gallery visual + uploaded logo so
   // placement, preview, apply and ALT flows are reviewable instantly.
   // ?logo=0 simulates "no logo uploaded"; ?multi=1 simulates 2 images.
-  const demoBrand = stepParam === 6 || stepParam === 7;
+  const demoBrand = stepParam === 6 || stepParam === 7 || stepParam === 8;
   const wantLogo = search.get('logo') !== '0';
   const wantMulti = search.get('multi') === '1';
   const mockVisual = (label: string) =>
@@ -37,7 +37,8 @@ export default function PreviewClient() {
   const [wizardState, setWizardState] = useState<Record<string, unknown>>({ currentStep: stepParam });
   const [prompt, setPrompt] = useState('Preview fixture topic idea');
   const [tone, setTone] = useState('Professional');
-  const platsParam = (search.get('plats') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const platsRaw = search.get('plats');
+  const platsParam = (platsRaw || '').split(',').map(s => s.trim()).filter(Boolean);
   const [plats, setPlats] = useState<string[]>(platsParam.length ? platsParam : ['facebook']);
   const [content, setContentState] = useState('');
   const [platContent, setPlatContent] = useState<Record<string, { caption: string; hashtags: string[] }>>({});
@@ -54,12 +55,36 @@ export default function PreviewClient() {
   const [altBusyMock, setAltBusyMock] = useState(false);
   const [logoPos, setLogoPos] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center'>('bottom-right');
   const [gallery, setGallery] = useState<Array<{ id: string; url: string; type: 'image'; name: string; altText?: string }>>([]);
+  // Step 8 fixture (?step=8): four platforms, two connected (LinkedIn +
+  // Instagram), two not (Facebook + WhatsApp), so the partial-connection
+  // blocker and per-platform readiness rows are reviewable. `?conn=` overrides.
+  const demoPublish = stepParam === 8;
+  const connRaw = search.get('conn');
+  const connParam = (connRaw || '').split(',').map(s2 => s2.trim()).filter(Boolean);
+  // ?fail=instagram forces one CONNECTED platform to fail, so the partial
+  // failure + retry-failed-only path is reviewable without breaking the block.
+  const failParam = (search.get('fail') || '').split(',').map(s3 => s3.trim()).filter(Boolean);
+  const [connPlats, setConnPlats] = useState<string[]>([]);
+  const [whapiOn, setWhapiOn] = useState(false);
+  const [schedDate, setSchedDate] = useState('');
+  const [schedTime, setSchedTime] = useState('');
+  const [pubStatuses, setPubStatuses] = useState<Record<string, { state: 'pending' | 'success' | 'failed'; message?: string }>>({});
+  const [pubBusy, setPubBusy] = useState(false);
+  const [schedBusy, setSchedBusy] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
   useEffect(() => {
     if (!demoBrand) return;
     if (wantLogo) setLogoImg('/sp-logo.png');
-    const demoPlats = platsParam.length ? platsParam : ['instagram', 'facebook', 'linkedin', 'whatsapp'];
+    const demoPlats = platsRaw === 'none' ? [] : (platsParam.length ? platsParam : ['instagram', 'facebook', 'linkedin', 'whatsapp']);
     setPlats(demoPlats);
     setActive(demoPlats[0]);
+    if (demoPublish) {
+      const conn = connRaw === 'none' ? [] : (connParam.length ? connParam : ['linkedin', 'instagram']);
+      setConnPlats(conn);
+      setWhapiOn(conn.includes('whatsapp'));
+      setContentState(SEED.instagram.caption);
+      setPlatContent(SEED);
+    }
     setGallery([
       { id: 'mock-1', url: mockVisual('Brand visual'), type: 'image', name: 'mock-visual-1', altText: 'A brand visual showing the SocialPulse mark over a purple gradient.' },
       ...(wantMulti ? [{ id: 'mock-2', url: mockVisual('Second visual'), type: 'image' as const, name: 'mock-visual-2', altText: 'A second brand visual over a pink and orange gradient.' }] : []),
@@ -113,7 +138,7 @@ export default function PreviewClient() {
     togglePlatform: (id: string) => setPlats(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]),
     toggleAccount: noop,
     selectedAccountKeys: [] as string[], selectAllAccountsFor: noop, clearAccountsFor: noop,
-    accounts: [] as unknown[],
+    accounts: connPlats.filter(c => c !== 'whatsapp').map(c => ({ id: `${c}-acc`, platform: c, connected: true, name: `${c} account`, userId: 'preview-user', pages: [] })) as unknown[],
     platformColors: { linkedin: '#0A66C2', instagram: '#E1306C', facebook: '#1877F2', whatsapp: '#25D366' },
     PlatformIcon: StubIcon,
     activePreviewPlatform: active,
@@ -168,11 +193,37 @@ export default function PreviewClient() {
         setAltBusyMock(false);
       }, 900);
     },
-    saveFullDraft: noop, cancelPreview: noop,
+    saveFullDraft: () => { setDraftSaved(true); },
+    cancelPreview: noop,
+    publishToAll: (targets?: string[]) => {
+      if (pubBusy) return;                       // duplicate-submit guard
+      setPubBusy(true);
+      const list = targets && targets.length ? targets : plats.filter(x => (x === 'whatsapp' ? whapiOn : connPlats.includes(x)));
+      setPubStatuses(prev => { const n = { ...prev }; list.forEach(k => { n[k] = { state: 'pending' }; }); return n; });
+      list.forEach((k, idx) => setTimeout(() => setPubStatuses(prev => {
+        const n = { ...prev };
+        n[k] = failParam.includes(k) || (k === 'facebook' && !connPlats.includes('facebook'))
+          ? { state: 'failed', message: failParam.includes(k) ? 'Simulated failure for preview' : 'Connection expired — reconnect to continue' }
+          : { state: 'success' };
+        return n;
+      }), 700 + idx * 600));
+      setTimeout(() => setPubBusy(false), 700 + list.length * 600);
+    },
+    retryFailedPublish: () => {
+      const failed = Object.entries(pubStatuses).filter(([, v]) => v.state === 'failed').map(([k]) => k);
+      if (!failed.length) return;
+      setPubStatuses(prev => { const n = { ...prev }; failed.forEach(k => { n[k] = { state: 'success' }; }); return n; });
+    },
+    publishStatuses: pubStatuses, isPublishing: pubBusy, publishCooldown: 0,
+    scheduleDate: schedDate, setScheduleDate: setSchedDate,
+    scheduleTime: schedTime, setScheduleTime: setSchedTime,
+    schedulePost: async () => { setSchedBusy(true); await new Promise(r => setTimeout(r, 700)); setSchedBusy(false); setDraftSaved(false); },
+    isScheduling: schedBusy,
     openInCanva: noop, isSendingToCanva: false,
-    whapiConnected: false, whapiCanConnect: false, startWhatsAppConnect: noop,
-    disconnectPlatform: noop, disconnectWhatsApp: noop, whatsappDisconnecting: false, whapiLoading: false,
-    connectPlatform: noop,
+    whapiConnected: whapiOn, whapiCanConnect: true, startWhatsAppConnect: () => { setWhapiOn(true); setConnPlats(prev => [...new Set([...prev, 'whatsapp'])]); },
+    disconnectPlatform: (pl: string) => setConnPlats(prev => prev.filter(x => x !== pl)), disconnectWhatsApp: () => setWhapiOn(false), whatsappDisconnecting: false, whapiLoading: false,
+    refreshWhapiStatus: noop, whapiSelectedDestinations: new Set<string>() as unknown as Set<string>, setWhapiSelectedDestinations: noop, whapiDestinations: [] as unknown[], whapiGroupsLoading: false, whapiGroupsError: '', loadWhapiDestinations: noop, whapiSelectedGroupId: whapiOn ? 'wa-preview-chat' : null, whapiPublishing: false, publishToWhapi: noop, setAccountPageId: noop,
+    connectPlatform: (pl: string) => setConnPlats(prev => [...new Set([...prev, pl])]),
     logoImage: logoImg, logoPosition: logoPos, logoScale: 0.18, logoOpacity: 1,
     setLogoModalOpen: noop,
     setLogoPosition: (v: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center') => setLogoPos(v),
@@ -182,7 +233,7 @@ export default function PreviewClient() {
     applyLogoToAllMedia: noop, isApplyingLogo: false,
     generationError: genErr, setGenerationError: (v: string) => setGenErr(v),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel, logoImg, logoPos, gallery, altBusyMock]);
+  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel, logoImg, logoPos, gallery, altBusyMock, connPlats, whapiOn, failParam, schedDate, schedTime, pubStatuses, pubBusy, schedBusy, draftSaved]);
 
   return (
     <div style={{ background: '#F4F5FA', minHeight: '100vh' }}>
