@@ -829,7 +829,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
     }, 40);
     return () => clearInterval(id);
   }, [currentStep, readinessPct]);
-  const summaryCardRef = useRef<HTMLDivElement | null>(null);
   // Correct brand casing — "LinkedIn", not "Linkedin".
   const platformLabel = (pl: string) => (pl === 'linkedin' ? 'LinkedIn' : pl === 'whatsapp' ? 'WhatsApp' : pl.charAt(0).toUpperCase() + pl.slice(1));
   const disconnectedNames = disconnectedSelected.map(platformLabel).join(', ');
@@ -3270,22 +3269,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
               {/* ================= ASIDE — SUMMARY ================= */}
               <aside className="sp-s8-aside">
-                <div
-                  className="sp-s8-card"
-                  ref={summaryCardRef}
-                  onMouseMove={e => {
-                    const el = summaryCardRef.current;
-                    if (!el) return;
-                    const calm = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-                    const fine = typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover)').matches;
-                    if (calm || !fine) return;
-                    const r = el.getBoundingClientRect();
-                    const x = (e.clientX - r.left) / r.width - 0.5;
-                    const y = (e.clientY - r.top) / r.height - 0.5;
-                    el.style.transform = `perspective(900px) rotateY(${x * 8}deg) rotateX(${-y * 6}deg)`;
-                  }}
-                  onMouseLeave={() => { const el = summaryCardRef.current; if (el) el.style.transform = ''; }}
-                >
+                <div className="sp-s8-card">
                   <div className="sp-s8-hero">
                     <div className="sp-s8-blob sp-s8-b1" /><div className="sp-s8-blob sp-s8-b2" /><div className="sp-s8-blob sp-s8-b3" />
                     <span className="sp-s8-spark sp-s8-sp1">✦</span><span className="sp-s8-spark sp-s8-sp2">✧</span><span className="sp-s8-spark sp-s8-sp3">✦</span><span className="sp-s8-spark sp-s8-sp4">✧</span>
