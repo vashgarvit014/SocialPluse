@@ -1139,12 +1139,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-s8-cap{display:block;font-size:15px;line-height:1.5;min-height:66px;color:#111827}
         .sp-s8-cap::after{content:"\u25AD";color:#7C3AED;animation:spS8Blink .8s steps(1) infinite;margin-left:2px}
         .sp-s8-cap.sp-done::after{display:none}
-        .sp-s8-tags{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;position:relative}
-        .sp-s8-tags span{background:#f1ebff;border:1px solid #ddd0fb;color:#6d28d9;font-weight:700;font-size:12.5px;padding:5px 12px;border-radius:999px;
-          opacity:0;animation:spS8Pop .5s cubic-bezier(.2,.9,.3,1.5) forwards;transition:.2s}
-        .sp-s8-tags span:hover{transform:translateY(-3px) scale(1.08);background:#7c3aed;color:#fff}
-        .sp-s8-tags span:nth-child(1){animation-delay:.9s}.sp-s8-tags span:nth-child(2){animation-delay:1s}
-        .sp-s8-tags span:nth-child(3){animation-delay:1.1s}.sp-s8-tags span:nth-child(4){animation-delay:1.2s}
         .sp-s8-ready{animation:spS8Rise .6s both 1.3s}
         .sp-s8-cta-on{animation:spS8Ready 1.6s ease-in-out infinite}
         .sp-s8-res{margin-top:14px;padding-top:14px;border-top:1px solid #e8eaf2;display:flex;flex-direction:column;gap:8px}
@@ -1160,16 +1154,14 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         @keyframes spS8Drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(40px,-20px)}}
         @keyframes spS8Twinkle{0%,100%{opacity:0;transform:scale(.4) rotate(0)}50%{opacity:1;transform:scale(1.2) rotate(90deg)}}
         @keyframes spS8Blink{50%{opacity:0}}
-        @keyframes spS8Pop{from{opacity:0;transform:scale(.4) translateY(8px)}to{opacity:1;transform:none}}
         @keyframes spS8Pulse{70%{box-shadow:0 0 0 10px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
         @keyframes spS8Rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
         @keyframes spS8Ready{0%,100%{box-shadow:0 10px 22px rgba(124,58,237,.27)}50%{box-shadow:0 0 0 6px rgba(124,58,237,.13),0 12px 30px rgba(124,58,237,.53)}}
         @media(prefers-reduced-motion:reduce){
           .sp-s8-card,.sp-s8-card::before,.sp-s8-hero *,.sp-s8-hero::after,.sp-s8-thumb,.sp-s8-thumb::after,
-          .sp-s8-live,.sp-s8-ready,.sp-s8-cta-on,.sp-s8-tags span{animation:none!important}
+          .sp-s8-live,.sp-s8-ready,.sp-s8-cta-on{animation:none!important}
           .sp-s8-card::before{display:none}
           .sp-s8-cap::after{display:none}
-          .sp-s8-tags span{opacity:1}
         }
         .sp-plat-tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
         @media(max-width:640px){.sp-plat-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -3333,16 +3325,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       {!summaryCaption ? <span style={{ color: '#94a3b8' }}>No caption yet.</span> : summaryCaption.slice(0, capReveal)}
                     </span>
 
-                    <div className="sp-s8-tags">
-                      {[
-                        p.selectedPlatforms.length ? p.selectedPlatforms.map(platformLabel).join(' • ') : 'No platforms',
-                        p.isCarousel ? `Multiple Images • ${p.carouselSlides.length} images` : 'Single Image',
-                        p.aspectRatio || 'No ratio',
-                        p.imageStyle,
-                        ...(p.trialReel && p.instagramReelReady ? ['Trial Reel'] : []),
-                        ...(p.collaborator && p.selectedPlatforms.includes('instagram') ? [`@${p.collaborator}`] : []),
-                      ].map(chip => <span key={chip}>{chip}</span>)}
-                    </div>
 
                     {p.isCarousel && (
                       <div style={{ fontSize: 13, fontWeight: 700, padding: '8px 11px', borderRadius: 10, background: p.carouselValidation.valid ? '#e3f8ef' : '#fef2f2', color: p.carouselValidation.valid ? '#0b7a53' : '#b91c1c', border: `1px solid ${p.carouselValidation.valid ? '#a7ecd0' : '#fecaca'}` }}>
