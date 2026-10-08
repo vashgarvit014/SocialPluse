@@ -777,6 +777,26 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   })();
   const scheduleIsValid = Number.isFinite(scheduledAtLocal) && scheduledAtLocal >= minScheduleMs;
   const userTimeZone = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local time'; } catch { return 'Local time'; } })();
+  // Post Summary caption. The reveal below is purely decorative: the full text
+  // already exists in state and nothing is generated or fetched here.
+  const summaryCaption = (p.platformContent[p.activePreviewPlatform]?.caption || p.content || '').trim();
+  const [capReveal, setCapReveal] = useState(0);
+  useEffect(() => {
+    if (currentStep !== 8) return;
+    if (!summaryCaption) { setCapReveal(0); return; }
+    const calm = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (calm) { setCapReveal(summaryCaption.length); return; }
+    let i = 0;
+    setCapReveal(0);
+    const id = setInterval(() => {
+      i += 3;
+      setCapReveal(Math.min(i, summaryCaption.length));
+      if (i >= summaryCaption.length) clearInterval(id);
+    }, 26);
+    return () => clearInterval(id);
+  }, [currentStep, summaryCaption]);
+  const capTyping = capReveal < summaryCaption.length;
+  const summaryCardRef = useRef<HTMLDivElement | null>(null);
   // Selected-but-unconnected platforms. Previously publishing was allowed as
   // long as ONE platform was connected, which silently dropped the others -
   // the user saw "published" without realising a platform was skipped.
@@ -971,6 +991,11 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-soc:hover { transform: scale(1.06); }
         .sp-robot { position: absolute; left: 50%; top: 50%; width: 74px; height: 74px; margin-left: -37px; margin-top: -37px; border-radius: 24px; background: linear-gradient(135deg,#7C3AED,#A855F7); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: 0 10px 28px rgba(124,58,237,.45), inset 0 1px 0 rgba(255,255,255,.35); z-index: 2; }
         .sp-s8-sticky{position:sticky;top:16px}
+        .sp-s8-card{transform-style:preserve-3d;will-change:transform}
+        .sp-s8-card:hover{box-shadow:0 1px 2px rgba(15,23,42,0.05),0 18px 46px rgba(15,23,42,0.12)}
+        .sp-s8-caret{display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;background:#7C3AED;animation:spS8Caret .9s steps(2,start) infinite}
+        @keyframes spS8Caret{0%,100%{opacity:1}50%{opacity:0}}
+        @media(prefers-reduced-motion:reduce){.sp-s8-caret{animation:none}}
         @media(max-width:1024px){.sp-s8-sticky{position:static}}
         .sp-s8-blob{position:absolute;border-radius:50%;filter:blur(26px);opacity:.42;pointer-events:none}
         .sp-s8-b1{width:150px;height:150px;background:#C084FC;top:-52px;right:-26px}
@@ -2960,8 +2985,9 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   )}
 
                   <div className="sp-wiz-grid2" style={{ gap: 12 }}>
-                    {p.selectedPlatforms.map(pl => {
+                    {(['linkedin', 'facebook', 'instagram', 'whatsapp'] as const).map(pl => {
                       const label = pl === 'whatsapp' ? 'WhatsApp' : platformLabel(pl);
+                      const isSelected = p.selectedPlatforms.includes(pl);
                       const connected = isPlatformConnected(pl);
                       const brand = p.platformColors[pl] || C.primary;
                       const acc = p.accounts.find(a => a.platform === pl && a.connected);
@@ -2969,13 +2995,14 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         <div
                           key={pl}
                           role="group"
-                          aria-label={`${label} publishing target`}
+                          aria-label={`${label} ${isSelected ? 'selected for publishing' : 'not selected'}`}
                           style={{
                             padding: 16, borderRadius: 18,
-                            border: `2px solid ${connected ? brand : `${brand}45`}`,
-                            background: connected ? `${brand}0D` : '#fff',
-                            boxShadow: connected ? `0 8px 22px ${brand}30` : '0 1px 2px rgba(15,23,42,0.05)',
+                            border: `2px solid ${isSelected ? brand : `${brand}33`}`,
+                            background: isSelected ? `${brand}0D` : '#fff',
+                            boxShadow: isSelected ? `0 8px 22px ${brand}30` : '0 1px 2px rgba(15,23,42,0.05)',
                             display: 'flex', flexDirection: 'column', gap: 10,
+                            opacity: isSelected ? 1 : 0.92,
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
@@ -2991,36 +3018,56 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                                 </span>
                               </div>
                             </div>
-                            <span aria-label={`${label} selected for publishing`} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 800, color: brand, flexShrink: 0 }}>
-                              <span style={{ width: 20, height: 20, borderRadius: 6, background: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>✓</span>
-                              Selected
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 800, color: isSelected ? brand : C.faint, flexShrink: 0 }}>
+                              <span style={{ width: 20, height: 20, borderRadius: 6, background: isSelected ? brand : '#fff', border: isSelected ? 'none' : `1.5px solid ${C.border}`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>{isSelected ? '✓' : ''}</span>
+                              {isSelected ? 'Selected' : 'Not selected'}
                             </span>
                           </div>
 
                           <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>
-                            {connected
-                              ? (pl === 'whatsapp'
-                                ? (p.whapiSelectedGroupId ? 'Destination selected — ready to publish.' : 'Connected. Pick a destination below to publish.')
-                                : (acc?.name || 'Account ready to publish.'))
-                              : `Connect a ${label} account to publish here.`}
+                            {!isSelected
+                              ? `Add ${label} to publish this post there too.`
+                              : connected
+                                ? (pl === 'whatsapp'
+                                  ? (p.whapiSelectedGroupId ? 'Destination selected — ready to publish.' : 'Connected. Pick a destination below to publish.')
+                                  : (acc?.name || 'Account ready to publish.'))
+                                : `Connect a ${label} account to publish here.`}
                           </div>
 
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {connected ? (
+                            {!isSelected ? (
+                              <button
+                                onClick={() => p.togglePlatform(pl)}
+                                aria-pressed={false}
+                                aria-label={`Add ${label} to this publish`}
+                                style={{ padding: '9px 16px', borderRadius: 10, fontSize: 11.5, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}
+                              >
+                                + Add {label}
+                              </button>
+                            ) : (
                               <>
-                                <button onClick={() => setCurrentStep(pl === 'whatsapp' ? 8 : 7)} style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 800, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, cursor: 'pointer', fontFamily: 'inherit' }}>Manage</button>
-                                {pl !== 'whatsapp' && (
-                                  <button onClick={() => p.disconnectPlatform(pl)} style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 700, border: '1px solid #FECACA', backgroundColor: '#fff', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>Disconnect</button>
+                                <button
+                                  onClick={() => p.togglePlatform(pl)}
+                                  aria-pressed={true}
+                                  aria-label={`Remove ${label} from this publish`}
+                                  style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 700, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.muted, cursor: 'pointer', fontFamily: 'inherit' }}
+                                >
+                                  Remove
+                                </button>
+                                {connected ? (
+                                  <>
+                                    <button onClick={() => setCurrentStep(pl === 'whatsapp' ? 8 : 7)} style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 800, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, cursor: 'pointer', fontFamily: 'inherit' }}>Manage</button>
+                                    {pl !== 'whatsapp' && (
+                                      <button onClick={() => p.disconnectPlatform(pl)} style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 700, border: '1px solid #FECACA', backgroundColor: '#fff', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>Disconnect</button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <button onClick={() => (pl === 'whatsapp' ? p.startWhatsAppConnect() : p.connectPlatform(pl))} style={{ padding: '9px 16px', borderRadius: 10, fontSize: 11.5, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>
+                                    Connect {label}
+                                  </button>
                                 )}
                               </>
-                            ) : (
-                              <button onClick={() => (pl === 'whatsapp' ? p.startWhatsAppConnect() : p.connectPlatform(pl))} style={{ padding: '9px 16px', borderRadius: 10, fontSize: 11.5, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>
-                                Connect {label}
-                              </button>
                             )}
-                            <button onClick={() => p.togglePlatform(pl)} aria-label={`Remove ${label} from this publish`} style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 700, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.muted, cursor: 'pointer', fontFamily: 'inherit' }}>
-                              {connected ? 'Remove' : 'Remove'}
-                            </button>
                           </div>
 
                           {pl === 'facebook' && connected && (acc?.pages?.length || 0) > 1 && (
@@ -3152,7 +3199,23 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
                 <div className="sp-s8-sticky" style={{ paddingBottom: 4 }}>
                   {/* ---- Post Summary ---- */}
-                  <div style={{ ...card, borderRadius: 20, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+                  <div
+                    ref={summaryCardRef}
+                    className="sp-s8-card"
+                    onMouseMove={e => {
+                      const el = summaryCardRef.current;
+                      if (!el) return;
+                      const calm = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+                      const fine = typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover)').matches;
+                      if (calm || !fine) return;
+                      const r = el.getBoundingClientRect();
+                      const x = (e.clientX - r.left) / r.width - 0.5;
+                      const y = (e.clientY - r.top) / r.height - 0.5;
+                      el.style.transform = `perspective(900px) rotateY(${x * 6}deg) rotateX(${-y * 4}deg) translateZ(6px)`;
+                    }}
+                    onMouseLeave={() => { const el = summaryCardRef.current; if (el) el.style.transform = ''; }}
+                    style={{ ...card, borderRadius: 20, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)', transition: 'transform .25s ease' }}
+                  >
                     <div style={{ position: 'relative', padding: '16px 18px', background: 'linear-gradient(135deg,#7C3AED 0%,#A855F7 45%,#D946EF 100%)' }}>
                       <div className="sp-s8-blob sp-s8-b1" /><div className="sp-s8-blob sp-s8-b2" /><div className="sp-s8-blob sp-s8-b3" />
                       <span className="sp-s8-spark sp-s8-sp1">✦</span><span className="sp-s8-spark sp-s8-sp2">✧</span>
@@ -3183,12 +3246,15 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     </div>
 
                     <div style={{ padding: '15px 18px 18px' }}>
-                      <div style={{ fontSize: 12.5, color: C.ink, lineHeight: 1.6, maxHeight: 74, overflow: 'hidden' }}>
-                        {(() => {
-                          const caption = (p.platformContent[p.activePreviewPlatform]?.caption || p.content || '').trim();
-                          if (!caption) return <span style={{ color: C.faint }}>No caption yet.</span>;
-                          return caption.length > 220 ? `${caption.slice(0, 220)}…` : caption;
-                        })()}
+                      <div style={{ fontSize: 12.5, color: C.ink, lineHeight: 1.6, minHeight: 42 }}>
+                        {!summaryCaption ? (
+                          <span style={{ color: C.faint }}>No caption yet.</span>
+                        ) : (
+                          <>
+                            {summaryCaption.slice(0, capReveal)}
+                            {capTyping && <span aria-hidden="true" className="sp-s8-caret" />}
+                          </>
+                        )}
                       </div>
 
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
