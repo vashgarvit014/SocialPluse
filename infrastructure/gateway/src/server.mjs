@@ -35,6 +35,28 @@ const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
 // this only bounds how long a genuinely hung upstream is tolerated.
 const SERVICE_TIMEOUT_MS = 15000;
 
+// Synchronous LLM routes need far more headroom than the SMTP-tuned value
+// above. /content is NOT a fast route: it waits for the whole text-generation
+// call to finish before responding (ai-service has no job queue for it, unlike
+// /image which returns 202 and is polled). Measured against ai_usage_log over
+// 8h: 15 CONTENT calls, avg 17.3s, max 84.7s, and 40% of them exceeded 15s.
+//
+// At the old 15s bound those requests were aborted mid-flight, answered to the
+// browser as a bare 503 ("This operation was aborted"), and — because three in
+// a row tripped the breaker — took the following calls down with them for
+// another 15s each. The AI service was healthy the whole time; the gateway was
+// simply cancelling work that was still legitimately in progress.
+//
+//
+// 90s, not 120s: the app is served through Cloudflare's proxy (responses carry
+// `server: cloudflare` and a cf-ray), and Cloudflare aborts a proxied request at
+// 100s with an opaque 524. Staying under that means the slow tail produces our
+// own 503 with a readable message instead of a bare Cloudflare error. It still
+// clears the slowest observed call (84.7s), and it is only a ceiling on a hung
+// request, never a target - typical calls return in their own latency, so
+// nothing gets slower by raising the bound.
+const AI_LONG_TIMEOUT_MS = 90000;
+
 const log = createLogger('gateway');
 
 // --- minimal circuit breaker, one instance per upstream service ---
@@ -259,7 +281,7 @@ async function readBody(req) {
 // SUPERADMIN-only right now (mirrors their existing monolith routes'
 // requireApiSuperadmin() checks) — a future non-admin service passes
 // requireRole: undefined instead.
-async function proxyToService(req, res, requestId, { name, baseUrl, breaker, prefix, targetPath, requireRole, unavailableCode, unavailableMessage, forwardCookie, skipAuth }) {
+async function proxyToService(req, res, requestId, { name, baseUrl, breaker, prefix, targetPath, requireRole, unavailableCode, unavailableMessage, forwardCookie, skipAuth, timeoutMs }) {
   const auth = skipAuth ? { ok: true, userId: undefined, role: undefined } : await authenticateRequest(req, requestId, { requireRole });
   if (!auth.ok) return send(res, auth.status, auth.body);
 
@@ -280,7 +302,7 @@ async function proxyToService(req, res, requestId, { name, baseUrl, breaker, pre
   let subpath = targetPath ? `${targetPath}${queryString}` : req.url.replace(prefix, '');
   if (!subpath || subpath[0] !== '/') subpath = `/${subpath}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SERVICE_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs || SERVICE_TIMEOUT_MS);
   try {
     const extraHeaders = {};
     if (auth.userId) extraHeaders['x-actor-user-id'] = auth.userId;
@@ -589,10 +611,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (AI_ROUTES.has(pathnameOnly)) {
+    // Only /content needs the long budget. /image, /vary-image and /alt-text
+    // either return 202 immediately or are short calls, so they keep the
+    // standard 15s bound and a hung one is still cut off quickly.
+    const isSynchronousLlmCall = pathnameOnly === '/api/generate-content';
     return proxyToService(req, res, requestId, {
       name: 'ai', baseUrl: AI_SERVICE_URL, breaker: aiBreaker,
       targetPath: AI_ROUTES.get(pathnameOnly), forwardCookie: false,
       unavailableCode: 'AI_SERVICE_UNAVAILABLE', unavailableMessage: 'AI generation is temporarily unavailable.',
+      timeoutMs: isSynchronousLlmCall ? AI_LONG_TIMEOUT_MS : undefined,
     });
   }
 
