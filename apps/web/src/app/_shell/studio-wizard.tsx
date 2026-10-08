@@ -1084,6 +1084,15 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-s8-collab label{font-weight:700;font-size:14px;display:block;margin-bottom:6px;color:#111827}
         .sp-s8-collab input{width:100%;font:inherit;padding:11px 14px;border:1px solid #e8eaf2;border-radius:12px;background:#fff;color:#111827}
         .sp-s8-collab small{display:block;color:#5b6475;font-size:12.5px;margin-top:6px}
+        /* Highlighted collaborator block - draws the eye to the one optional
+           Instagram-only field without changing its label or behaviour. */
+        .sp-s8-collab-hl{margin-top:16px;padding:14px;border-radius:14px;
+          border:1.5px solid #ddd0fb;background:linear-gradient(180deg,#faf7ff,#f4efff)}
+        .sp-s8-collab-hl label{color:#6d28d9;font-size:14.5px}
+        .sp-s8-collab-hl input{border-color:#c4b5fd;background:#fff}
+        .sp-s8-collab-hl input::placeholder{color:#a78bfa}
+        .sp-s8-collab-hl input:focus{outline:none;border-color:#7c3aed;box-shadow:0 0 0 3px rgba(124,58,237,.16)}
+        .sp-s8-collab-hl small{color:#6b5f8a}
         .sp-s8-whatsapp{margin-top:14px;border:1.5px solid #e8eaf2;border-radius:16px;padding:16px}
         .sp-s8-when-tz{grid-column:1/-1;font-size:12.5px;color:#5b6475;margin-top:2px}
         .sp-s8-err{grid-column:1/-1;font-size:13px;font-weight:700;color:#8a5a00;background:#fffbea;border:1px solid #f4e3a1;border-radius:12px;padding:10px 13px}
@@ -3326,7 +3335,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     )}
 
                     {p.selectedPlatforms.includes('instagram') && (
-                      <div className="sp-s8-collab" style={{ marginTop: 16 }}>
+                      <div className="sp-s8-collab sp-s8-collab-hl">
                         <label htmlFor="sp-collab">Instagram Collaborator (Optional)</label>
                         <input
                           id="sp-collab"

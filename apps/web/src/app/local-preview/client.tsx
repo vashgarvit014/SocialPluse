@@ -72,6 +72,7 @@ export default function PreviewClient() {
   const [pubBusy, setPubBusy] = useState(false);
   const [schedBusy, setSchedBusy] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
+  const [collab, setCollab] = useState('');
   useEffect(() => {
     if (!demoBrand) return;
     if (wantLogo) setLogoImg('/sp-logo.png');
@@ -224,6 +225,7 @@ export default function PreviewClient() {
     disconnectPlatform: (pl: string) => setConnPlats(prev => prev.filter(x => x !== pl)), disconnectWhatsApp: () => setWhapiOn(false), whatsappDisconnecting: false, whapiLoading: false,
     refreshWhapiStatus: noop, whapiSelectedDestinations: new Set<string>() as unknown as Set<string>, setWhapiSelectedDestinations: noop, whapiDestinations: [] as unknown[], whapiGroupsLoading: false, whapiGroupsError: '', loadWhapiDestinations: noop, whapiSelectedGroupId: whapiOn ? 'wa-preview-chat' : null, whapiPublishing: false, publishToWhapi: noop, setAccountPageId: noop,
     connectPlatform: (pl: string) => setConnPlats(prev => [...new Set([...prev, pl])]),
+    collaborator: collab, setCollaborator: (v: string) => setCollab(v),
     logoImage: logoImg, logoPosition: logoPos, logoScale: 0.18, logoOpacity: 1,
     setLogoModalOpen: noop,
     setLogoPosition: (v: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center') => setLogoPos(v),
@@ -233,7 +235,7 @@ export default function PreviewClient() {
     applyLogoToAllMedia: noop, isApplyingLogo: false,
     generationError: genErr, setGenerationError: (v: string) => setGenErr(v),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel, logoImg, logoPos, gallery, altBusyMock, connPlats, whapiOn, failParam, schedDate, schedTime, pubStatuses, pubBusy, schedBusy, draftSaved]);
+  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel, logoImg, logoPos, gallery, altBusyMock, connPlats, whapiOn, failParam, collab, schedDate, schedTime, pubStatuses, pubBusy, schedBusy, draftSaved]);
 
   return (
     <div style={{ background: '#F4F5FA', minHeight: '100vh' }}>
