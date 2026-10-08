@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import StudioWizard from '@/app/_shell/studio-wizard';
+import { SP_LOGO } from '../_shell/brand-assets';
 
 // Loose mount for preview only (real component, mock props).
 const WizardAny = StudioWizard as unknown as React.ComponentType<Record<string, unknown>>;
@@ -75,7 +76,7 @@ export default function PreviewClient() {
   const [collab, setCollab] = useState('');
   useEffect(() => {
     if (!demoBrand) return;
-    if (wantLogo) setLogoImg('/sp-logo.png');
+    if (wantLogo) setLogoImg(SP_LOGO);
     const demoPlats = platsRaw === 'none' ? [] : (platsParam.length ? platsParam : ['instagram', 'facebook', 'linkedin', 'whatsapp']);
     setPlats(demoPlats);
     setActive(demoPlats[0]);
