@@ -14,7 +14,11 @@ import { randomUUID } from 'node:crypto';
 export function createFacebookVault(pool) {
   return {
     async storeFacebookAuth(userId, providerUserId, userToken, pages) {
-      if (!userId || !providerUserId || !userToken) return;
+      if (!userId || !providerUserId || !userToken) return { ok: false, reason: 'missing' };
+      // Same rule as the LinkedIn vault, enforced atomically in the single
+      // statement below: same-user re-auth refreshes; a cross-user reassign
+      // writes nothing and reports the conflict instead of silently stealing
+      // the row out from under its current owner.
       const now = new Date().toISOString();
       const credentials = {
         userToken,
@@ -23,15 +27,19 @@ export function createFacebookVault(pool) {
           ...(p.instagramAccountId ? { instagramAccountId: p.instagramAccountId, instagramUsername: p.instagramUsername } : {}),
         })),
       };
-      await pool.query(
+      const { rows } = await pool.query(
         `INSERT INTO platform_connections
            (id, user_id, platform, provider_user_id, display_name, email, credentials, meta, created_at, updated_at, disconnected_at)
          VALUES ($1, $2, 'facebook', $3, $4, NULL, $5, $6, $7, $7, NULL)
          ON CONFLICT (platform, provider_user_id) WHERE disconnected_at IS NULL
            DO UPDATE SET user_id = EXCLUDED.user_id, display_name = EXCLUDED.display_name,
-                         credentials = EXCLUDED.credentials, meta = EXCLUDED.meta, updated_at = EXCLUDED.updated_at`,
+                         credentials = EXCLUDED.credentials, meta = EXCLUDED.meta, updated_at = EXCLUDED.updated_at
+           WHERE platform_connections.user_id = EXCLUDED.user_id
+         RETURNING user_id`,
         [randomUUID(), userId, providerUserId, pages[0]?.name ?? null, JSON.stringify(credentials), JSON.stringify({ pageCount: pages.length }), now],
       );
+      if (rows.length === 0) return { ok: false, reason: 'already_connected_elsewhere' };
+      return { ok: true };
     },
 
     // Mirrors platform-connections.ts#getFacebookAuth: reads the connection

@@ -97,7 +97,12 @@ export function createLinkedInRouter(pool) {
         const profileData = await profileResponse.json();
         const providerUserId = profileData.sub || '';
 
-        await vault.storeLinkedInToken(appUserId, providerUserId, accessToken, { displayName: profileData.name || null, email: profileData.email || null });
+        const stored = await vault.storeLinkedInToken(appUserId, providerUserId, accessToken, { displayName: profileData.name || null, email: profileData.email || null });
+        // This LinkedIn account is actively connected to a different
+        // SocialPulse user. Failing here — rather than reassigning the row —
+        // is what keeps one user's OAuth from silently disconnecting another's.
+        // The other user's name is deliberately NOT included: it is their data.
+        if (!stored.ok) return fail('account_already_connected');
 
         const params = new URLSearchParams({ platform: 'linkedin', connected: 'true', name: profileData.name || '', email: profileData.email || '', user_id: providerUserId });
         const target = finishReturn(req.headers.cookie || '', requestState, new URL(`/dashboard?${params.toString()}`, APP_ORIGIN));

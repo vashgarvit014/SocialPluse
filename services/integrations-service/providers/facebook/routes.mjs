@@ -123,7 +123,10 @@ export function createFacebookRouter(pool) {
         }
         if (pages.length === 0) return fail('no_facebook_page');
 
-        await vault.storeFacebookAuth(appUserId, providerUserId, userToken, pages);
+        const stored = await vault.storeFacebookAuth(appUserId, providerUserId, userToken, pages);
+        // Same rule as LinkedIn: never silently reassign a provider account
+        // that is actively connected to a different SocialPulse user.
+        if (!stored.ok) return fail('account_already_connected');
 
         const params = new URLSearchParams({
           platform: 'facebook', connected: 'true', name: profile.name || 'Facebook', email: '', user_id: providerUserId,

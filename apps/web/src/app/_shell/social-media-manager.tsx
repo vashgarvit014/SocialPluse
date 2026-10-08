@@ -1750,7 +1750,13 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       const { error, provider } = event.data;
       pending.popup?.postMessage({ type: 'socialpulse-oauth-ack', id: pending.id }, location.origin);
       oauthPending.current = null;
-      try { const statuses = await refreshConnections(); const failed = error || !statuses[provider]; notify(failed ? 'Platform connection failed: ' + (error || 'connection could not be verified') : provider + ' connected. OAuth returned successfully. Your editor is unchanged.', !!failed); }
+      // OAuth error codes arrive as snake_case from the callback. Map the one
+      // users can act on to a sentence; everything else falls back to the raw
+      // code so an unknown failure is never silently swallowed.
+      const friendlyError = error === 'account_already_connected'
+        ? 'this account is already connected to a different SocialPulse user — ask them to disconnect it first, then try again'
+        : error;
+      try { const statuses = await refreshConnections(); const failed = error || !statuses[provider]; notify(failed ? 'Platform connection failed: ' + (friendlyError || 'connection could not be verified') : provider + ' connected. OAuth returned successfully. Your editor is unchanged.', !!failed); }
       catch { notify('OAuth returned, but connection status could not be verified. Your work is preserved.', true); }
       await returnStore('delete', pending.id).catch(() => {});
     };
