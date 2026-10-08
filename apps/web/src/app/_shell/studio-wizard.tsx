@@ -1019,9 +1019,84 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-soc { position: absolute; width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #fff; cursor: default; transition: transform 180ms ease, box-shadow 180ms ease; will-change: transform; }
         .sp-soc:hover { transform: scale(1.06); }
         .sp-robot { position: absolute; left: 50%; top: 50%; width: 74px; height: 74px; margin-left: -37px; margin-top: -37px; border-radius: 24px; background: linear-gradient(135deg,#7C3AED,#A855F7); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: 0 10px 28px rgba(124,58,237,.45), inset 0 1px 0 rgba(255,255,255,.35); z-index: 2; }
-        .sp-s8-sticky{position:sticky;top:16px}
-        @media(max-width:1024px){.sp-s8-sticky{position:static}}
-        @media(max-width:640px){.sp-s8-card::before{display:none}}
+        .sp-s8-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;margin-top:22px}
+        .sp-s8-stack{display:flex;flex-direction:column;gap:18px;min-width:0}
+        .sp-s8-aside{position:sticky;top:96px;align-self:start;min-width:0}
+        .sp-s8-card-base{background:#fff;border-radius:20px;border:1px solid #e8eaf2;box-shadow:0 6px 24px rgba(17,24,39,.04);padding:26px}
+        .sp-s8-hero-wrap{display:flex;align-items:center;gap:18px;flex-wrap:nowrap}
+        .sp-s8-ico{width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;display:grid;place-items:center;font-size:26px;box-shadow:0 10px 22px rgba(124,58,237,.27);flex-shrink:0}
+        .sp-s8-h2{font-size:26px;font-weight:800;color:#111827;letter-spacing:-0.02em;white-space:nowrap}
+        .sp-s8-tag{margin-left:auto;text-align:left;flex-shrink:1;align-self:center;background:#f1ebff;border:1px solid #ddd0fb;color:#6d28d9;border-radius:14px;padding:12px 18px;font-weight:700;font-size:14px;line-height:1.4}
+        .sp-s8-tag small{display:block;font-weight:500;color:#5b6475}
+        .sp-s8-sec{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+        .sp-s8-num{width:34px;height:34px;border-radius:50%;background:#7c3aed;color:#fff;display:grid;place-items:center;font-weight:800;flex-shrink:0;font-size:15px}
+        .sp-s8-sec h3{font-size:19px;font-weight:800;color:#111827;margin:0}
+        .sp-s8-sec .sub{margin:0;font-size:13.5px;color:#5b6475}
+        .sp-s8-btn{padding:14px 26px;border-radius:14px;font-weight:700;font-size:15px;font-family:inherit;cursor:pointer;border:1px solid transparent}
+        .sp-s8-btn.primary{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;box-shadow:0 10px 22px rgba(124,58,237,.27)}
+        .sp-s8-btn.primary:hover{filter:brightness(1.08)}
+        .sp-s8-btn.ghost{background:#fff;border:1px solid #e8eaf2;color:#111827}
+        .sp-s8-btn.ghost:hover{background:#f7f8fc}
+        .sp-s8-btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;filter:none}
+        .sp-s8-plat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+        .sp-s8-plat{position:relative;text-align:left;border:1.5px solid #e8eaf2;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px;background:#fff;transition:.15s;font-family:inherit}
+        .sp-s8-plat:hover{border-color:#ddd0fb;box-shadow:0 8px 20px rgba(17,24,39,.05)}
+        .sp-s8-plat.selected{border-color:#7c3aed;background:#faf7ff;box-shadow:0 0 0 3px rgba(124,58,237,.12)}
+        .sp-s8-plat .top{display:flex;align-items:center;gap:14px}
+        .sp-s8-logo-p{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;flex-shrink:0}
+        .sp-s8-plat b{display:block;font-size:16px;color:#111827}
+        .sp-s8-status{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#5b6475;background:#f1f3f9;border-radius:999px;padding:3px 10px;margin-top:4px}
+        .sp-s8-status::before{content:"";width:7px;height:7px;border-radius:50%;background:#94a3b8}
+        .sp-s8-status.on{color:#0f9d6b;background:#e3f8ef}
+        .sp-s8-status.on::before{background:#0f9d6b}
+        .sp-s8-plat p{font-size:13.5px;color:#5b6475;min-height:38px;margin:0}
+        .sp-s8-plat .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+        .sp-s8-plat .row .sp-s8-btn{padding:10px 16px;font-size:14px}
+        .sp-s8-pick{margin-left:auto;font-size:13px;font-weight:700;color:#5b6475;display:flex;align-items:center;gap:8px;white-space:nowrap}
+        .sp-s8-pick i{width:22px;height:22px;border-radius:50%;border:2px solid #cbd2e0;display:grid;place-items:center;font-style:normal;color:#fff;font-size:12px}
+        .sp-s8-plat.selected .sp-s8-pick{color:#6d28d9}
+        .sp-s8-plat.selected .sp-s8-pick i{background:#7c3aed;border-color:#7c3aed}
+        .sp-s8-opts{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+        .sp-s8-opt{border:1.5px solid #e8eaf2;border-radius:18px;padding:18px;display:flex;gap:14px;align-items:center;text-align:left;background:#fff;cursor:pointer;font-family:inherit}
+        .sp-s8-opt .oi{font-size:30px}
+        .sp-s8-opt b{display:block;font-size:16px;color:#111827}
+        .sp-s8-opt span{font-size:13.5px;color:#5b6475}
+        .sp-s8-opt .radio{margin-left:auto;width:24px;height:24px;border-radius:50%;border:2px solid #cbd2e0;flex-shrink:0}
+        .sp-s8-opt.selected{border-color:#7c3aed;background:#faf7ff;box-shadow:0 0 0 3px rgba(124,58,237,.12)}
+        .sp-s8-opt.selected b{color:#6d28d9}
+        .sp-s8-opt.selected .radio{border:7px solid #7c3aed}
+        .sp-s8-when{display:none;margin-top:14px;gap:12px;grid-template-columns:1fr 1fr}
+        .sp-s8-when.show{display:grid}
+        .sp-s8-when label{font-size:13px;font-weight:700;color:#5b6475;display:block;margin-bottom:6px}
+        .sp-s8-when input{width:100%;font:inherit;padding:12px 14px;border:1px solid #e8eaf2;border-radius:12px;background:#fff;color:#111827}
+        .sp-s8-back-row{margin-top:22px}
+        .sp-s8-ready-list{margin-top:18px;padding-top:16px;border-top:1px solid #e8eaf2;display:flex;flex-direction:column;gap:10px}
+        .sp-s8-ready-list h4{font-size:15px;margin:0 0 2px;color:#111827}
+        .sp-s8-ri{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600;color:#111827}
+        .sp-s8-ri i{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:12px;border:1.5px solid #34d399;color:#0f9d6b;flex-shrink:0}
+        .sp-s8-ri.warn{color:#92400e}
+        .sp-s8-ri.warn i{border-color:#f59e0b;color:#d97706}
+        .sp-s8-ri.opt-i i{border-color:#cbd2e0;color:transparent}
+        .sp-s8-ri .ri-act{margin-left:auto;font-size:13px;font-weight:700;color:#6d28d9;background:none;border:none;cursor:pointer;font-family:inherit;padding:0}
+        .sp-s8-go{margin-top:18px;display:flex;flex-direction:column;gap:10px}
+        .sp-s8-go .sp-s8-btn{width:100%}
+        .sp-s8-hint{background:#fffbea;border:1px solid #f4e3a1;color:#8a5a00;border-radius:12px;padding:12px 14px;font-size:13.5px;font-weight:600}
+        .sp-s8-hint.ok{background:#e3f8ef;border-color:#a7ecd0;color:#0b7a53}
+        .sp-s8-collab label{font-weight:700;font-size:14px;display:block;margin-bottom:6px;color:#111827}
+        .sp-s8-collab input{width:100%;font:inherit;padding:11px 14px;border:1px solid #e8eaf2;border-radius:12px;background:#fff;color:#111827}
+        .sp-s8-collab small{display:block;color:#5b6475;font-size:12.5px;margin-top:6px}
+        .sp-s8-whatsapp{margin-top:14px;border:1.5px solid #e8eaf2;border-radius:16px;padding:16px}
+        .sp-s8-when-tz{grid-column:1/-1;font-size:12.5px;color:#5b6475;margin-top:2px}
+        .sp-s8-err{grid-column:1/-1;font-size:13px;font-weight:700;color:#8a5a00;background:#fffbea;border:1px solid #f4e3a1;border-radius:12px;padding:10px 13px}
+        @media(max-width:1024px){.sp-s8-grid{grid-template-columns:1fr}.sp-s8-aside{position:static}}
+        @media(max-width:640px){
+          .sp-s8-plat-grid,.sp-s8-opts,.sp-s8-when{grid-template-columns:1fr}
+          .sp-s8-hero-wrap{flex-wrap:wrap}
+          .sp-s8-tag{margin-left:0}
+          .sp-s8-h2{white-space:normal;font-size:21px}
+          .sp-s8-card-base{padding:18px}
+          .sp-s8-card::before{display:none}
+        }
         /* ---- Post Summary highlight animation (ported from the reference) ---- */
         @property --sp-s8-a{syntax:"<angle>";inherits:false;initial-value:0deg}
         .sp-s8-card{position:relative;border:0;padding:0;isolation:isolate;overflow:visible;transform-style:preserve-3d;
@@ -1044,7 +1119,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-s8-sp1{top:14%;left:12%}.sp-s8-sp2{top:28%;right:16%;animation-delay:.8s;font-size:22px}
         .sp-s8-sp3{bottom:22%;left:30%;animation-delay:1.6s;font-size:12px}.sp-s8-sp4{bottom:12%;right:10%;animation-delay:2.2s}
         .sp-s8-thumbwrap{display:flex;gap:14px;align-items:center;position:relative}
-        .sp-s8-thumb{width:150px;height:110px;border-radius:16px;border:3px solid #ffffffcc;box-shadow:0 14px 30px #0006;
+        .sp-s8-thumb{width:150px;height:110px;border-radius:16px;border:3px solid #ffffffcc;box-shadow:0 14px 30px rgba(0,0,0,.4);
           animation:spS8Float 3.4s ease-in-out infinite;transform:rotate(-3deg);position:relative;overflow:hidden;flex-shrink:0;background:rgba(255,255,255,.14)}
         .sp-s8-thumb::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,#ffffff88 50%,transparent 65%);
           transform:translateX(-120%);animation:spS8Shine 3.6s ease-in-out infinite 1.2s}
@@ -1054,27 +1129,30 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-s8-ring .arc{stroke:#a7f3d0;stroke-linecap:round;stroke-dasharray:97.4;stroke-dashoffset:97.4;
           transition:stroke-dashoffset 1.6s cubic-bezier(.2,.8,.2,1)}
         .sp-s8-ring b{font-size:17px;font-weight:800}
-        .sp-s8-live{width:10px;height:10px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 0 #4ade80aa;animation:spS8Pulse 1.8s infinite}
+        .sp-s8-live{width:10px;height:10px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 0 #4ade80aa;animation:spS8Pulse 1.8s infinite;flex-shrink:0}
         .sp-s8-badge{display:inline-flex;align-items:center;gap:7px;background:#ffffff1f;border:1px solid #ffffff33;
-          border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:800;color:#fff}
+          border-radius:999px;padding:5px 12px;font-size:12px;font-weight:700;color:#fff}
         .sp-s8-edit{display:inline-flex;align-items:center;gap:5px;background:#ffffff1f;border:1px solid #ffffff33;
-          border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:800;color:#fff;cursor:pointer;font-family:inherit}
+          border-radius:999px;padding:5px 12px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;font-family:inherit;margin-left:auto}
         .sp-s8-edit:hover{background:#ffffff33}
-        .sp-s8-tags span{font-size:10.5px;font-weight:700;color:#5B21B6;background:#F5F0FF;border:1px solid #DDD6FE;padding:4px 10px;border-radius:999px}
-        .sp-s8-body{padding:20px 22px 0}
-        .sp-s8-cap{display:block;font-size:15px;line-height:1.5;min-height:66px;color:#0f172a}
+        .sp-s8-body{padding:20px 22px 22px}
+        .sp-s8-cap{display:block;font-size:15px;line-height:1.5;min-height:66px;color:#111827}
         .sp-s8-cap::after{content:"\u25AD";color:#7C3AED;animation:spS8Blink .8s steps(1) infinite;margin-left:2px}
         .sp-s8-cap.sp-done::after{display:none}
-        .sp-s8-tags{position:relative;display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 14px}
-        .sp-s8-tags span{opacity:0;animation:spS8Pop .5s cubic-bezier(.2,.9,.3,1.5) forwards;transition:.2s}
-        .sp-s8-tags span:hover{transform:translateY(-3px) scale(1.08);background:#7C3AED;color:#fff}
+        .sp-s8-tags{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;position:relative}
+        .sp-s8-tags span{background:#f1ebff;border:1px solid #ddd0fb;color:#6d28d9;font-weight:700;font-size:12.5px;padding:5px 12px;border-radius:999px;
+          opacity:0;animation:spS8Pop .5s cubic-bezier(.2,.9,.3,1.5) forwards;transition:.2s}
+        .sp-s8-tags span:hover{transform:translateY(-3px) scale(1.08);background:#7c3aed;color:#fff}
         .sp-s8-tags span:nth-child(1){animation-delay:.9s}.sp-s8-tags span:nth-child(2){animation-delay:1s}
         .sp-s8-tags span:nth-child(3){animation-delay:1.1s}.sp-s8-tags span:nth-child(4){animation-delay:1.2s}
         .sp-s8-ready{animation:spS8Rise .6s both 1.3s}
         .sp-s8-cta-on{animation:spS8Ready 1.6s ease-in-out infinite}
+        .sp-s8-res{margin-top:14px;padding-top:14px;border-top:1px solid #e8eaf2;display:flex;flex-direction:column;gap:8px}
+        .sp-s8-res-row{display:flex;align-items:center;gap:9px;font-size:13.5px}
+        .sp-s8-res-row .ri-act{margin-left:auto}
         @keyframes spS8Spin{to{--sp-s8-a:360deg}}
         @keyframes spS8In{from{opacity:0;transform:translateX(60px) rotateY(-18deg) scale(.92)}to{opacity:1;transform:none}}
-        @keyframes spS8Glow{0%,100%{box-shadow:0 10px 34px #7c3aed30}50%{box-shadow:0 16px 60px #ec489960}}
+        @keyframes spS8Glow{0%,100%{box-shadow:0 10px 34px rgba(124,58,237,.19)}50%{box-shadow:0 16px 60px rgba(236,72,153,.38)}}
         @keyframes spS8Float{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-7px) rotate(-1deg)}}
         @keyframes spS8Sweep{0%,55%{left:-80px}100%{left:120%}}
         @keyframes spS8Shine{0%,40%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
@@ -1083,12 +1161,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         @keyframes spS8Twinkle{0%,100%{opacity:0;transform:scale(.4) rotate(0)}50%{opacity:1;transform:scale(1.2) rotate(90deg)}}
         @keyframes spS8Blink{50%{opacity:0}}
         @keyframes spS8Pop{from{opacity:0;transform:scale(.4) translateY(8px)}to{opacity:1;transform:none}}
-        @keyframes spS8Pulse{70%{box-shadow:0 0 0 10px #4ade8000}100%{box-shadow:0 0 0 0 #4ade8000}}
+        @keyframes spS8Pulse{70%{box-shadow:0 0 0 10px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
         @keyframes spS8Rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-        @keyframes spS8Ready{0%,100%{box-shadow:0 10px 22px #7c3aed44}50%{box-shadow:0 0 0 6px #7c3aed22,0 12px 30px #7c3aed88}}
+        @keyframes spS8Ready{0%,100%{box-shadow:0 10px 22px rgba(124,58,237,.27)}50%{box-shadow:0 0 0 6px rgba(124,58,237,.13),0 12px 30px rgba(124,58,237,.53)}}
         @media(prefers-reduced-motion:reduce){
-          .sp-s8-card,.sp-s8-card::before,.sp-s8-hero::after,.sp-s8-blob,.sp-s8-spark,
-          .sp-s8-thumb,.sp-s8-thumb::after,.sp-s8-live,.sp-s8-ready,.sp-s8-cta-on,.sp-s8-tags span{animation:none!important}
+          .sp-s8-card,.sp-s8-card::before,.sp-s8-hero *,.sp-s8-hero::after,.sp-s8-thumb,.sp-s8-thumb::after,
+          .sp-s8-live,.sp-s8-ready,.sp-s8-cta-on,.sp-s8-tags span{animation:none!important}
           .sp-s8-card::before{display:none}
           .sp-s8-cap::after{display:none}
           .sp-s8-tags span{opacity:1}
@@ -3035,149 +3113,104 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
                 {/* ================= STEP 8 — PUBLISH ================= */}
         {currentStep === 8 && (
-          // paddingBottom keeps the last card clear of the sticky action bar.
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 8 }}>
-            <div className="sp-s2-grid">
-              {/* ================= LEFT — WHERE + WHEN ================= */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-                <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
-                    <div style={{ width: 46, height: 46, borderRadius: 14, background: 'linear-gradient(135deg,#7C3AED,#A855F7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, flexShrink: 0, boxShadow: '0 6px 18px rgba(124,58,237,0.34)' }}>✈️</div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Publish Your Post</div>
-                      <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Your content is ready. Choose where and when you want to publish.</div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="sp-s8-grid">
+              {/* ================= LEFT STACK ================= */}
+              <div className="sp-s8-stack">
+                {/* hero */}
+                <section className="sp-s8-card-base">
+                  <div className="sp-s8-hero-wrap">
+                    <div className="sp-s8-ico">✈️</div>
+                    <div>
+                      <h2 className="sp-s8-h2">Publish Your Post</h2>
+                      <p style={{ color: '#5b6475', margin: '4px 0 0', fontSize: 14 }}>Your content is ready. Choose where and when you want to publish.</p>
+                    </div>
+                    <div className="sp-s8-tag">
+                      👑 Great content is meant to be shared!
+                      <small>Choose your platform and timing.</small>
                     </div>
                   </div>
-                </div>
+                </section>
 
-                {/* ---- 1. WHERE ---- */}
-                <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11, marginBottom: 14 }}>
-                    <span style={{ width: 26, height: 26, borderRadius: 9, background: '#EDE9FE', border: '1px solid #DDD6FE', color: C.primaryDark, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: C.ink }}>Choose where to publish</div>
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Select the platforms you want to publish this post to.</div>
+                {/* 1 — WHERE */}
+                <section className="sp-s8-card-base">
+                  <div className="sp-s8-sec">
+                    <div className="sp-s8-num">1</div>
+                    <div>
+                      <h3>Choose where to publish</h3>
+                      <p className="sub">Select the platforms you want to publish this post to. Connect any account that isn’t linked yet.</p>
                     </div>
-                    <button onClick={p.refreshWhapiStatus} disabled={p.whapiLoading} title="Refresh connection status" aria-label="Refresh connection status" style={{ ...ghostBtn, minHeight: 34, padding: '8px 14px', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>↻ Refresh</button>
+                    <button className="sp-s8-btn ghost" onClick={p.refreshWhapiStatus} disabled={p.whapiLoading} aria-label="Refresh connection status">↻ Refresh</button>
                   </div>
 
-                  {p.selectedPlatforms.length === 0 && (
-                    <div style={{ fontSize: 12.5, color: C.muted, border: `1.5px dashed ${C.border}`, borderRadius: 14, padding: 16, textAlign: 'center' }}>
-                      No platforms selected — <button onClick={() => setCurrentStep(2)} style={{ background: 'none', border: 'none', padding: 0, color: C.primaryDark, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5 }}>choose platforms in Settings</button>
-                    </div>
-                  )}
-
-                  <div className="sp-wiz-grid2" style={{ gap: 12 }}>
+                  <div className="sp-s8-plat-grid">
                     {(['linkedin', 'facebook', 'instagram', 'whatsapp'] as const).map(pl => {
-                      const label = pl === 'whatsapp' ? 'WhatsApp' : platformLabel(pl);
+                      const label = platformLabel(pl);
                       const isSelected = p.selectedPlatforms.includes(pl);
                       const connected = isPlatformConnected(pl);
-                      const brand = p.platformColors[pl] || C.primary;
+                      const brand = p.platformColors[pl] || '#7c3aed';
                       const acc = p.accounts.find(a => a.platform === pl && a.connected);
+                      const blurb = connected
+                        ? (pl === 'whatsapp'
+                          ? (p.whapiSelectedGroupId ? 'Destination selected — ready to publish.' : 'Account ready to publish. Pick a destination below.')
+                          : `${acc?.name || 'Account'} ready to publish.`)
+                        : pl === 'instagram'
+                          ? 'Connect a Business or Creator account linked to your Facebook Page.'
+                          : `No ${label} account connected yet.`;
                       return (
                         <div
                           key={pl}
-                          role="group"
+                          className={'sp-s8-plat' + (isSelected ? ' selected' : '')}
+                          role="button"
+                          tabIndex={0}
+                          aria-pressed={isSelected}
                           aria-label={`${label} ${isSelected ? 'selected for publishing' : 'not selected'}`}
-                          style={{
-                            padding: 16, borderRadius: 18,
-                            border: `2px solid ${isSelected ? brand : `${brand}33`}`,
-                            background: isSelected ? `${brand}0D` : '#fff',
-                            boxShadow: isSelected ? `0 8px 22px ${brand}30` : '0 1px 2px rgba(15,23,42,0.05)',
-                            display: 'flex', flexDirection: 'column', gap: 10,
-                            opacity: isSelected ? 1 : 0.92,
-                          }}
+                          onClick={() => p.togglePlatform(pl)}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); p.togglePlatform(pl); } }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                            <span style={{ width: 42, height: 42, borderRadius: 13, background: '#fff', border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <p.PlatformIcon platform={pl} size={19} />
-                            </span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 14.5, fontWeight: 800, color: C.ink }}>{label}</div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
-                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#10B981' : '#CBD5E1', flexShrink: 0 }} />
-                                <span style={{ fontSize: 11, fontWeight: 700, color: connected ? '#047857' : C.faint }}>
-                                  {connected ? 'Connected' : 'Not connected'}
-                                </span>
-                              </div>
+                          <div className="top">
+                            <div className="sp-s8-logo-p" style={{ background: brand }}>
+                              <p.PlatformIcon platform={pl} size={21} />
                             </div>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 800, color: isSelected ? brand : C.faint, flexShrink: 0 }}>
-                              <span style={{ width: 20, height: 20, borderRadius: 6, background: isSelected ? brand : '#fff', border: isSelected ? 'none' : `1.5px solid ${C.border}`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>{isSelected ? '✓' : ''}</span>
-                              {isSelected ? 'Selected' : 'Not selected'}
-                            </span>
+                            <div style={{ minWidth: 0 }}>
+                              <b>{label}</b>
+                              <span className={'sp-s8-status' + (connected ? ' on' : '')}>{connected ? 'Connected' : 'Not connected'}</span>
+                            </div>
+                            <span className="sp-s8-pick" aria-hidden="true"><i>{isSelected ? '✓' : ''}</i>{isSelected ? 'Selected' : 'Select'}</span>
                           </div>
-
-                          <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>
-                            {!isSelected
-                              ? `Add ${label} to publish this post there too.`
-                              : connected
-                                ? (pl === 'whatsapp'
-                                  ? (p.whapiSelectedGroupId ? 'Destination selected — ready to publish.' : 'Connected. Pick a destination below to publish.')
-                                  : (acc?.name || 'Account ready to publish.'))
-                                : `Connect a ${label} account to publish here.`}
-                          </div>
-
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {!isSelected ? (
-                              <button
-                                onClick={() => p.togglePlatform(pl)}
-                                aria-pressed={false}
-                                aria-label={`Add ${label} to this publish`}
-                                style={{ padding: '9px 16px', borderRadius: 10, fontSize: 11.5, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}
-                              >
-                                + Add {label}
-                              </button>
-                            ) : (
+                          <p>{blurb}</p>
+                          <div className="row">
+                            {connected ? (
                               <>
-                                <button
-                                  onClick={() => p.togglePlatform(pl)}
-                                  aria-pressed={true}
-                                  aria-label={`Remove ${label} from this publish`}
-                                  style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 700, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.muted, cursor: 'pointer', fontFamily: 'inherit' }}
-                                >
-                                  Remove
-                                </button>
-                                {connected ? (
-                                  <>
-                                    <button onClick={() => setCurrentStep(pl === 'whatsapp' ? 8 : 7)} style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 800, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', color: C.ink, cursor: 'pointer', fontFamily: 'inherit' }}>Manage</button>
-                                    {pl !== 'whatsapp' && (
-                                      <button onClick={() => p.disconnectPlatform(pl)} style={{ padding: '9px 15px', borderRadius: 10, fontSize: 11.5, fontWeight: 700, border: '1px solid #FECACA', backgroundColor: '#fff', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>Disconnect</button>
-                                    )}
-                                  </>
-                                ) : (
-                                  <button onClick={() => (pl === 'whatsapp' ? p.startWhatsAppConnect() : p.connectPlatform(pl))} style={{ padding: '9px 16px', borderRadius: 10, fontSize: 11.5, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>
-                                    Connect {label}
-                                  </button>
+                                {pl !== 'whatsapp' && (
+                                  <button className="sp-s8-btn ghost" onClick={e => { e.stopPropagation(); p.disconnectPlatform(pl); }}>Disconnect</button>
                                 )}
+                                <button className="sp-s8-btn ghost" onClick={e => { e.stopPropagation(); setCurrentStep(7); }}>Manage</button>
                               </>
+                            ) : (
+                              <button className="sp-s8-btn primary" onClick={e => { e.stopPropagation(); pl === 'whatsapp' ? p.startWhatsAppConnect() : p.connectPlatform(pl); }}>
+                                Connect {label}
+                              </button>
                             )}
                           </div>
-
-                          {pl === 'facebook' && connected && (acc?.pages?.length || 0) > 1 && (
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, fontSize: 11.5, fontWeight: 700, color: C.muted }}>
-                              Page
-                              <select value={acc!.pageId || acc!.pages![0].id} onChange={e => p.setAccountPageId('facebook', e.target.value)} style={{ flex: 1, minWidth: 0, padding: '8px 12px', borderRadius: 9, border: `1px solid ${C.border}`, backgroundColor: '#fff', fontSize: 11.5, fontWeight: 700, color: C.ink, fontFamily: 'inherit' }}>
-                                {acc!.pages!.map(pg => <option key={pg.id} value={pg.id}>{pg.name}</option>)}
-                              </select>
-                            </label>
-                          )}
                         </div>
                       );
                     })}
                   </div>
 
                   {p.selectedPlatforms.includes('whatsapp') && p.whapiConnected && (
-                    <div style={{ marginTop: 14, border: `1.5px solid ${C.border}`, borderRadius: 16, padding: 16 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: p.whapiSelectedDestinations.size > 0 ? 10 : 0 }}>
-                        <span style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: '#fff', border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><p.PlatformIcon platform="whatsapp" size={15} /></span>
+                    <div className="sp-s8-whatsapp">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: p.whapiDestinations.length > 0 ? 12 : 0 }}>
+                        <div className="sp-s8-logo-p" style={{ background: '#25D366', width: 38, height: 38, borderRadius: 11, fontSize: 15 }}>
+                          <p.PlatformIcon platform="whatsapp" size={15} />
+                        </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>WhatsApp destination</div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: '#059669', marginTop: 2 }}>
-                            {p.whapiLoading ? 'Checking…' : p.whapiSelectedDestinations.size > 0 ? `✓ ${p.whapiSelectedDestinations.size} destination${p.whapiSelectedDestinations.size === 1 ? '' : 's'} selected` : 'Connected — pick where to send'}
-                          </div>
+                          <b style={{ display: 'block', fontSize: 15, color: '#111827' }}>WhatsApp destination</b>
+                          <span className="sp-s8-status on" style={{ marginTop: 4 }}>
+                            {p.whapiLoading ? 'Checking…' : p.whapiSelectedDestinations.size > 0 ? `${p.whapiSelectedDestinations.size} selected` : 'Pick a chat, group or community'}
+                          </span>
                         </div>
                       </div>
-
                       <WhatsAppDestinationPicker
                         destinations={p.whapiDestinations}
                         loading={p.whapiGroupsLoading}
@@ -3186,339 +3219,255 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         onChange={p.setWhapiSelectedDestinations}
                         onRefresh={p.loadWhapiDestinations}
                       />
-
-                      {p.whapiDestinations.length === 0 && !p.whapiGroupsLoading && !p.whapiGroupsError && (
-                        <button onClick={() => p.loadWhapiDestinations()} style={{ width: '100%', marginTop: 8, padding: '11px 14px', borderRadius: 11, border: `1.5px dashed ${C.primaryBorder}`, backgroundColor: '#FAF8FF', color: C.primaryDark, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Load WhatsApp chats</button>
-                      )}
-
                       {postPublishMedia.length > 1 && (
-                        <div style={{ marginTop: 10, fontSize: 11, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '9px 12px', lineHeight: 1.55 }}>
+                        <div style={{ marginTop: 10, fontSize: 12, color: '#92400e', background: '#fffbea', border: '1px solid #f4e3a1', borderRadius: 10, padding: '9px 12px', lineHeight: 1.55 }}>
                           ⚠️ WhatsApp sends <strong>1 image per message</strong> — {postPublishMedia.length - 1} extra image{postPublishMedia.length - 1 === 1 ? '' : 's'} will not be sent to WhatsApp.
                         </div>
                       )}
                     </div>
                   )}
-                </div>
+                </section>
 
-                {/* ---- 2. WHEN ---- */}
-                <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11, marginBottom: 14 }}>
-                    <span style={{ width: 26, height: 26, borderRadius: 9, background: '#EDE9FE', border: '1px solid #DDD6FE', color: C.primaryDark, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>2</span>
+                {/* 2 — WHEN */}
+                <section className="sp-s8-card-base">
+                  <div className="sp-s8-sec">
+                    <div className="sp-s8-num">2</div>
                     <div>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: C.ink }}>Choose when to publish</div>
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Share right away or pick a date and time.</div>
+                      <h3>Choose when to publish</h3>
+                      <p className="sub">Share right away or pick a date and time.</p>
                     </div>
                   </div>
-
-                  <div role="radiogroup" aria-label="Publish timing" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 12 }}>
+                  <div className="sp-s8-opts" role="radiogroup" aria-label="Publish timing">
                     {([
                       ['now', '🚀', 'Publish Now', 'Share immediately across selected platforms'],
                       ['later', '📅', 'Schedule for Later', 'Pick a date and time to publish'],
-                    ] as const).map(([k, icon, t, sub]) => {
-                      const on = publishMode === k;
-                      return (
-                        <button
-                          key={k}
-                          role="radio"
-                          aria-checked={on}
-                          onClick={() => setPublishMode(k)}
-                          style={{
-                            padding: 16, borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', fontFamily: 'inherit',
-                            border: on ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`,
-                            background: on ? 'linear-gradient(180deg,#F6F1FF,#EDE9FE)' : '#fff',
-                            boxShadow: on ? '0 6px 20px rgba(124,58,237,0.18)' : '0 1px 2px rgba(15,23,42,0.05)',
-                          }}
-                        >
-                          <span style={{ fontSize: 24 }}>{icon}</span>
-                          <span style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800, color: on ? C.primaryDark : C.ink }}>{t}</span>
-                            <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 2 }}>{sub}</span>
-                          </span>
-                          <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${on ? C.primary : '#CBD5E1'}`, background: on ? C.primary : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            {on && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
-                          </span>
-                        </button>
-                      );
-                    })}
+                    ] as const).map(([k, icon, t, sub]) => (
+                      <button
+                        key={k}
+                        className={'sp-s8-opt' + (publishMode === k ? ' selected' : '')}
+                        role="radio"
+                        aria-checked={publishMode === k}
+                        onClick={() => setPublishMode(k)}
+                      >
+                        <span className="oi" aria-hidden="true">{icon}</span>
+                        <div><b>{t}</b><span>{sub}</span></div>
+                        <i className="radio" aria-hidden="true" />
+                      </button>
+                    ))}
                   </div>
-
-                  {publishMode === 'later' && (
-                    <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12, alignItems: 'start' }}>
-                      <label style={{ display: 'block' }}>
-                        <span style={{ display: 'block', fontSize: 11.5, fontWeight: 800, color: C.muted, marginBottom: 5 }}>Date</span>
-                        <input
-                          type="date"
-                          value={p.scheduleDate}
-                          min={minScheduleDateStr}
-                          onChange={e => p.setScheduleDate(e.target.value)}
-                          aria-label="Schedule date"
-                          style={{ width: '100%', padding: '11px 13px', borderRadius: 11, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'inherit' }}
-                        />
-                      </label>
-                      <label style={{ display: 'block' }}>
-                        <span style={{ display: 'block', fontSize: 11.5, fontWeight: 800, color: C.muted, marginBottom: 5 }}>Time</span>
-                        <input
-                          type="time"
-                          value={p.scheduleTime}
-                          onChange={e => p.setScheduleTime(e.target.value)}
-                          aria-label="Schedule time"
-                          style={{ width: '100%', padding: '11px 13px', borderRadius: 11, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'inherit' }}
-                        />
-                      </label>
-                      <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: C.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        🕒 Time zone: <strong style={{ color: C.ink }}>{userTimeZone}</strong>
-                      </div>
-                      {(!p.scheduleDate || !p.scheduleTime || !scheduleIsValid) && (
-                        <div role="alert" style={{ gridColumn: '1 / -1', fontSize: 12, fontWeight: 700, color: '#B45309', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '9px 12px' }}>
-                          Please choose a future date and time (at least 5 minutes from now).
-                        </div>
-                      )}
+                  <div className={'sp-s8-when' + (publishMode === 'later' ? ' show' : '')}>
+                    <div>
+                      <label htmlFor="sp-s8-date">Date</label>
+                      <input type="date" id="sp-s8-date" value={p.scheduleDate} min={minScheduleDateStr} onChange={e => p.setScheduleDate(e.target.value)} />
                     </div>
-                  )}
+                    <div>
+                      <label htmlFor="sp-s8-time">Time</label>
+                      <input type="time" id="sp-s8-time" value={p.scheduleTime} onChange={e => p.setScheduleTime(e.target.value)} />
+                    </div>
+                    <div className="sp-s8-when-tz">🕒 Time zone: <strong style={{ color: '#111827' }}>{userTimeZone}</strong></div>
+                    {publishMode === 'later' && (!p.scheduleDate || !p.scheduleTime || !scheduleIsValid) && (
+                      <div className="sp-s8-err" role="alert">Please choose a future date and time.</div>
+                    )}
+                  </div>
+                </section>
+
+                <div className="sp-s8-back-row">
+                  <button className="sp-s8-btn ghost" onClick={goBack}>← Back</button>
                 </div>
               </div>
 
-              {/* ================= RIGHT — SUMMARY + READINESS ================= */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-                <div className="sp-s8-sticky" style={{ paddingBottom: 4 }}>
-                  {/* ---- Post Summary ---- */}
-                  <div
-                    ref={summaryCardRef}
-                    className="sp-s8-card"
-                    onMouseMove={e => {
-                      const el = summaryCardRef.current;
-                      if (!el) return;
-                      const calm = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-                      const fine = typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover)').matches;
-                      if (calm || !fine) return;
-                      const r = el.getBoundingClientRect();
-                      const x = (e.clientX - r.left) / r.width - 0.5;
-                      const y = (e.clientY - r.top) / r.height - 0.5;
-                      el.style.transform = `perspective(900px) rotateY(${x * 8}deg) rotateX(${-y * 6}deg)`;
-                    }}
-                    onMouseLeave={() => { const el = summaryCardRef.current; if (el) el.style.transform = ''; }}
-                    style={{ borderRadius: 21, background: '#fff' }}
-                  >
-                    <div className="sp-s8-hero">
-                      <div className="sp-s8-blob sp-s8-b1" /><div className="sp-s8-blob sp-s8-b2" /><div className="sp-s8-blob sp-s8-b3" />
-                      <span className="sp-s8-spark sp-s8-sp1">✦</span><span className="sp-s8-spark sp-s8-sp2">✧</span><span className="sp-s8-spark sp-s8-sp3">✦</span><span className="sp-s8-spark sp-s8-sp4">✧</span>
-                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 9, marginBottom: 13 }}>
-                        <span className="sp-s8-badge">
-                          <span className="sp-s8-live" />
-                          Post Summary
-                        </span>
-                        <div style={{ flex: 1 }} />
-                        <button onClick={() => setCurrentStep(3)} className="sp-s8-edit" aria-label="Edit content">✏️ Edit</button>
-                      </div>
-                      <div className="sp-s8-thumbwrap">
-                        {(() => {
-                          const thumb = (p.isCarousel ? p.carouselSlides : p.mediaItems)[0] || null;
-                          const thumbUrl = thumb?.url || p.generatedImage || p.generatedVideo || postExtraImages[0]?.url || '';
-                          const thumbIsVideo = thumb ? thumb.type === 'video' : !!p.generatedVideo && !thumb;
-                          return (
-                            <div className="sp-s8-thumb">
-                              {thumbUrl ? (
-                                thumbIsVideo
-                                  ? <video src={thumbUrl} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                  : <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                              ) : (
-                                <span style={{ fontSize: 26, opacity: 0.85 }}>🖼️</span>
-                              )}
-                            </div>
-                          );
-                        })()}
-                        <div className="sp-s8-ring" title="Content readiness" role="img" aria-label={`Content readiness ${ringPct} percent`}>
-                          <svg viewBox="0 0 36 36" aria-hidden="true">
-                            <circle cx="18" cy="18" r="15.5" />
-                            <circle className="arc" cx="18" cy="18" r="15.5" style={{ strokeDashoffset: 97.4 * (1 - ringPct / 100) }} />
-                          </svg>
-                          <b>{ringPct}%</b>
-                        </div>
-                      </div>
+              {/* ================= ASIDE — SUMMARY ================= */}
+              <aside className="sp-s8-aside">
+                <div
+                  className="sp-s8-card"
+                  ref={summaryCardRef}
+                  onMouseMove={e => {
+                    const el = summaryCardRef.current;
+                    if (!el) return;
+                    const calm = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+                    const fine = typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover)').matches;
+                    if (calm || !fine) return;
+                    const r = el.getBoundingClientRect();
+                    const x = (e.clientX - r.left) / r.width - 0.5;
+                    const y = (e.clientY - r.top) / r.height - 0.5;
+                    el.style.transform = `perspective(900px) rotateY(${x * 8}deg) rotateX(${-y * 6}deg)`;
+                  }}
+                  onMouseLeave={() => { const el = summaryCardRef.current; if (el) el.style.transform = ''; }}
+                >
+                  <div className="sp-s8-hero">
+                    <div className="sp-s8-blob sp-s8-b1" /><div className="sp-s8-blob sp-s8-b2" /><div className="sp-s8-blob sp-s8-b3" />
+                    <span className="sp-s8-spark sp-s8-sp1">✦</span><span className="sp-s8-spark sp-s8-sp2">✧</span><span className="sp-s8-spark sp-s8-sp3">✦</span><span className="sp-s8-spark sp-s8-sp4">✧</span>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                      <span className="sp-s8-badge"><span className="sp-s8-live" />Post Summary</span>
+                      <button className="sp-s8-edit" onClick={() => setCurrentStep(3)} aria-label="Edit content">✏️ Edit</button>
                     </div>
-
-                    <div className="sp-s8-body" style={{ paddingBottom: 18 }}>
-                      <span className={'sp-s8-cap' + (!capTyping ? ' sp-done' : '')}>
-                        {!summaryCaption ? <span style={{ color: C.faint }}>No caption yet.</span> : summaryCaption.slice(0, capReveal)}
-                      </span>
-
-                      <div className="sp-s8-tags">
-                        {[
-                          p.selectedPlatforms.length ? p.selectedPlatforms.map(platformLabel).join(' • ') : 'No platforms',
-                          // User-facing wording: "Single Post" and "Carousel" are internal terms.
-                          p.isCarousel ? `Multiple Images • ${p.carouselSlides.length} images` : 'Single Image',
-                          p.aspectRatio || 'No ratio',
-                          p.imageStyle,
-                          ...(p.trialReel && p.instagramReelReady ? ['Trial Reel'] : []),
-                          ...(p.collaborator && p.selectedPlatforms.includes('instagram') ? [`@${p.collaborator}`] : []),
-                        ].map(chip => (
-                          <span key={chip} style={{ fontSize: 10.5, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '4px 10px', borderRadius: 999 }}>{chip}</span>
-                        ))}
-                      </div>
-
-                      {p.isCarousel && (
-                        <div style={{ marginTop: 10, fontSize: 11, fontWeight: 700, padding: '7px 10px', borderRadius: 9, background: p.carouselValidation.valid ? '#ECFDF5' : '#FEF2F2', color: p.carouselValidation.valid ? '#065F46' : '#991B1B', border: `1px solid ${p.carouselValidation.valid ? '#A7F3D0' : '#FECACA'}` }}>
-                          {p.carouselValidation.valid ? `✓ Multiple Images: ${p.carouselSlides.length} slides ready` : `⚠ ${p.carouselValidation.reason}`}
-                        </div>
-                      )}
-
-                      {p.instagramReelReady && (
-                        <div style={{ marginTop: 12 }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 13px', borderRadius: 11, border: `1.5px solid ${p.trialReel ? C.primary : C.border}`, backgroundColor: p.trialReel ? C.primarySoft : '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
-                            <input type="checkbox" checked={p.trialReel} onChange={e => p.setTrialReel(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#7C3AED', cursor: 'pointer' }} />
-                            <span style={{ fontSize: 12.5, fontWeight: 800, color: p.trialReel ? C.primaryDark : C.ink }}>Post as Trial Reel</span>
-                          </label>
-                          {p.trialReel && (
-                            <div style={{ marginTop: 7, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>
-                              A trial reel is visible only to invited people until you publish it to everyone.
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {p.selectedPlatforms.includes('instagram') && (
-                        <div style={{ marginTop: 12 }}>
-                          <label htmlFor="sp-collab" style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: C.ink, marginBottom: 5 }}>Instagram Collaborator (Optional)</label>
-                          <input
-                            id="sp-collab"
-                            value={p.collaborator}
-                            onChange={e => p.setCollaborator(e.target.value.replace(/^@+/, '').slice(0, 40))}
-                            placeholder="Username without @"
-                            autoComplete="off"
-                            aria-describedby="sp-collab-help"
-                            style={{ width: '100%', padding: '10px 13px', borderRadius: 11, border: `1.5px solid ${C.border}`, backgroundColor: '#fff', fontSize: 13, color: C.ink, fontFamily: 'inherit' }}
-                          />
-                          <div id="sp-collab-help" style={{ marginTop: 6, fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>
-                            Instagram will send the collaborator invitation. The collaborator must accept it before the collaboration appears on the post.
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* ---- Content Readiness (real checks only, no fake score) ---- */}
-                  <div className="sp-s8-ready" style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 20, padding: '18px 20px', marginTop: 14 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginBottom: 10 }}>Content Readiness</div>
-                    {(() => {
-                      const contentOk = hasContent;
-                      const mediaOk = hasMedia || postExtraImages.length > 0;
-                      const rows: Array<{ state: 'ok' | 'warn' | 'neutral'; label: string; detail: string; run?: () => void; action?: string }> = [
-                        { state: contentOk ? 'ok' : 'warn', label: contentOk ? 'Content ready' : 'Content missing', detail: contentOk ? 'Caption generated for your platforms.' : 'Head back to Step 3 to generate content.', run: () => setCurrentStep(3), action: contentOk ? 'Edit' : 'Generate' },
-                        { state: mediaOk ? 'ok' : 'warn', label: mediaOk ? 'Media ready' : 'Media missing', detail: mediaOk ? 'Your visual is attached.' : 'Add a visual in Step 4.', run: () => setCurrentStep(4), action: 'Edit' },
-                        { state: p.logoImage ? 'ok' : 'neutral', label: p.logoImage ? 'Branding applied' : 'No logo (optional)', detail: p.logoImage ? 'Your logo is on the visual.' : 'Branding is optional — you can publish without it.', run: () => setCurrentStep(7), action: 'Brand' },
-                      ];
-                      return (
-                        <div>
-                          {rows.map(r => (
-                            <div key={r.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 0' }}>
-                              <span style={{
-                                width: 20, height: 20, borderRadius: '50%', fontSize: 11, fontWeight: 800, flexShrink: 0, marginTop: 1,
-                                background: r.state === 'ok' ? '#ECFDF5' : r.state === 'warn' ? '#FFFBEB' : '#F1F3F9',
-                                border: `1px solid ${r.state === 'ok' ? '#A7F3D0' : r.state === 'warn' ? '#FDE68A' : '#E2E8F0'}`,
-                                color: r.state === 'ok' ? '#059669' : r.state === 'warn' ? '#B45309' : '#94A3B8',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              }}>{r.state === 'ok' ? '✓' : r.state === 'warn' ? '⚠' : '○'}</span>
-                              <span style={{ flex: 1, minWidth: 0 }}>
-                                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: C.ink }}>{r.label}</span>
-                                <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 1 }}>{r.detail}</span>
-                              </span>
-                              {r.run && <button onClick={r.run} style={{ fontSize: 11, fontWeight: 800, background: 'none', border: 'none', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>{r.action}</button>}
-                            </div>
-                          ))}
-                          {/* Per-platform connection readiness — never collapsed into one generic row */}
-                          {p.selectedPlatforms.map(pl => {
-                            const on = isPlatformConnected(pl);
-                            return (
-                              <div key={`conn-${pl}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 0' }}>
-                                <span style={{
-                                  width: 20, height: 20, borderRadius: '50%', fontSize: 11, fontWeight: 800, flexShrink: 0, marginTop: 1,
-                                  background: on ? '#ECFDF5' : '#FEF2F2',
-                                  border: `1px solid ${on ? '#A7F3D0' : '#FECACA'}`,
-                                  color: on ? '#059669' : '#DC2626',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                }}>{on ? '✓' : '!'}</span>
-                                <span style={{ flex: 1, minWidth: 0 }}>
-                                  <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: C.ink }}>{platformLabel(pl)} {on ? 'connected' : 'not connected'}</span>
-                                  {!on && <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 1 }}>Connect it or remove it from this publish.</span>}
-                                </span>
-                                {!on && (
-                                  <button onClick={() => (pl === 'whatsapp' ? p.startWhatsAppConnect() : p.connectPlatform(pl))} style={{ fontSize: 11, fontWeight: 800, background: 'none', border: 'none', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>Connect</button>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* ---- Per-platform publish results ---- */}
-                  {Object.keys(p.publishStatuses).length > 0 && (
-                    <div style={{ ...card, borderRadius: 20, padding: '18px 20px', marginTop: 14 }} aria-live="polite">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, flex: 1 }}>Publish Results</span>
-                        {Object.values(p.publishStatuses).some(v => v.state === 'failed') && (
-                          <button onClick={p.retryFailedPublish} disabled={p.isPublishing} style={{ ...ghostBtn, minHeight: 32, padding: '7px 13px', fontSize: 11.5, fontWeight: 800 }}>↻ Retry Failed</button>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                        {Object.entries(p.publishStatuses).map(([pl, st]) => (
-                          <div key={pl} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12.5 }}>
-                            <span style={{
-                              width: 19, height: 19, borderRadius: '50%', fontSize: 10.5, fontWeight: 800, flexShrink: 0,
-                              background: st.state === 'success' ? '#ECFDF5' : st.state === 'failed' ? '#FEF2F2' : '#FFFBEB',
-                              border: `1px solid ${st.state === 'success' ? '#A7F3D0' : st.state === 'failed' ? '#FECACA' : '#FDE68A'}`,
-                              color: st.state === 'success' ? '#059669' : st.state === 'failed' ? '#DC2626' : '#B45309',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}>{st.state === 'success' ? '✓' : st.state === 'failed' ? '!' : '⋯'}</span>
-                            <span style={{ fontWeight: 800, color: C.ink }}>{platformLabel(pl)}</span>
-                            <span style={{ color: st.state === 'success' ? '#059669' : st.state === 'failed' ? '#DC2626' : '#B45309', fontWeight: 700 }}>
-                              {st.state === 'success' ? 'Published' : st.state === 'pending' ? 'Publishing…' : 'Failed'}
-                            </span>
-                            {st.state === 'failed' && st.message && (
-                              <span style={{ color: C.muted, fontSize: 11.5, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>— {st.message}</span>
+                    <div className="sp-s8-thumbwrap">
+                      {(() => {
+                        const thumb = (p.isCarousel ? p.carouselSlides : p.mediaItems)[0] || null;
+                        const thumbUrl = thumb?.url || p.generatedImage || p.generatedVideo || postExtraImages[0]?.url || '';
+                        const thumbIsVideo = thumb ? thumb.type === 'video' : !!p.generatedVideo && !thumb;
+                        return (
+                          <div className="sp-s8-thumb">
+                            {thumbUrl ? (
+                              thumbIsVideo
+                                ? <video src={thumbUrl} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                : <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            ) : (
+                              <span style={{ fontSize: 26, opacity: .85 }}>🖼️</span>
                             )}
                           </div>
-                        ))}
+                        );
+                      })()}
+                      <div className="sp-s8-ring" title="Content readiness" role="img" aria-label={`Content readiness ${ringPct} percent`}>
+                        <svg viewBox="0 0 36 36" aria-hidden="true">
+                          <circle cx="18" cy="18" r="15.5" />
+                          <circle className="arc" cx="18" cy="18" r="15.5" style={{ strokeDashoffset: 97.4 * (1 - ringPct / 100) }} />
+                        </svg>
+                        <b>{ringPct}%</b>
                       </div>
                     </div>
-                  )}
+                  </div>
+
+                  <div className="sp-s8-body">
+                    <span className={'sp-s8-cap' + (!capTyping ? ' sp-done' : '')}>
+                      {!summaryCaption ? <span style={{ color: '#94a3b8' }}>No caption yet.</span> : summaryCaption.slice(0, capReveal)}
+                    </span>
+
+                    <div className="sp-s8-tags">
+                      {[
+                        p.selectedPlatforms.length ? p.selectedPlatforms.map(platformLabel).join(' • ') : 'No platforms',
+                        p.isCarousel ? `Multiple Images • ${p.carouselSlides.length} images` : 'Single Image',
+                        p.aspectRatio || 'No ratio',
+                        p.imageStyle,
+                        ...(p.trialReel && p.instagramReelReady ? ['Trial Reel'] : []),
+                        ...(p.collaborator && p.selectedPlatforms.includes('instagram') ? [`@${p.collaborator}`] : []),
+                      ].map(chip => <span key={chip}>{chip}</span>)}
+                    </div>
+
+                    {p.isCarousel && (
+                      <div style={{ fontSize: 13, fontWeight: 700, padding: '8px 11px', borderRadius: 10, background: p.carouselValidation.valid ? '#e3f8ef' : '#fef2f2', color: p.carouselValidation.valid ? '#0b7a53' : '#b91c1c', border: `1px solid ${p.carouselValidation.valid ? '#a7ecd0' : '#fecaca'}` }}>
+                        {p.carouselValidation.valid ? `✓ Multiple Images: ${p.carouselSlides.length} slides ready` : `⚠ ${p.carouselValidation.reason}`}
+                      </div>
+                    )}
+
+                    {p.instagramReelReady && (
+                      <div style={{ marginTop: 12 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 13px', borderRadius: 12, border: `1.5px solid ${p.trialReel ? '#7c3aed' : '#e8eaf2'}`, background: p.trialReel ? '#faf7ff' : '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                          <input type="checkbox" checked={p.trialReel} onChange={e => p.setTrialReel(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#7c3aed', cursor: 'pointer' }} />
+                          <span style={{ fontSize: 13.5, fontWeight: 700, color: '#111827' }}>Post as Trial Reel</span>
+                        </label>
+                      </div>
+                    )}
+
+                    {p.selectedPlatforms.includes('instagram') && (
+                      <div className="sp-s8-collab" style={{ marginTop: 16 }}>
+                        <label htmlFor="sp-collab">Instagram Collaborator (Optional)</label>
+                        <input
+                          id="sp-collab"
+                          value={p.collaborator}
+                          onChange={e => p.setCollaborator(e.target.value.replace(/^@+/, '').slice(0, 40))}
+                          placeholder="Username without @"
+                          autoComplete="off"
+                          aria-describedby="sp-collab-help"
+                        />
+                        <small id="sp-collab-help">Instagram will send the collaborator invitation. The collaborator must accept it before the collaboration appears on the post.</small>
+                      </div>
+                    )}
+
+                    {/* readiness — real checks + per-platform connection */}
+                    <div className="sp-s8-ready-list">
+                      <h4>Content Readiness</h4>
+                      {(() => {
+                        const mediaOk = hasMedia || postExtraImages.length > 0;
+                        const rows: Array<{ state: 'ok' | 'warn' | 'opt'; label: string; act: string; run?: () => void }> = [
+                          hasContent
+                            ? { state: 'ok', label: 'Content ready', act: 'Edit', run: () => setCurrentStep(3) }
+                            : { state: 'warn', label: 'Content missing', act: 'Generate', run: () => setCurrentStep(3) },
+                          mediaOk
+                            ? { state: 'ok', label: 'Media ready', act: 'Edit', run: () => setCurrentStep(4) }
+                            : { state: 'warn', label: 'Media missing', act: 'Add', run: () => setCurrentStep(4) },
+                          p.logoImage
+                            ? { state: 'ok', label: 'Branding applied', act: 'Brand', run: () => setCurrentStep(7) }
+                            : { state: 'opt', label: 'No logo (optional)', act: 'Brand', run: () => setCurrentStep(7) },
+                        ];
+                        return (
+                          <>
+                            {rows.map(r => (
+                              <div key={r.label} className={'sp-s8-ri' + (r.state === 'warn' ? ' warn' : r.state === 'opt' ? ' opt-i' : '')}>
+                                <i>{r.state === 'ok' ? '✓' : r.state === 'warn' ? '!' : ''}</i>
+                                {r.label}
+                                {r.run && <button className="ri-act" onClick={r.run}>{r.act}</button>}
+                              </div>
+                            ))}
+                            {p.selectedPlatforms.map(pl => {
+                              const on = isPlatformConnected(pl);
+                              return (
+                                <div key={`c-${pl}`} className={'sp-s8-ri' + (on ? '' : ' warn')}>
+                                  <i>{on ? '✓' : '!'}</i>
+                                  {platformLabel(pl)} {on ? 'connected' : 'not connected'}
+                                  {!on && (
+                                    <button className="ri-act" onClick={() => (pl === 'whatsapp' ? p.startWhatsAppConnect() : p.connectPlatform(pl))}>Connect</button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </>
+                        );
+                      })()}
+                    </div>
+
+                    {/* per-platform results */}
+                    {Object.keys(p.publishStatuses).length > 0 && (
+                      <div className="sp-s8-res" aria-live="polite">
+                        {Object.entries(p.publishStatuses).map(([pl, st]) => (
+                          <div key={pl} className={'sp-s8-res-row' + (st.state === 'failed' ? ' sp-s8-ri warn' : '')}>
+                            <i style={{ width: 22, height: 22, borderRadius: '50%', display: 'grid', placeItems: 'center', fontStyle: 'normal', fontSize: 12, flexShrink: 0, border: `1.5px solid ${st.state === 'success' ? '#34d399' : st.state === 'failed' ? '#f59e0b' : '#cbd2e0'}`, color: st.state === 'success' ? '#0f9d6b' : st.state === 'failed' ? '#d97706' : 'transparent' }}>
+                              {st.state === 'success' ? '✓' : st.state === 'failed' ? '!' : '…'}
+                            </i>
+                            <span style={{ fontWeight: 700 }}>{platformLabel(pl)}</span>
+                            <span style={{ color: st.state === 'success' ? '#0f9d6b' : st.state === 'failed' ? '#d97706' : '#5b6475' }}>
+                              {st.state === 'success' ? 'Published' : st.state === 'pending' ? 'Publishing…' : 'Failed'}
+                            </span>
+                            {st.state === 'failed' && st.message && <span style={{ fontSize: 12, color: '#5b6475', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>— {st.message}</span>}
+                          </div>
+                        ))}
+                        {Object.values(p.publishStatuses).some(v => v.state === 'failed') && (
+                          <button className="sp-s8-btn ghost" style={{ marginTop: 4, padding: '10px 16px', fontSize: 14 }} onClick={p.retryFailedPublish} disabled={p.isPublishing}>↻ Retry Failed</button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* hint + actions */}
+                    <div className="sp-s8-go">
+                      <div aria-live="polite" className={'sp-s8-hint' + (canPublish ? ' ok' : '')}>
+                        {canPublish ? 'Everything looks good — you’re ready to publish!' : publishBlocker}
+                      </div>
+                      {publishMode === 'now' ? (
+                        <button
+                          className={'sp-s8-btn primary' + (canPublish && !p.isPublishing && p.publishCooldown === 0 ? ' sp-s8-cta-on' : '')}
+                          onClick={() => p.publishToAll()}
+                          disabled={p.isPublishing || p.publishCooldown > 0 || !canPublish}
+                          aria-busy={p.isPublishing}
+                          title={!canPublish ? publishBlocker : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s before publishing again` : 'Publish now'}
+                        >
+                          {p.isPublishing ? 'Publishing…' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : '🚀 Publish Now →'}
+                        </button>
+                      ) : (
+                        <button
+                          className="sp-s8-btn primary"
+                          onClick={() => { void p.schedulePost(); }}
+                          disabled={p.isScheduling || !canPublish}
+                          aria-busy={p.isScheduling}
+                          title={!canPublish ? publishBlocker : 'Schedule post'}
+                        >
+                          {p.isScheduling ? 'Scheduling…' : '📅 Schedule Post →'}
+                        </button>
+                      )}
+                      <button className="sp-s8-btn ghost" onClick={saveDraft}>💾 Save as Draft</button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-
-            {/* ---- hint + nav ---- */}
-            <div aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 14, fontSize: 12.5, fontWeight: 700, border: `1px solid ${canPublish ? '#A7F3D0' : '#FDE68A'}`, backgroundColor: canPublish ? '#ECFDF5' : '#FFFBEB', color: canPublish ? '#065F46' : '#92400E' }}>
-              <span style={{ fontSize: 15 }}>{canPublish ? '✓' : '⚠'}</span>
-              <span>{canPublish ? 'Ready to publish' : publishBlocker}</span>
-            </div>
-
-            <div style={{ position: 'sticky', bottom: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', background: 'linear-gradient(180deg,rgba(248,250,252,0) 0%,#F8FAFC 30%)', flexWrap: 'wrap' }}>
-              <button onClick={goBack} style={{ ...ghostBtn, minHeight: 52, padding: '14px 26px', fontSize: 14 }}>← Back</button>
-              <button onClick={saveDraft} style={{ ...ghostBtn, minHeight: 52, padding: '14px 24px', fontSize: 14 }}>💾 Save as Draft</button>
-              <div style={{ flex: 1 }} />
-              {publishMode === 'now' ? (
-                <button
-                  onClick={() => p.publishToAll()}
-                  disabled={p.isPublishing || p.publishCooldown > 0 || !canPublish}
-                  title={!canPublish ? publishBlocker : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s before publishing again` : 'Publish now'}
-                  aria-busy={p.isPublishing}
-                  className={canPublish && !p.isPublishing && p.publishCooldown === 0 ? 'sp-s8-cta-on' : undefined}
-                  style={{ minHeight: 52, padding: '14px 32px', borderRadius: 13, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', background: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? '#DDD6FE' : 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: (p.isPublishing || p.publishCooldown > 0 || !canPublish) ? 'none' : '0 6px 22px rgba(124,58,237,0.42)' }}
-                >
-                  {p.isPublishing ? 'Publishing…' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : '🚀 Publish Now →'}
-                </button>
-              ) : (
-                <button
-                  onClick={() => { void p.schedulePost(); }}
-                  disabled={p.isScheduling || !canPublish}
-                  title={!canPublish ? publishBlocker : 'Schedule post'}
-                  aria-busy={p.isScheduling}
-                  style={{ minHeight: 52, padding: '14px 32px', borderRadius: 13, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: (p.isScheduling || !canPublish) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', background: (p.isScheduling || !canPublish) ? '#DDD6FE' : 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: (p.isScheduling || !canPublish) ? 'none' : '0 6px 22px rgba(124,58,237,0.42)' }}
-                >
-                  {p.isScheduling ? 'Scheduling…' : '📅 Schedule Post →'}
-                </button>
-              )}
+              </aside>
             </div>
           </div>
         )}
