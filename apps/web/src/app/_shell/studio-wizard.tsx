@@ -145,8 +145,8 @@ const STEPS = [
   { n: 3, t: 'Content' },
   { n: 4, t: 'Media' },
   { n: 5, t: 'Design' },
-  { n: 6, t: 'Branding' },
-  { n: 7, t: 'Preview' },
+  { n: 6, t: 'Personalization' },
+  { n: 7, t: 'Branding' },
   { n: 8, t: 'Publish' },
 ];
 
@@ -940,8 +940,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-soc { position: absolute; width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #fff; cursor: default; transition: transform 180ms ease, box-shadow 180ms ease; will-change: transform; }
         .sp-soc:hover { transform: scale(1.06); }
         .sp-robot { position: absolute; left: 50%; top: 50%; width: 74px; height: 74px; margin-left: -37px; margin-top: -37px; border-radius: 24px; background: linear-gradient(135deg,#7C3AED,#A855F7); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: 0 10px 28px rgba(124,58,237,.45), inset 0 1px 0 rgba(255,255,255,.35); z-index: 2; }
-        .sp-duo2{display:grid;gap:20px 28px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start;min-width:0}
-        .sp-duo2side{min-width:0;max-width:100%}
         .sp-plat-tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
         @media(max-width:640px){.sp-plat-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
         .sp-plat-tabs::-webkit-scrollbar{display:none}.sp-plat-tabs>*{flex:0 0 auto;min-width:132px}}
@@ -955,13 +953,14 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-prev-slide{flex:0 0 100%;min-width:0;display:flex;justify-content:center}
         .sp-prev-arrow{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;border:none;background:#fff;color:#1E293B;font-size:22px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;box-shadow:0 6px 18px rgba(15,23,42,0.22);transition:transform .18s,box-shadow .18s}
         .sp-prev-arrow:hover{transform:translateY(-50%) scale(1.08);box-shadow:0 10px 26px rgba(15,23,42,0.3)}
-        .sp-prev-arrow:disabled{opacity:0;pointer-events:none}
         @media(max-width:640px){.sp-prev-canvas{padding:24px 18px;border-radius:18px}.sp-prev-arrow{width:34px;height:34px;font-size:17px}}
         .sp-prev-dots{display:flex;gap:7px;justify-content:center;margin-top:16px}
         .sp-prev-dot{width:9px;height:9px;border-radius:999px;border:none;padding:0;background:#D1D5DB;cursor:pointer;transition:background .18s,transform .18s}
         .sp-prev-dot.sp-on{background:#7C3AED;transform:scale(1.15)}
         .sp-panel-btn{display:flex;align-items:center;gap:10px;width:100%;padding:14px 18px;border-radius:14px;border:1px solid #E5E7EB;background:#fff;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:800;color:#334155;text-align:left}
         .sp-panel-btn:hover{border-color:#C4B5FD;background:#FAF8FF}
+        .sp-duo2{display:grid;gap:20px 28px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start;min-width:0}
+        .sp-duo2side{min-width:0;max-width:100%}
         @media(min-width:700px){.sp-duo2side + .sp-duo2side{border-left:1px solid #F1F3F9;padding-left:28px}}
         @media(max-width:699px){.sp-duo2{grid-template-columns:minmax(0,1fr)}.sp-duo2side + .sp-duo2side{border-top:1px solid #F1F3F9;padding-top:20px}}
         .sp-orbit { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; margin-left: -75px; margin-top: -75px; border: 1.5px dashed rgba(124,58,237,.35); border-radius: 50%; pointer-events: none; animation: spSpinSlow 24s linear infinite; }
@@ -2220,166 +2219,15 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
               <div style={{ ...card, borderRadius: 20, padding: '28px 30px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>👁️</div>
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🎨</div>
                   <div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>BRANDING PREVIEW</div>
-                    <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Preview your branded visual and make final adjustments before publishing.</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Personalization</div>
                   </div>
                 </div>
               </div>
 
-              {/* ---- Section 1: Branded Preview (platform slider) ---- */}
               <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 11, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>👁️</div>
-                  <div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>Platform Preview</div>
-                    <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>See how your image will look on each platform with your logo.</div>
-                  </div>
-                </div>
-                {(() => {
-                  const hero = canvaEditTarget || p.mediaItems.find(m => m.type === 'image') || p.mediaItems[0] || null;
-                  const heroUrl = hero?.url || p.generatedImage || p.generatedVideo || '';
-                  const heroIsVideo = hero ? hero.type === 'video' : !!p.generatedVideo && !hero;
-                  const heroKey = hero?.id || 'gen';
-                  const brandIcon: Record<string, string> = { linkedin: '/brand-icons/linkedin.webp', facebook: '/brand-icons/facebook.png', instagram: '/brand-icons/instagram.png', whatsapp: '/brand-icons/whatsapp.png' };
-                  const previewOpts = (['instagram', 'facebook', 'linkedin', 'whatsapp'] as const).filter(pl => p.selectedPlatforms.includes(pl));
-                  const safePreviewIdx = Math.min(previewSlideIdx, Math.max(previewOpts.length - 1, 0));
-                  const capNoTags = (() => { const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || []; if (!p.content.trim()) return ''; return tags.length ? p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim() : p.content; })();
-                  const waCap = (() => { const c = p.platformContent[p.activePreviewPlatform]?.caption || p.content; return c.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim(); })();
-                  const tagList = p.platformContent[p.activePreviewPlatform]?.hashtags || [];
-                  const unburnedLogo = p.logoImage && !heroIsVideo && !p.burnedLogoIds[heroKey] ? p.logoImage : undefined;
-                  const gotoSlide = (nn: number) => {
-                    setPreviewSlideIdx(nn);
-                    const pl = previewOpts[nn];
-                    setPreviewPlatform(pl);
-                    if (p.platformContent[pl]) p.switchPreviewPlatform(pl);
-                  };
-                  if (!heroUrl) {
-                    return (
-                      <div style={{ marginTop: 18, borderRadius: 24, padding: 54, textAlign: 'center', background: 'linear-gradient(135deg,#7C3AED,#D946EF 55%,#FBBF24)' }}>
-                        <div style={{ background: '#fff', borderRadius: 20, padding: 40, boxShadow: '0 12px 36px rgba(15,23,42,0.18)' }}>
-                          <div style={{ fontSize: 34 }}>🖼️</div>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginTop: 8 }}>No visual yet</div>
-                          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Create one in Media (Step 4), then return here.</div>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <>
-                      <div className="sp-plat-tabs" style={{ marginTop: 18 }}>
-                        {previewOpts.map((pps, i) => (
-                          <button key={pps} className={'sp-plat-tab' + (i === safePreviewIdx ? ' sp-on' : '')} onClick={() => gotoSlide(i)} aria-label={`Preview ${pps}`} aria-pressed={i === safePreviewIdx}>
-                            <img src={brandIcon[pps]} alt="" aria-hidden="true" width={24} height={24} />
-                            {pps}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="sp-prev-canvas">
-                        {previewOpts.length > 1 && (
-                          <button className="sp-prev-arrow" style={{ left: 14 }} aria-label="Previous platform" onClick={() => gotoSlide((safePreviewIdx - 1 + previewOpts.length) % previewOpts.length)}>‹</button>
-                        )}
-                        <div className="sp-prev-viewport" onTouchStart={e => { e.currentTarget.dataset.sx = String(e.touches[0].clientX); }} onTouchEnd={e => { const sx = parseFloat(e.currentTarget.dataset.sx || 'x'); if (Number.isNaN(sx) || previewOpts.length < 2) return; const dx = e.changedTouches[0].clientX - sx; delete e.currentTarget.dataset.sx; if (Math.abs(dx) < 40) return; gotoSlide(dx < 0 ? (safePreviewIdx + 1) % previewOpts.length : (safePreviewIdx - 1 + previewOpts.length) % previewOpts.length); }}>
-                          <div className="sp-prev-track" style={{ transform: `translateX(-${safePreviewIdx * 100}%)` }}>
-                            {previewOpts.map(pps => (
-                              <div key={pps} className="sp-prev-slide">
-                                <div style={{ width: '100%', maxWidth: pps === 'instagram' ? 430 : pps === 'whatsapp' ? 380 : 560 }}>
-                                  {pps === 'instagram' ? (
-                                    <InstagramPhonePreview
-                                      username={(p.accounts.find(a => a.platform === 'instagram' && a.connected) as any)?.instagramUsername || p.accounts.find(a => a.platform === 'instagram' && a.connected)?.name || p.accounts.find(a => a.platform === 'facebook' && a.connected)?.name || 'socialpulse'}
-                                      avatarUrl={p.logoImage || undefined}
-                                      mediaUrl={heroUrl}
-                                      mediaType={heroIsVideo ? 'video' : 'image'}
-                                      caption={capNoTags}
-                                      hashtags={tagList}
-                                      aspectRatio={p.aspectRatio || '1:1'}
-                                      logoUrl={unburnedLogo}
-                                      logoPosition={p.logoPosition}
-                                      logoScale={p.logoScale}
-                                      logoOpacity={p.logoOpacity}
-                                    />
-                                  ) : pps === 'facebook' ? (
-                                    <FacebookPostPreview
-                                      caption={capNoTags}
-                                      hashtags={tagList}
-                                      mediaUrl={heroUrl}
-                                      mediaType={heroIsVideo ? 'video' : 'image'}
-                                      pageName="SocialPulse"
-                                      avatarUrl={p.logoImage || undefined}
-                                      aspectRatio={p.aspectRatio || '1:1'}
-                                      logoUrl={unburnedLogo}
-                                      logoPosition={p.logoPosition}
-                                      logoScale={p.logoScale}
-                                      logoOpacity={p.logoOpacity}
-                                    />
-                                  ) : pps === 'linkedin' ? (
-                                    <LinkedInPostPreview
-                                      caption={capNoTags}
-                                      hashtags={tagList}
-                                      mediaUrl={heroUrl}
-                                      mediaType={heroIsVideo ? 'video' : 'image'}
-                                      aspectRatio={p.aspectRatio || '1:1'}
-                                      profileName="SocialPulse"
-                                      profileSubtitle="Social Media Content Manager"
-                                      avatarUrl={p.logoImage || undefined}
-                                      logoUrl={unburnedLogo}
-                                      logoPosition={p.logoPosition}
-                                      logoScale={p.logoScale}
-                                      logoOpacity={p.logoOpacity}
-                                      burnedIds={p.burnedLogoIds}
-                                    />
-                                  ) : (
-                                    <WhatsAppCommunityPreview
-                                      communityName={(p.whapiGroups || []).find(g => g.id === p.whapiSelectedGroupId)?.name || 'SocialPulse Testing 🚀'}
-                                      subtitle="Announcements"
-                                      destinationType={(p.whapiGroups || []).find(g => g.id === p.whapiSelectedGroupId)?.type || 'announcement_group'}
-                                      caption={waCap}
-                                      hashtags={[]}
-                                      mediaUrl={heroUrl}
-                                      mediaType={heroIsVideo ? 'video' : 'image'}
-                                      aspectRatio={p.aspectRatio || '1:1'}
-                                      logoUrl={unburnedLogo}
-                                      logoPosition={p.logoPosition}
-                                      logoScale={p.logoScale}
-                                      logoOpacity={p.logoOpacity}
-                                    />
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        {previewOpts.length > 1 && (
-                          <button className="sp-prev-arrow" style={{ right: 14 }} aria-label="Next platform" onClick={() => gotoSlide((safePreviewIdx + 1) % previewOpts.length)}>›</button>
-                        )}
-                      </div>
-
-                      {previewOpts.length > 1 && (
-                        <div className="sp-prev-dots">
-                          {previewOpts.map((pps, i) => (
-                            <button key={pps} aria-label={`Go to ${pps} preview`} className={'sp-prev-dot' + (i === safePreviewIdx ? ' sp-on' : '')} onClick={() => gotoSlide(i)} />
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-
-              <button className="sp-panel-btn" onClick={() => setBrandPanelOpen(o => !o)} aria-expanded={brandPanelOpen}>
-                <span style={{ width: 30, height: 30, borderRadius: 9, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🎨</span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 13.5 }}>Logo &amp; Image Description</span>
-                  <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: C.muted, marginTop: 1 }}>Upload or replace your logo, set its placement, and write ALT text.</span>
-                </span>
-                <span style={{ fontSize: 12, fontWeight: 800, color: C.primaryDark, display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>{brandPanelOpen ? 'Hide' : 'Edit'}<span style={{ display: 'inline-block', transition: 'transform .2s', transform: brandPanelOpen ? 'rotate(180deg)' : 'none' }}>⌄</span></span>
-              </button>
-
-              {brandPanelOpen && (
-              <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-              {/* ---- Section 2: Brand Identity + Describe, side by side ---- */}
+              {/* ---- Sections 1+2: Brand Identity + Describe, side by side ---- */}
               <div className="sp-duo2">
               <div className="sp-duo2side">
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
@@ -2428,40 +2276,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     </div>
                   );
                 })()}
-                {(() => {
-                  const applyHero = canvaEditTarget || p.mediaItems.find(m => m.type === 'image') || p.mediaItems[0] || null;
-                  const applyUrl = applyHero?.url || p.generatedImage || p.generatedVideo || '';
-                  const applyIsVideo = applyHero ? applyHero.type === 'video' : !!p.generatedVideo && !applyHero;
-                  const imageCount = p.isCarousel
-                    ? p.carouselSlides.length
-                    : (p.mediaItems.filter(m => m.type === 'image').length || ((p.generatedImage || p.generatedVideo) ? 1 : 0));
-                  const applyHeroId = applyHero && applyHero.id && p.mediaItems.some(m => m.id === applyHero.id) ? applyHero.id : null;
-                  const canApply = !!p.logoImage && !p.isApplyingLogo && !!applyUrl && !applyIsVideo;
-                  const applyToHero = () => {
-                    if (applyHeroId) {
-                      p.setLogoTargetId(applyHeroId);
-                      setTimeout(() => p.applyLogoToAllMedia(), 60);
-                    } else {
-                      p.applyLogoToAllMedia();
-                    }
-                  };
-                  const applyToAll = () => {
-                    p.setLogoTargetId(null);
-                    setTimeout(() => p.applyLogoToAllMedia(), 60);
-                  };
-                  return (
-                    <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                      <button onClick={applyToHero} disabled={!canApply} title={!p.logoImage ? 'Upload a brand logo first' : 'Burn the logo into the featured visual'} style={{ flex: 1, minWidth: 150, minHeight: 44, padding: '12px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: 'none', cursor: canApply ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: canApply ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#DDD6FE', color: '#fff', boxShadow: canApply ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}>
-                        {p.isApplyingLogo ? 'Applying…' : 'Apply Logo to This Image'}
-                      </button>
-                      {imageCount > 1 && (
-                        <button onClick={applyToAll} disabled={!canApply} title="Burn the logo into all images" style={{ flex: 1, minWidth: 150, minHeight: 44, padding: '12px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.primary}`, backgroundColor: '#fff', color: C.primaryDark, cursor: canApply ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canApply ? 1 : 0.6 }}>
-                          {p.isApplyingLogo ? 'Applying…' : 'Apply to All Images'}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })()}
               </div>
               <div className="sp-duo2side">
                 <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Describe Your Image</div>
@@ -2470,7 +2284,114 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               </div>
               </div>
               </div>
-              )}
+
+              {/* ---- Section 2: Image Preview ---- */}
+              <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Image Preview</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 3, marginBottom: 12 }}>See how your logo looks on your selected image.</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>{p.aspectRatio ? `${p.aspectRatio}${p.aspectRatioMap[p.aspectRatio] ? ` • ${p.aspectRatioMap[p.aspectRatio].label}` : ''}` : 'No aspect ratio'}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '5px 12px', borderRadius: 999 }}>{p.imageStyle}</span>
+                </div>
+                {(() => {
+                  const hero = canvaEditTarget || p.mediaItems.find(m => m.type === 'image') || p.mediaItems[0] || null;
+                  const heroUrl = hero?.url || p.generatedImage || p.generatedVideo || '';
+                  const heroIsVideo = hero ? hero.type === 'video' : !!p.generatedVideo && !hero;
+                  const heroKey = hero?.id || 'gen';
+                  const thumbs = (p.isCarousel ? p.carouselSlides : p.mediaItems).slice(0, 8);
+                  if (!heroUrl) {
+                    return <div style={{ border: '2px dashed #C4B5FD', borderRadius: 16, backgroundColor: '#FAF8FF', padding: 40, textAlign: 'center' }}>
+                      <div style={{ fontSize: 32 }}>🖼️</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginTop: 8 }}>No visual yet</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Create one in Media (Step 4), then return here.</div>
+                    </div>;
+                  }
+                  return (
+                    <div>
+                      <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', border: `1px solid ${C.border}`, backgroundColor: '#000' }}>
+                        {heroIsVideo
+                          ? <video src={heroUrl} controls style={{ width: '100%', maxHeight: 380, display: 'block', backgroundColor: '#000' }} />
+                          : <img src={heroUrl} alt={hero?.altText || 'Branded design preview'} onClick={() => setLightboxItem({ url: heroUrl, type: 'image', altText: hero?.altText })} title="Click to zoom" style={{ width: '100%', maxHeight: 380, objectFit: 'contain', display: 'block', backgroundColor: '#0F172A', cursor: 'zoom-in' }} />}
+                        {p.logoImage && !p.burnedLogoIds[heroKey] && !heroIsVideo && (
+                          <img src={p.logoImage} alt="logo" style={{
+                            position: 'absolute', width: `${Math.round(p.logoScale * 100)}%`, maxWidth: '28%', opacity: p.logoOpacity,
+                            ...(p.logoPosition === 'top-left' ? { top: 10, left: 10 } : p.logoPosition === 'top-right' ? { top: 10, right: 10 } : p.logoPosition === 'bottom-left' ? { bottom: 54, left: 10 } : p.logoPosition === 'bottom-right' ? { bottom: 54, right: 10 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
+                            backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6, pointerEvents: 'none',
+                          }} />
+                        )}
+                      </div>
+                      {p.isCarousel && thumbs.length > 0 && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10, overflowX: 'auto', padding: '2px 2px 4px' }}>
+                          {thumbs.map((m, i) => {
+                            const selected = selectedMediaId === m.id || canvaEditTarget?.url === m.url;
+                            return (
+                              <button key={m.id} draggable
+                                onClick={() => setSelectedMediaId(m.id)}
+                                onDragStart={() => setDragSlideId(m.id)}
+                                onDragOver={e => { e.preventDefault(); if (dragSlideId && dragSlideId !== m.id) setDragOverSlideId(m.id); }}
+                                onDrop={() => { if (dragSlideId) p.reorderCarouselSlide(dragSlideId, m.id); setDragSlideId(null); setDragOverSlideId(null); }}
+                                onDragEnd={() => { setDragSlideId(null); setDragOverSlideId(null); }}
+                                title={`Slide ${i + 1} — click to feature, drag to reorder`}
+                                style={{ flex: '0 0 72px', width: 72, height: 72, borderRadius: 10, overflow: 'hidden', border: dragOverSlideId === m.id ? `2px solid ${C.primary}` : selected ? `2px solid ${C.primary}` : `1px solid ${C.border}`, padding: 0, cursor: 'grab', backgroundColor: '#000', position: 'relative', boxShadow: selected ? '0 3px 10px rgba(124,58,237,0.3)' : 'none', opacity: dragSlideId === m.id ? 0.5 : 1 }}>
+                                {m.type === 'video' ? <video src={m.url} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} muted /> : <img src={m.url} alt={m.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />}
+                                <span style={{ position: 'absolute', top: 3, left: 3, minWidth: 18, height: 18, borderRadius: 999, background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, padding: '0 4px' }}>{i + 1}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {!p.isCarousel && thumbs.length > 1 && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10, overflowX: 'auto', padding: '2px 2px 4px' }}>
+                          {thumbs.map(m => {
+                            const selected = selectedMediaId === m.id || canvaEditTarget?.url === m.url;
+                            return (
+                              <button key={m.id} onClick={() => setSelectedMediaId(m.id)} title={`Feature “${mediaFileName(m)}”`} style={{ flex: '0 0 72px', width: 72, height: 72, borderRadius: 10, overflow: 'hidden', border: selected ? `2px solid ${C.primary}` : `1px solid ${C.border}`, padding: 0, cursor: 'pointer', backgroundColor: '#000', position: 'relative', boxShadow: selected ? '0 3px 10px rgba(124,58,237,0.3)' : 'none' }}>
+                                {m.type === 'video' ? <video src={m.url} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} muted /> : <img src={m.url} alt={m.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {(() => {
+                        // Apply targets mirror the burn: all image media, or the
+                        // single generated visual when the gallery is empty.
+                        const imageCount = p.isCarousel
+                          ? p.carouselSlides.length
+                          : (p.mediaItems.filter(m => m.type === 'image').length || ((p.generatedImage || p.generatedVideo) ? 1 : 0));
+                        const heroId = hero && hero.id && p.mediaItems.some(m => m.id === hero.id) ? hero.id : null;
+                        const canApply = !!p.logoImage && !p.isApplyingLogo && !!heroUrl && !heroIsVideo;
+                        const applyToHero = () => {
+                          // Deferred one tick so the target selection above has
+                          // committed before the burn reads it (same pattern as
+                          // the logo dialog's delayed apply).
+                          if (heroId) {
+                            p.setLogoTargetId(heroId);
+                            setTimeout(() => p.applyLogoToAllMedia(), 60);
+                          } else {
+                            p.applyLogoToAllMedia();
+                          }
+                        };
+                        const applyToAll = () => {
+                          p.setLogoTargetId(null);
+                          setTimeout(() => p.applyLogoToAllMedia(), 60);
+                        };
+                        return (
+                          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                            <button onClick={applyToHero} disabled={!canApply} title={!p.logoImage ? 'Upload a brand logo first' : 'Burn the logo into the featured visual'} style={{ flex: 1, minWidth: 150, minHeight: 44, padding: '12px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: 'none', cursor: canApply ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: canApply ? 'linear-gradient(135deg,#7C3AED,#A855F7)' : '#DDD6FE', color: '#fff', boxShadow: canApply ? '0 6px 20px rgba(124,58,237,0.4)' : 'none' }}>
+                              {p.isApplyingLogo ? 'Applying…' : 'Apply Logo to This Image'}
+                            </button>
+                            {imageCount > 1 && (
+                              <button onClick={applyToAll} disabled={!canApply} title="Burn the logo into all images" style={{ flex: 1, minWidth: 150, minHeight: 44, padding: '12px 18px', borderRadius: 12, fontSize: 12.5, fontWeight: 800, border: `1.5px solid ${C.primary}`, backgroundColor: '#fff', color: C.primaryDark, cursor: canApply ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: canApply ? 1 : 0.6 }}>
+                                {p.isApplyingLogo ? 'Applying…' : 'Apply to All Images'}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  );
+                })()}
+              </div>
 
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2, paddingTop: 20, borderTop: `1px solid ${C.borderSoft}`, flexWrap: 'wrap' }}>
@@ -2497,36 +2418,29 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               </div>
 
               <div style={{ ...card, borderRadius: 16, padding: '18px 20px', boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 7, background: '#059669', color: '#fff', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⬇</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Accessibility Check</span>
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Accessibility Check</div>
                 {(() => {
                   const checkImages = [...p.mediaItems, ...postExtraImages].filter(m => m.type === 'image');
-                  const hasVisual = checkImages.length > 0 || !!p.generatedImage || !!p.generatedVideo;
-                  const altOk = hasVisual && (checkImages.length === 0 || checkImages.every(m => m.altText?.trim()));
+                  const altOk = checkImages.length > 0 && checkImages.every(m => m.altText?.trim());
                   const rows: Array<[string, boolean, string]> = [
                     p.logoImage
-                      ? ['Logo is visible', true, 'Your logo will appear on the image.']
-                      : ['Logo is optional', false, 'Add a logo to brand your visuals.'],
-                    !hasVisual
-                      ? ['No image yet', false, 'Create a visual in Media (Step 4).']
+                      ? ['Logo is visible', true, '']
+                      : ['Logo is optional', false, ''],
+                    checkImages.length === 0
+                      ? ['No visuals yet', false, '']
                       : altOk
-                        ? ['Image description added', true, 'ALT text is ready for screen readers.']
-                        : ['Add image description', false, 'Describe the image for screen readers.'],
-                    hasVisual
-                      ? ['Readable layout', true, 'Good contrast and clear content.']
-                      : ['Layout check pending', false, 'Waiting for a visual to check.'],
+                        ? ['Descriptions added', true, '']
+                        : ['Add image description', false, ''],
+                    checkImages.length === 0
+                      ? ['Waiting for visual', false, '']
+                      : ['Preview ready', true, ''],
                   ];
                   return (
                     <div>
-                      {rows.map(([label, ok, sub]) => (
-                        <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '7px 0' }}>
-                          <span style={{ width: 19, height: 19, borderRadius: '50%', background: ok ? '#D1FAE5' : '#F1F5F9', color: ok ? '#059669' : '#94A3B8', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{ok ? '✓' : '○'}</span>
-                          <span style={{ minWidth: 0 }}>
-                            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: ok ? '#334155' : C.faint }}>{label}</span>
-                            <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>{sub}</span>
-                          </span>
+                      {rows.map(([label, ok]) => (
+                        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+                          <span style={{ width: 17, height: 17, borderRadius: '50%', background: ok ? '#ECFDF5' : '#F1F3F9', border: `1px solid ${ok ? '#A7F3D0' : '#E2E8F0'}`, color: ok ? '#059669' : '#B6BDCC', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{ok ? '✓' : '·'}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: ok ? '#334155' : C.faint }}>{label}</span>
                         </div>
                       ))}
                     </div>
@@ -2540,15 +2454,239 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         {/* ================= STEP 7 — PREVIEW ================= */}
         {currentStep === 7 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 42, height: 42, borderRadius: 13, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>👁️</div>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Review & Publish</div>
-                <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Take a final look at your content and settings before publishing.</div>
+            <div style={{ ...card, borderRadius: 20, padding: '28px 30px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>👁️</div>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>BRANDING PREVIEW</div>
+                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Preview your branded visual and make final adjustments before publishing.</div>
+                </div>
               </div>
             </div>
             <div className="sp-step7-grid">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+            <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 11, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>👁️</div>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>Platform Preview</div>
+                  <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>See how your image will look on each platform with your logo.</div>
+                </div>
+              </div>
+              {(() => {
+                const hero = p.mediaItems.find(m => m.type === 'image') || p.mediaItems[0] || null;
+                const heroUrl = hero?.url || p.generatedImage || p.generatedVideo || '';
+                const heroIsVideo = hero ? hero.type === 'video' : !!p.generatedVideo && !hero;
+                const heroKey = hero?.id || 'gen';
+                const brandIcon: Record<string, string> = { linkedin: '/brand-icons/linkedin.webp', facebook: '/brand-icons/facebook.png', instagram: '/brand-icons/instagram.png', whatsapp: '/brand-icons/whatsapp.png' };
+                const previewOpts = (['instagram', 'facebook', 'linkedin', 'whatsapp'] as const).filter(pl => p.selectedPlatforms.includes(pl));
+                const safePreviewIdx = Math.min(previewSlideIdx, Math.max(previewOpts.length - 1, 0));
+                const capNoTags = (() => { const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || []; if (!p.content.trim()) return ''; return tags.length ? p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim() : p.content; })();
+                const waCap = (() => { const c = p.platformContent[p.activePreviewPlatform]?.caption || p.content; return c.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim(); })();
+                const tagList = p.platformContent[p.activePreviewPlatform]?.hashtags || [];
+                const unburnedLogo = p.logoImage && !heroIsVideo && !p.burnedLogoIds[heroKey] ? p.logoImage : undefined;
+                const gotoSlide = (nn: number) => {
+                  setPreviewSlideIdx(nn);
+                  const pl = previewOpts[nn];
+                  setPreviewPlatform(pl);
+                  if (p.platformContent[pl]) p.switchPreviewPlatform(pl);
+                };
+                if (previewOpts.length === 0) {
+                  return (
+                    <div style={{ marginTop: 18, borderRadius: 24, padding: 40, textAlign: 'center', background: 'linear-gradient(135deg,#7C3AED,#D946EF 55%,#FBBF24)' }}>
+                      <div style={{ background: '#fff', borderRadius: 20, padding: 30, boxShadow: '0 12px 36px rgba(15,23,42,0.18)' }}>
+                        <div style={{ fontSize: 30 }}>📭</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginTop: 8 }}>No platforms selected</div>
+                        <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Pick where you want to publish in Settings.</div>
+                      </div>
+                    </div>
+                  );
+                }
+                if (!heroUrl) {
+                  return (
+                    <div style={{ marginTop: 18, borderRadius: 24, padding: 54, textAlign: 'center', background: 'linear-gradient(135deg,#7C3AED,#D946EF 55%,#FBBF24)' }}>
+                      <div style={{ background: '#fff', borderRadius: 20, padding: 40, boxShadow: '0 12px 36px rgba(15,23,42,0.18)' }}>
+                        <div style={{ fontSize: 34 }}>🖼️</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginTop: 8 }}>No visual yet</div>
+                        <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Create one in Media (Step 4), then return here.</div>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <>
+                    <div className="sp-plat-tabs" style={{ marginTop: 18 }}>
+                      {previewOpts.map((pps, i) => (
+                        <button key={pps} className={'sp-plat-tab' + (i === safePreviewIdx ? ' sp-on' : '')} onClick={() => gotoSlide(i)} aria-label={`Preview ${pps}`} aria-pressed={i === safePreviewIdx}>
+                          <img src={brandIcon[pps]} alt="" aria-hidden="true" width={24} height={24} />
+                          {pps}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="sp-prev-canvas">
+                      {previewOpts.length > 1 && (
+                        <button className="sp-prev-arrow" style={{ left: 14 }} aria-label="Previous platform" onClick={() => gotoSlide((safePreviewIdx - 1 + previewOpts.length) % previewOpts.length)}>‹</button>
+                      )}
+                      <div className="sp-prev-viewport" onTouchStart={e => { e.currentTarget.dataset.sx = String(e.touches[0].clientX); }} onTouchEnd={e => { const sx = parseFloat(e.currentTarget.dataset.sx || 'x'); if (Number.isNaN(sx) || previewOpts.length < 2) return; const dx = e.changedTouches[0].clientX - sx; delete e.currentTarget.dataset.sx; if (Math.abs(dx) < 40) return; gotoSlide(dx < 0 ? (safePreviewIdx + 1) % previewOpts.length : (safePreviewIdx - 1 + previewOpts.length) % previewOpts.length); }}>
+                        <div className="sp-prev-track" style={{ transform: `translateX(-${safePreviewIdx * 100}%)` }}>
+                          {previewOpts.map(pps => (
+                            <div key={pps} className="sp-prev-slide">
+                              <div style={{ width: '100%', maxWidth: pps === 'instagram' ? 430 : pps === 'whatsapp' ? 380 : 560 }}>
+                                {pps === 'instagram' ? (
+                                  <InstagramPhonePreview
+                                    username={(p.accounts.find(a => a.platform === 'instagram' && a.connected) as any)?.instagramUsername || p.accounts.find(a => a.platform === 'instagram' && a.connected)?.name || p.accounts.find(a => a.platform === 'facebook' && a.connected)?.name || 'socialpulse'}
+                                    avatarUrl={p.logoImage || undefined}
+                                    mediaUrl={heroUrl}
+                                    mediaType={heroIsVideo ? 'video' : 'image'}
+                                    caption={capNoTags}
+                                    hashtags={tagList}
+                                    aspectRatio={p.aspectRatio || '1:1'}
+                                    logoUrl={unburnedLogo}
+                                    logoPosition={p.logoPosition}
+                                    logoScale={p.logoScale}
+                                    logoOpacity={p.logoOpacity}
+                                  />
+                                ) : pps === 'facebook' ? (
+                                  <FacebookPostPreview
+                                    caption={capNoTags}
+                                    hashtags={tagList}
+                                    mediaUrl={heroUrl}
+                                    mediaType={heroIsVideo ? 'video' : 'image'}
+                                    pageName="SocialPulse"
+                                    avatarUrl={p.logoImage || undefined}
+                                    aspectRatio={p.aspectRatio || '1:1'}
+                                    logoUrl={unburnedLogo}
+                                    logoPosition={p.logoPosition}
+                                    logoScale={p.logoScale}
+                                    logoOpacity={p.logoOpacity}
+                                  />
+                                ) : pps === 'linkedin' ? (
+                                  <LinkedInPostPreview
+                                    caption={capNoTags}
+                                    hashtags={tagList}
+                                    mediaUrl={heroUrl}
+                                    mediaType={heroIsVideo ? 'video' : 'image'}
+                                    aspectRatio={p.aspectRatio || '1:1'}
+                                    profileName="SocialPulse"
+                                    profileSubtitle="Social Media Content Manager"
+                                    avatarUrl={p.logoImage || undefined}
+                                    logoUrl={unburnedLogo}
+                                    logoPosition={p.logoPosition}
+                                    logoScale={p.logoScale}
+                                    logoOpacity={p.logoOpacity}
+                                    burnedIds={p.burnedLogoIds}
+                                  />
+                                ) : (
+                                  <WhatsAppCommunityPreview
+                                    communityName={(p.whapiGroups || []).find(g => g.id === p.whapiSelectedGroupId)?.name || 'SocialPulse Testing 🚀'}
+                                    subtitle="Announcements"
+                                    destinationType={(p.whapiGroups || []).find(g => g.id === p.whapiSelectedGroupId)?.type || 'announcement_group'}
+                                    caption={waCap}
+                                    hashtags={[]}
+                                    mediaUrl={heroUrl}
+                                    mediaType={heroIsVideo ? 'video' : 'image'}
+                                    aspectRatio={p.aspectRatio || '1:1'}
+                                    logoUrl={unburnedLogo}
+                                    logoPosition={p.logoPosition}
+                                    logoScale={p.logoScale}
+                                    logoOpacity={p.logoOpacity}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      {previewOpts.length > 1 && (
+                        <button className="sp-prev-arrow" style={{ right: 14 }} aria-label="Next platform" onClick={() => gotoSlide((safePreviewIdx + 1) % previewOpts.length)}>›</button>
+                      )}
+                    </div>
+
+                    {previewOpts.length > 1 && (
+                      <div className="sp-prev-dots">
+                        {previewOpts.map((pps, i) => (
+                          <button key={pps} aria-label={`Go to ${pps} preview`} className={'sp-prev-dot' + (i === safePreviewIdx ? ' sp-on' : '')} onClick={() => gotoSlide(i)} />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+
+            <button className="sp-panel-btn" onClick={() => setBrandPanelOpen(o => !o)} aria-expanded={brandPanelOpen}>
+              <span style={{ width: 30, height: 30, borderRadius: 9, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🎨</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 13.5 }}>Logo &amp; Image Description</span>
+                <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: C.muted, marginTop: 1 }}>Upload or replace your logo, set its placement, and write ALT text.</span>
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: C.primaryDark, display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>{brandPanelOpen ? 'Hide' : 'Edit'}<span style={{ display: 'inline-block', transition: 'transform .2s', transform: brandPanelOpen ? 'rotate(180deg)' : 'none' }}>⌄</span></span>
+            </button>
+
+            {brandPanelOpen && (
+                    <div style={{ ...card, borderRadius: 20, padding: '24px 26px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
+                    {/* ---- Sections 1+2: Brand Identity + Describe, side by side ---- */}
+                    <div className="sp-duo2">
+                    <div className="sp-duo2side">
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+                        <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Logo & Visual Identity</div>
+                          <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Upload your brand logo once and apply it to this image or all images.</div>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, backgroundColor: '#FCFCFE', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand Logo</div>
+                          <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Upload your brand logo once and apply it to this image or all images.</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {p.logoImage
+                              ? <img src={p.logoImage} alt="Brand logo" style={{ width: 44, height: 44, objectFit: 'contain', backgroundColor: '#fff', borderRadius: 10, border: `1px solid ${C.border}`, padding: 4 }} />
+                              : <img src="/sp-logo.png" alt="SocialPulse" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 10, border: `1px solid ${C.border}` }} />}
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>SocialPulse</div>
+                              <div style={{ fontSize: 10, color: p.logoImage ? '#059669' : C.faint, fontWeight: 600 }}>{p.logoImage ? `✓ Logo uploaded • ${p.logoPosition} • ${Math.round(p.logoScale * 100)}%` : 'No logo uploaded yet'}</div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
+                            <button onClick={() => p.setLogoModalOpen(true)} style={{ flex: 1, padding: '10px', borderRadius: 9, fontSize: 12, fontWeight: 800, border: `1.5px dashed ${C.primaryBorder}`, backgroundColor: '#fff', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit' }}>{p.logoImage ? 'Change Logo' : 'Upload Logo'}</button>
+                            {p.logoImage && <button onClick={p.clearLogo} title="Remove the brand logo" style={{ flex: 1, padding: '8px 10px', borderRadius: 9, fontSize: 11, fontWeight: 700, border: '1px solid #FECACA', backgroundColor: '#fff', color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit' }}>Remove</button>}
+                          </div>
+                        </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                        {p.logoImage && (
+                          <button onClick={() => { p.setLogoTargetId(null); p.setLogoModalOpen(true); }} style={{ ...ghostBtn, minHeight: 38, fontSize: 12, flex: 1 }}>🏷️ Adjust Logo</button>
+                        )}
+                      </div>
+                      {p.logoTargetId && p.mediaItems.some(m => m.id === p.logoTargetId) && (
+                        <div style={{ marginTop: 8, fontSize: 11, color: C.primaryDark, backgroundColor: C.primarySoft, border: `1px solid ${C.primaryBorder}`, padding: '7px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ flex: 1 }}>🎯 Will apply to {(() => { const i = p.mediaItems.findIndex(m => m.id === p.logoTargetId); return i === 0 ? '★ Cover image' : `Image #${i + 1}`; })()} only</span>
+                          <button onClick={() => p.setLogoTargetId(null)} style={{ fontSize: 10, fontWeight: 700, background: 'none', border: 'none', color: C.primaryDark, cursor: 'pointer', textDecoration: 'underline' }}>All instead</button>
+                        </div>
+                      )}
+                      {(() => {
+                        const burnedCount = p.mediaItems.filter(m => p.burnedLogoIds[m.id]).length;
+                        if (!burnedCount) return null;
+                        return (
+                          <div style={{ marginTop: 8, fontSize: 11, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '9px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            <span style={{ flex: '1 1 200px', lineHeight: 1.5 }}>⚠️ Logo is baked into {burnedCount} image{burnedCount === 1 ? '' : 's'} from a previous Apply — removing the brand logo won’t erase those pixels.</span>
+                            <button onClick={() => p.restoreBurnedMedia()} title="Swap burned images back to their pre-logo originals" style={{ padding: '8px 14px', borderRadius: 8, fontSize: 11, fontWeight: 800, border: '1px solid #F59E0B', backgroundColor: '#fff', color: '#92400E', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Restore originals</button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <div className="sp-duo2side">
+                      <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Describe Your Image</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>Add a short description to help people using screen readers understand your image.</div>
+                      {altTextControls}
+                    </div>
+                    </div>
+                    </div>
+            )}
+
+
+
             <div style={{ ...card, borderRadius: 20, padding: '20px 22px', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }} className="sp-ord-select">
               <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap', alignItems: 'stretch' }}>
                 <div style={{ flex: '1 1 320px', minWidth: 0 }}>
@@ -2569,9 +2707,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 })}
                 {p.selectedPlatforms.length === 0 && (
                   <div style={{ fontSize: 12.5, color: C.muted }}>No platforms selected yet — <button onClick={() => setCurrentStep(2)} style={{ background: 'none', border: 'none', padding: 0, color: C.primaryDark, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5 }}>pick platforms in Settings →</button></div>
-                )}
-                {p.selectedPlatforms.length > 0 && (
-                  <button ref={previewBtnRef} onClick={openPostPreview} title="Open the realistic platform preview in a popup" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 20px', borderRadius: 999, fontSize: 12.5, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}>👁 {p.selectedPlatforms.length > 1 ? 'Preview Platforms' : 'Preview Post'}</button>
                 )}
                 </div>
                 </div>
@@ -2636,200 +2771,22 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-              {showPostPreview && (
-              <div onClick={() => setShowPostPreview(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-                <div role="dialog" aria-modal="true" aria-label="Platform preview" onClick={e => e.stopPropagation()} onKeyDown={trapTab} style={{ width: 'min(720px, 94vw)', maxHeight: '90vh', backgroundColor: '#fff', borderRadius: 20, boxShadow: '0 24px 64px rgba(15,23,42,0.3)', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'inherit' }}>
-                  <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid #eef2f7', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: C.ink }}>👁 Preview Post</div>
-                      <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>See exactly how your post will appear before publishing.</div>
-                    </div>
-                    <button ref={previewCloseRef} onClick={() => setShowPostPreview(false)} aria-label="Close preview" style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', color: C.muted, fontSize: 15, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+              <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+                <div style={{ borderRadius: 20, background: 'linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%)', border: '1px solid #E9D5FF', overflow: 'hidden', textAlign: 'center' }}>
+                  <div className="sp-soc-visual" aria-hidden="true">
+                    <span className="sp-orbit" />
+                    <span className="sp-soc" title="LinkedIn" style={{ left: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(10,102,194,0.4)', animation: 'spDriftLi 6.5s ease-in-out infinite' }}><p.PlatformIcon platform="linkedin" size={22} /><img src="/brand-icons/linkedin.webp" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#0A66C2'; e.currentTarget.style.display = 'none'; }} /></span>
+                    <span className="sp-soc" title="Instagram" style={{ right: '11%', top: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(209,42,123,0.4)', animation: 'spDriftIg 7.2s ease-in-out infinite', animationDelay: '0.8s' }}><p.PlatformIcon platform="instagram" size={22} /><img src="/brand-icons/instagram.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#E1306C'; e.currentTarget.style.display = 'none'; }} /></span>
+                    <span className="sp-soc" title="Facebook" style={{ left: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(24,119,242,0.4)', animation: 'spFloatY 5.2s ease-in-out infinite', animationDelay: '0.3s' }}><p.PlatformIcon platform="facebook" size={22} /><img src="/brand-icons/facebook.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#1877F2'; e.currentTarget.style.display = 'none'; }} /></span>
+                    <span className="sp-soc" title="WhatsApp" style={{ right: '15%', bottom: 16, backgroundColor: '#fff', boxShadow: '0 4px 12px rgba(37,211,102,0.42)', animation: 'spFloatDiag 6s ease-in-out infinite', animationDelay: '1.4s' }}><p.PlatformIcon platform="whatsapp" size={22} /><img src="/brand-icons/whatsapp.png" alt="" aria-hidden="true" width={40} height={40} style={{ position: 'absolute', top: 6, left: 6, width: 'calc(100% - 12px)', height: 'calc(100% - 12px)', objectFit: 'contain' }} onError={e => { const b = e.currentTarget.parentElement; if (b) b.style.background = '#25D366'; e.currentTarget.style.display = 'none'; }} /></span>
+                    <span className="sp-robot sp-robot-logo" style={{ animation: 'spBreathe 5.5s ease-in-out infinite' }}><img src="/sp-logo.png" alt="SocialPulse AI" width={74} height={74} /></span>
                   </div>
-                  <div style={{ padding: '12px 22px 0', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {(['linkedin', 'facebook', 'instagram', 'whatsapp'] as const).filter(pl => p.selectedPlatforms.includes(pl)).map(pl => {
-                      const active = previewPlatform === pl;
-                      const brand = p.platformColors[pl] || '#0A66C2';
-                      return (
-                        <button key={pl} onClick={() => { setPreviewPlatform(pl); if (p.platformContent[pl]) p.switchPreviewPlatform(pl); }} aria-label={`Preview ${pl}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 999, fontSize: 12.5, fontWeight: 800, textTransform: 'capitalize', border: active ? `2px solid ${C.primary}` : `1.5px solid ${C.border}`, backgroundColor: active ? '#F5F0FF' : '#fff', color: active ? C.primaryDark : C.muted, cursor: 'pointer', fontFamily: 'inherit' }}>
-                          <span style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: brand, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <p.PlatformIcon platform={pl} size={10} />
-                          </span>
-                          {pl}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div style={{ padding: '14px 22px', overflowY: 'auto', maxHeight: '62vh' }}>
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', minWidth: 0 }}>
-                <div style={{ width: '100%', maxWidth: previewPlatform === 'instagram' ? 480 : previewPlatform === 'whatsapp' ? 400 : 660 }}>
-                {previewPlatform === 'instagram' ? (
-                  <InstagramPhonePreview
-                    username={(p.accounts.find(a => a.platform === 'instagram' && a.connected) as any)?.instagramUsername || p.accounts.find(a => a.platform === 'instagram' && a.connected)?.name || p.accounts.find(a => a.platform === 'facebook' && a.connected)?.name || 'socialpulse'}
-                    avatarUrl={p.logoImage || undefined}
-                    mediaUrl={previewItems[0]?.url || p.generatedImage || ''}
-                    mediaType={previewItems[0]?.type || (p.generatedVideo ? 'video' : 'image')}
-                    mediaList={p.isCarousel ? p.carouselSlides : previewItems}
-                    currentSlide={carouselPreviewIndex}
-                    onSlideChange={setCarouselPreviewIndex}
-                    caption={(() => { const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || []; if (!p.content.trim()) return ''; return tags.length ? p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim() : p.content; })()}
-                    hashtags={p.platformContent[p.activePreviewPlatform]?.hashtags || []}
-                  aspectRatio={p.aspectRatio || '1:1'}
-                  isCarousel={p.isCarousel && p.carouselSlides.length > 1}
-                />
-                ) : previewPlatform === 'facebook' ? (
-                  <FacebookPostPreview
-                    caption={(() => { const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || []; if (!p.content.trim()) return ''; return tags.length ? p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim() : p.content; })()}
-                    hashtags={p.platformContent[p.activePreviewPlatform]?.hashtags || []}
-                    mediaUrl={previewItems[0]?.url || p.generatedImage || ''}
-                    mediaType={previewItems[0]?.type || (p.generatedVideo ? 'video' : 'image')}
-                    mediaList={p.isCarousel ? p.carouselSlides : previewItems}
-                    pageName="SocialPulse"
-                    avatarUrl={p.logoImage || undefined}
-                    aspectRatio={p.aspectRatio || '1:1'}
-                  />
-                ) : previewPlatform === 'linkedin' ? (
-                  <LinkedInPostPreview
-                    caption={(() => { const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || []; if (!p.content.trim()) return ''; return tags.length ? p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim() : p.content; })()}
-                    hashtags={p.platformContent[p.activePreviewPlatform]?.hashtags || []}
-                    mediaUrl={previewItems[0]?.url || p.generatedImage || ''}
-                    mediaType={previewItems[0]?.type || (p.generatedVideo ? 'video' : 'image')}
-                    mediaList={p.isCarousel ? p.carouselSlides : previewItems}
-                    currentSlide={carouselPreviewIndex}
-                    onSlideChange={setCarouselPreviewIndex}
-                    aspectRatio={p.aspectRatio || '1:1'}
-                    isCarousel={p.isCarousel && p.carouselSlides.length > 1}
-                    profileName="SocialPulse"
-                    profileSubtitle="Social Media Content Manager"
-                    avatarUrl={p.logoImage || undefined}
-                    logoUrl={p.logoImage || undefined}
-                    logoPosition={p.logoPosition}
-                    logoScale={p.logoScale}
-                    logoOpacity={p.logoOpacity}
-                    burnedIds={p.burnedLogoIds}
-                  />
-                ) : previewPlatform === 'whatsapp' ? (
-                  <WhatsAppCommunityPreview
-                    communityName={p.whapiGroups.find(g => g.id === p.whapiSelectedGroupId)?.name || 'SocialPulse Testing 🚀'}
-                    subtitle="Announcements"
-                    destinationType={p.whapiGroups.find(g => g.id === p.whapiSelectedGroupId)?.type || 'announcement_group'}
-                    caption={(() => { const c = p.platformContent[p.activePreviewPlatform]?.caption || p.content; return c.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim(); })()}
-                    hashtags={[]}
-                    mediaUrl={previewItems[0]?.url || p.generatedImage || ''}
-                    mediaType={previewItems[0]?.type || (p.generatedVideo ? 'video' : 'image')}
-                    mediaList={p.isCarousel ? p.carouselSlides : previewItems}
-                    currentSlide={carouselPreviewIndex}
-                    onSlideChange={setCarouselPreviewIndex}
-                    aspectRatio={p.aspectRatio || '1:1'}
-                    isCarousel={p.isCarousel && p.carouselSlides.length > 1}
-                  />
-                ) : (
-                  <div style={{ ...card, borderRadius: 20, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 12px 36px rgba(15,23,42,0.08)' }}>
-                    <div style={{ padding: '16px 20px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <div style={{ width: 46, height: 46, borderRadius: '50%', background: p.logoImage ? `url(${p.logoImage}) center/cover` : 'linear-gradient(135deg,#0A66C2,#004182)', border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13, overflow: 'hidden', flexShrink: 0 }}>{!p.logoImage && 'SP'}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>SocialPulse <span style={{ fontSize: 11, color: C.muted, fontWeight: 400 }}>• 1st</span></div>
-                        <div style={{ fontSize: 11.5, color: C.muted, marginTop: 1 }}>Just now • 🌐 Public</div>
-                      </div>
-                      <span style={{ color: C.faint, fontSize: 18, fontWeight: 800 }}>⋯</span>
-                    </div>
-                    <div style={{ padding: '0 20px 6px', fontSize: 13.5, lineHeight: 1.7, color: C.ink, whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'hidden' }}>
-                      {(() => {
-                        if (!p.content.trim()) return `Your amazing post will appear here...\nThis is how it will look on ${previewPlatform.charAt(0).toUpperCase() + previewPlatform.slice(1)}.`;
-                        const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || [];
-                        if (!tags.length) return p.content;
-                        return p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/, '').trim() || p.content;
-                      })()}
-                    </div>
-                    {(p.platformContent[p.activePreviewPlatform]?.hashtags || []).length > 0 && (
-                      <div style={{ padding: '0 20px 14px', fontSize: 13, lineHeight: 1.7, color: '#0A66C2', fontWeight: 600 }}>
-                        {(p.platformContent[p.activePreviewPlatform]?.hashtags || []).map(t => '#' + String(t).replace(/^#+/, '')).join(' ')}
-                      </div>
-                    )}
-                    {(p.mediaItems.length > 0 || postExtraImages.length > 0 || p.generatedImage || p.generatedVideo) ? (
-                      <div style={{ backgroundColor: '#000' }}>
-                        {(() => {
-                          if (p.isCarousel && p.carouselSlides.length > 0) {
-                            const slides = p.carouselSlides.slice(0, 9);
-                            const idx = Math.min(carouselPreviewIndex, slides.length - 1);
-                            const it = slides[idx];
-                            const go = (d: -1 | 1) => setCarouselPreviewIndex((idx + d + slides.length) % slides.length);
-                            return (
-                              <div>
-                                <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden', backgroundColor: '#000' }}>
-                                  {it.type === 'video' ? <video src={it.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted /> : <img src={it.url} alt={it.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                                  {slides.length > 1 && (
-                                    <>
-                                      <button onClick={() => go(-1)} title="Previous slide" style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-                                      <button onClick={() => go(1)} title="Next slide" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
-                                    </>
-                                  )}
-                                  <span style={{ position: 'absolute', top: 8, left: 8, fontSize: 10, fontWeight: 800, backgroundColor: 'rgba(124,58,237,0.92)', color: '#fff', padding: '3px 9px', borderRadius: 999 }}>🎠 {idx + 1}/{slides.length}</span>
-                                  <button onClick={e => { e.stopPropagation(); setLightboxItem({ url: it.url, type: it.type }); }} title="View full, uncropped" style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🔍</button>
-                                  {p.logoImage && !p.burnedLogoIds[it.id] && (
-                                    <img src={p.logoImage} alt="logo" style={{
-                                      position: 'absolute', width: `${Math.round(p.logoScale * 100)}%`, maxWidth: '28%', opacity: p.logoOpacity,
-                                      ...(p.logoPosition === 'top-left' ? { top: 8, left: 8 } : p.logoPosition === 'top-right' ? { top: 8, right: 8 } : p.logoPosition === 'bottom-left' ? { bottom: 8, left: 8 } : p.logoPosition === 'bottom-right' ? { bottom: 8, right: 8 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
-                                      backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6,
-                                    }} />
-                                  )}
-                                </div>
-                                {slides.length > 1 && (
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 0', backgroundColor: '#000' }}>
-                                    {slides.map((s, i) => (
-                                      <button key={s.id} onClick={() => setCarouselPreviewIndex(i)} title={`Slide ${i + 1}`} style={{ width: i === idx ? 18 : 7, height: 7, borderRadius: 999, border: 'none', backgroundColor: i === idx ? '#8B5CF6' : 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: 0, transition: 'all 0.18s' }} />
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          }
-                          const items = previewItems;
-                          const single = items.length === 1;
-                          return (
-                            <div style={{ display: 'grid', gridTemplateColumns: single ? '1fr' : '1fr 1fr', gap: 2 }}>
-                              {items.map(it => (
-                                <div key={it.id} style={{ position: 'relative', aspectRatio: single ? '16/9' : '1', overflow: 'hidden', backgroundColor: '#000', cursor: 'zoom-in' }} onClick={() => setLightboxItem({ url: it.url, type: it.type })}>
-                                  {it.type === 'video' ? <video src={it.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted /> : <img src={it.url} alt={it.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                                  <button onClick={e => { e.stopPropagation(); setLightboxItem({ url: it.url, type: it.type }); }} title="View full, uncropped" style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🔍</button>
-                                  {p.logoImage && !p.burnedLogoIds[it.id] && (
-                                    <img src={p.logoImage} alt="logo" style={{
-                                      position: 'absolute', width: `${Math.round(p.logoScale * 100)}%`, maxWidth: '28%', opacity: p.logoOpacity,
-                                      ...(p.logoPosition === 'top-left' ? { top: 8, left: 8 } : p.logoPosition === 'top-right' ? { top: 8, right: 8 } : p.logoPosition === 'bottom-left' ? { bottom: 8, left: 8 } : p.logoPosition === 'bottom-right' ? { bottom: 8, right: 8 } : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }),
-                                      backgroundColor: 'rgba(255,255,255,0.92)', padding: 4, borderRadius: 6,
-                                    }} />
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    ) : (
-                      <div style={{ margin: '4px 20px 16px', border: '2px dashed #C4B5FD', borderRadius: 14, backgroundColor: '#FAF8FF', padding: 32, textAlign: 'center' }}>
-                        <div style={{ fontSize: 30 }}>🖼️</div>
-                        <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink, marginTop: 8 }}>No image yet</div>
-                        <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Add media from Step 4</div>
-                        <button onClick={() => setCurrentStep(4)} style={{ marginTop: 12, padding: '10px 22px', borderRadius: 10, fontSize: 12.5, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}>Add Image +</button>
-                      </div>
-                    )}
-                    <div style={{ padding: '12px 20px', display: 'flex', gap: 22, borderTop: `1px solid ${C.borderSoft}`, fontSize: 12, color: C.muted, fontWeight: 600 }}>
-                      <span>👍 Like</span><span>💬 Comment</span><span>🔄 Repost</span><span style={{ marginLeft: 'auto' }}>✈️ Send</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-              </div>
-                  </div>
-                  <div style={{ padding: '14px 22px 18px', borderTop: '1px solid #eef2f7', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', backgroundColor: '#fff' }}>
-                    <button onClick={() => setShowPostPreview(false)} style={{ ...ghostBtn, padding: '11px 20px', fontSize: 13 }}>Close Preview</button>
-                    <div style={{ flex: 1 }} />
-                    <button onClick={() => { setShowPostPreview(false); goNext(); }} style={{ padding: '11px 26px', borderRadius: 11, fontSize: 13.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Continue to Publish →</button>
+                  <div style={{ padding: '18px 16px 20px', borderTop: '1px solid rgba(233,213,255,0.7)' }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, letterSpacing: '-0.01em' }}>Build a Stronger Brand with AI ✨</div>
+                    <div style={{ fontSize: 12, color: '#64748B', marginTop: 8, lineHeight: 1.65 }}>Add your logo to make your content instantly recognizable across all platforms.</div>
                   </div>
                 </div>
-              </div>
-              )}
-              <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+
                 <div style={{ ...card, borderRadius: 20, padding: '18px 20px' }} className="sp-ord-final">
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Final Review</div>
                   <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2, marginBottom: 6 }}>Here’s a summary of your content settings.</div>
@@ -2879,6 +2836,37 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     ));
                   })()}
                 </div>
+                <div style={{ ...card, borderRadius: 16, padding: '18px 20px', boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Accessibility Check</div>
+                  {(() => {
+                    const checkImages = [...p.mediaItems, ...postExtraImages].filter(m => m.type === 'image');
+                    const altOk = checkImages.length > 0 && checkImages.every(m => m.altText?.trim());
+                    const rows: Array<[string, boolean, string]> = [
+                      p.logoImage
+                        ? ['Logo is visible', true, '']
+                        : ['Logo is optional', false, ''],
+                      checkImages.length === 0
+                        ? ['No visuals yet', false, '']
+                        : altOk
+                          ? ['Descriptions added', true, '']
+                          : ['Add image description', false, ''],
+                      checkImages.length === 0
+                        ? ['Waiting for visual', false, '']
+                        : ['Preview ready', true, ''],
+                    ];
+                    return (
+                      <div>
+                        {rows.map(([label, ok]) => (
+                          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+                            <span style={{ width: 17, height: 17, borderRadius: '50%', background: ok ? '#ECFDF5' : '#F1F3F9', border: `1px solid ${ok ? '#A7F3D0' : '#E2E8F0'}`, color: ok ? '#059669' : '#B6BDCC', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{ok ? '✓' : '·'}</span>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: ok ? '#334155' : C.faint }}>{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+
               </aside>
               </div>
             </div>
@@ -2887,7 +2875,6 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <button onClick={goBack} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14 }}>← Back</button>
               <div style={{ flex: 1 }} />
               <button onClick={() => setShowCancelPreview(true)} style={{ ...ghostBtn, minHeight: 50, padding: '14px 26px', fontSize: 14, color: '#B91C1C' }}>Cancel</button>
-              <button ref={previewBtnRef} onClick={openPostPreview} title="Open the realistic platform preview in a popup" style={{ minHeight: 50, padding: '14px 26px', borderRadius: 12, fontSize: 14, fontWeight: 800, border: `1.5px solid ${C.primary}`, backgroundColor: '#fff', color: C.primaryDark, cursor: 'pointer', fontFamily: 'inherit' }}>👁 Preview</button>
               <button onClick={goNext} style={{ minHeight: 50, padding: '14px 34px', borderRadius: 12, fontSize: 14.5, fontWeight: 800, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', boxShadow: '0 6px 22px rgba(124,58,237,0.42)' }}>Publish →</button>
             </div>
           </div>

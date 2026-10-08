@@ -29,7 +29,7 @@ export default function PreviewClient() {
   // Step 6 demo state (?step=6): mock gallery visual + uploaded logo so
   // placement, preview, apply and ALT flows are reviewable instantly.
   // ?logo=0 simulates "no logo uploaded"; ?multi=1 simulates 2 images.
-  const demoBrand = stepParam === 6;
+  const demoBrand = stepParam === 6 || stepParam === 7;
   const wantLogo = search.get('logo') !== '0';
   const wantMulti = search.get('multi') === '1';
   const mockVisual = (label: string) =>
