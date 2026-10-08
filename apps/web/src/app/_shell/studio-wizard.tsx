@@ -2049,6 +2049,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <div style={{ width: 48, height: 48, borderRadius: 14, background: '#EDE9FE', border: '1px solid #DDD6FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🎨</div>
                   <div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, letterSpacing: '-0.02em' }}>Design & Branding Studio</div>
+                    <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Shape your visuals and prepare them for a polished social media post</div>
                   </div>
                 </div>
               </div>
