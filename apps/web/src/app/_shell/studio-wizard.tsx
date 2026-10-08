@@ -150,306 +150,133 @@ const STEPS = [
   { n: 8, t: 'Publish' },
 ];
 
-function WizardStepper({ step, go }: { step: number; go: (n: number) => void }) {
-  const railRef = useRef<HTMLDivElement | null>(null);
-  const activeRef = useRef<HTMLDivElement | null>(null);
-  const [canLeft, setCanLeft] = useState(false);
-  const [canRight, setCanRight] = useState(false);
-
-  const updateArrows = useCallback(() => {
-    const el = railRef.current;
-    if (!el) return;
-    const max = el.scrollWidth - el.clientWidth;
-    setCanLeft(el.scrollLeft > 4);
-    setCanRight(el.scrollLeft < max - 4);
-  }, []);
-
-  const reducedMotion = () =>
-    typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  const centerActive = useCallback((instant: boolean) => {
-    // Deterministic scroll math instead of scrollIntoView(): the latter is
-    // affected by CSS scroll-behavior hijacking ('auto' becomes smooth on this
-    // rail), by layout timing, and by clamp edge cases — observed as a fixed
-    // ~145px miss at 768px that no amount of deferral fixed. An explicit
-    // scrollTo target computed from live rects always wins over CSS, and the
-    // browser clamps it correctly at the content edges (where perfect
-    // centering is physically impossible).
-    const el = railRef.current;
-    const item = activeRef.current;
-    if (!el || !item) return;
-    const railBox = el.getBoundingClientRect();
-    const itemBox = item.getBoundingClientRect();
-    const target = el.scrollLeft
-      + (itemBox.left + itemBox.width / 2)
-      - (railBox.left + railBox.width / 2);
-    el.scrollTo({ left: target, behavior: instant || reducedMotion() ? 'instant' : 'smooth' });
-  }, []);
-
-  // scrollIntoView measures layout synchronously, so calling it in the same
-  // task as a viewport resize (or a React commit that is still reflowing) can
-  // center against stale geometry and leave the rail overscrolled. Deferring
-  // past layout settles it. The id is kept so rapid resizes coalesce.
-  const rafRef = useRef<number | null>(null);
-  const scheduleCenter = useCallback((instant: boolean) => {
-    if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current);
-    rafRef.current = window.requestAnimationFrame(() => {
-      rafRef.current = window.requestAnimationFrame(() => {
-        rafRef.current = null;
-        centerActive(instant);
-      });
-    });
-  }, [centerActive]);
-
-  useEffect(() => {
-    updateArrows();
-    const el = railRef.current;
-    if (!el) return;
-    const onScroll = () => updateArrows();
-    // Observe the RAIL's own box, not window resize: a viewport change reflows
-    // the rail, which can leave the active step off center even though the
-    // step never changed. ResizeObserver fires post-layout with fresh
-    // geometry, so the re-center it schedules can never compute against stale
-    // widths (the failure mode of window-resize timing). Scroll position alone
-    // never triggers it, so user-driven scrolling is never yanked back.
-    let ro: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(() => { scheduleCenter(true); updateArrows(); });
-      ro.observe(el);
-    }
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      el.removeEventListener('scroll', onScroll);
-      ro?.disconnect();
-      if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current);
-    };
-  }, [updateArrows, scheduleCenter]);
-
-  // Center the active step whenever it changes. block:'nearest' guarantees no
-  // vertical page jump; reduced-motion users get an instant jump instead.
-  useEffect(() => {
-    scheduleCenter(false);
-    updateArrows();
-  }, [step, scheduleCenter, updateArrows]);
-
-  const nudge = (dx: number) => {
-    const el = railRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dx, behavior: reducedMotion() ? 'instant' : 'smooth' });
-  };
-
-  const progress = STEPS.length > 1 ? ((step - 1) / (STEPS.length - 1)) * 100 : 0;
-
-  const arrowBtn = (dir: -1 | 1, label: string, enabled: boolean): React.CSSProperties => ({
-    width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: 20, fontWeight: 800, lineHeight: 1, color: '#fff',
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(139,92,246,0.28)',
-    cursor: enabled ? 'pointer' : 'default',
-    opacity: enabled ? 1 : 0.3,
-    fontFamily: 'inherit', padding: 0,
-    transition: 'transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease',
-  });
+// Compact ring stepper — layout and motion ported from CompactRing.dc.html.
+// Progress is a single SVG ring (r=28, dasharray 175.9) rather than the old
+// rail of numbered circles plus a separate progressbar, so the wizard reads as
+// one compact pill instead of a scrolling strip.
+function WizardStepper({ step, go, canAdvance = true }: { step: number; go: (n: number) => void; canAdvance?: boolean }) {
+  const total = STEPS.length;
+  const clamped = Math.min(Math.max(step, 1), total);
+  const atStart = clamped <= 1;
+  const atEnd = clamped >= total;
+  const RING_C = 175.9;
+  const ringOffset = (RING_C * (1 - clamped / total)).toFixed(1);
+  const currentLabel = STEPS[clamped - 1].t;
+  const nextLabel = atEnd ? 'Done' : STEPS[clamped].t;
+  // Step 3 is the only step whose own Continue button is gated (it needs
+  // generated content). The chevron honours that gate so this nav can never be
+  // used to skip past validation.
+  const nextEnabled = !atEnd && canAdvance;
 
   return (
-    <div
-      className="sp-stepper"
-      role="navigation"
-      aria-label="Content creation progress"
+    <nav
+      aria-label="Setup progress"
+      className="sp-cr"
       style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '18px 24px 14px',
-        minHeight: 118,
-        borderRadius: 999,
-        background: 'linear-gradient(180deg, #111321 0%, #090B15 100%)',
-        border: '1px solid rgba(139,92,246,0.18)',
-        boxShadow: '0 12px 40px rgba(15,23,42,0.18), 0 0 24px rgba(124,58,237,0.10)',
+        boxSizing: 'border-box', width: '100%',
+        padding: '0 20px 0 22px',
+        background: '#0c0b18', border: '1px solid #1f1d33', borderRadius: 56,
+        boxShadow: '0 14px 32px rgba(17,12,46,0.25)',
+        display: 'flex', alignItems: 'center', gap: 20,
       }}
     >
       <style>{`
-        .sp-stepper-rail { scrollbar-width: none; -ms-overflow-style: none; scroll-snap-type: x proximity; }
-        .sp-stepper-rail::-webkit-scrollbar { display: none; }
-        .sp-stepper-rail > div { scroll-snap-align: center; }
-        .sp-step-label { font-size: clamp(11px, 1vw, 14px) !important; white-space: nowrap; }
-        .sp-step-arrow:not(:disabled):hover { transform: scale(1.05); box-shadow: 0 0 16px rgba(139,92,246,0.45); }
-        .sp-step-arrow:focus-visible, .sp-step-item:focus-visible { outline: 2px solid #A855F7; outline-offset: 2px; }
-        .sp-step-circle { width: 42px; height: 42px; font-size: 14px; }
+        .sp-cr { height: 112px; min-width: 0; }
+        .sp-cr-m { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+        .sp-cr-row { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+        .sp-cr-cur { font-size: 21px; font-weight: 800; color: #fff; white-space: nowrap; }
+        .sp-cr-next { font-size: 13px; font-weight: 600; color: #a9a7c2; white-space: nowrap; }
+        .sp-cr-dots { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; }
+        .sp-cr-dot { display: block; height: 8px; padding: 0; border: 0; border-radius: 4px;
+          transition: width .3s, background .3s; }
+        .sp-cr-dot[data-off="1"] { cursor: pointer; }
+        .sp-cr-dot[data-off="1"]:hover { background: #c4b5fd; }
+        .sp-cr-dot:focus-visible, .sp-cr-btn:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
+        .sp-cr-btn { transition: background .2s, opacity .2s; }
+        .sp-cr-btn:not(:disabled):hover { background: #2a2842; }
+        .sp-cr-btn:disabled { opacity: .35; cursor: not-allowed; }
         @media (max-width: 768px) {
-          .sp-step-circle { width: 36px !important; height: 36px !important; font-size: 12px !important; }
-          .sp-stepper { padding: 14px 16px 12px; }
-        }
-        @keyframes spStepPop { 0% { transform: scale(0.92); } 55% { transform: scale(1.05); } 100% { transform: scale(1); } }
-        @keyframes spCheckIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
-        @media (prefers-reduced-motion: reduce) {
-          .sp-stepper *, .sp-stepper *::before, .sp-stepper *::after { animation: none !important; transition: none !important; }
-          .sp-stepper-rail { scroll-behavior: auto !important; }
+          .sp-cr { height: auto; padding: 14px 16px; border-radius: 28px; gap: 12px; flex-wrap: wrap; }
+          .sp-cr-ring { width: 52px !important; height: 52px !important; }
+          .sp-cr-cur { font-size: 17px; }
+          .sp-cr-next { display: none; }
+          .sp-cr-btn { width: 40px !important; height: 40px !important; }
         }
       `}</style>
 
-      <button
-        type="button"
-        aria-label="Scroll steps left"
-        disabled={!canLeft}
-        onClick={() => nudge(-260)}
-        className="sp-step-arrow"
-        style={arrowBtn(-1, 'Scroll steps left', canLeft)}
-      >
-        ‹
-      </button>
-
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div
-          ref={railRef}
-          className="sp-stepper-rail"
-          style={{
-            display: 'flex', alignItems: 'center',
-            overflowX: 'auto', overflowY: 'hidden',
-            whiteSpace: 'nowrap', scrollBehavior: 'smooth',
-            padding: '6px 2px 2px',
-          }}
-        >
-          {STEPS.map((s, i) => {
-            const done = s.n < step;
-            const active = s.n === step;
-            return (
-              <div
-                key={s.n}
-                ref={active ? activeRef : undefined}
-                style={{ display: 'flex', alignItems: 'center', flexShrink: 0, position: 'relative' }}
-              >
-                {active && (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)',
-                      width: 34, height: 4, borderRadius: 999,
-                      background: 'linear-gradient(90deg,#8B5CF6,#D946EF)',
-                      boxShadow: '0 0 12px rgba(139,92,246,0.8)',
-                    }}
-                  />
-                )}
-                <button
-                  type="button"
-                  onClick={() => { if (s.n < step) go(s.n); }}
-                  disabled={s.n > step}
-                  aria-current={active ? 'step' : undefined}
-                  title={s.n < step ? `Go back to ${s.t}` : s.t}
-                  className="sp-step-item"
-                  style={{
-                    background: active ? 'rgba(124,58,237,0.10)' : 'none',
-                    border: 'none',
-                    borderRadius: 18,
-                    padding: active ? '8px 14px' : '8px 10px',
-                    boxShadow: active ? '0 0 20px rgba(139,92,246,0.16)' : 'none',
-                    cursor: s.n < step ? 'pointer' : 'default',
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    fontFamily: 'inherit', whiteSpace: 'nowrap',
-                    transition: 'background 200ms ease, box-shadow 200ms ease',
-                  }}
-                >
-                  <span
-                    className="sp-step-circle"
-                    style={{
-                      borderRadius: '50%', flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 800,
-                      background: done || active
-                        ? 'linear-gradient(135deg,#7C3AED,#A855F7)'
-                        : '#1E2436',
-                      color: done || active ? '#fff' : 'rgba(226,232,240,0.55)',
-                      border: active
-                        ? 'none'
-                        : done ? 'none' : '1px solid rgba(148,163,184,0.35)',
-                      boxShadow: active
-                        ? '0 0 0 4px rgba(139,92,246,.12), 0 0 20px rgba(139,92,246,.45)'
-                        : done ? '0 0 12px rgba(139,92,246,.25)' : 'none',
-                      animation: active ? 'spStepPop 350ms ease-out' : undefined,
-                    }}
-                  >
-                    {done ? (
-                      <span style={{ display: 'inline-block', animation: 'spCheckIn 300ms ease-out' }}>✓</span>
-                    ) : s.n}
-                  </span>
-                  <span
-                    className="sp-step-label"
-                    style={{
-                      fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em', whiteSpace: 'nowrap',
-                      color: done || active ? '#F8FAFC' : 'rgba(226,232,240,.65)',
-                    }}
-                  >
-                    {s.t}
-                  </span>
-                </button>
-                {i < STEPS.length - 1 && (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      position: 'relative', flexShrink: 0,
-                      width: 'clamp(22px, 3.5vw, 48px)', height: 3, borderRadius: 3,
-                      margin: '0 8px', background: '#2A3044', overflow: 'hidden',
-                    }}
-                  >
-                    <span
-                      style={{
-                        position: 'absolute', inset: 0,
-                        background: 'linear-gradient(90deg,#7C3AED,#A855F7)',
-                        transform: `scaleX(${s.n < step ? 1 : 0})`,
-                        transformOrigin: 'left center',
-                        transition: 'transform 400ms ease-out',
-                      }}
-                    />
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <div
-          role="progressbar"
-          aria-valuemin={1}
-          aria-valuemax={STEPS.length}
-          aria-valuenow={step}
-          aria-label="Wizard progress"
-          style={{ position: 'relative', height: 5, borderRadius: 999, background: '#232839', margin: '0 2px' }}
-        >
-          <div
-            style={{
-              position: 'absolute', left: 0, top: 0, bottom: 0,
-              width: `${progress}%`, borderRadius: 999,
-              background: 'linear-gradient(90deg,#6D28D9,#8B5CF6,#D946EF)',
-              boxShadow: '0 0 10px rgba(139,92,246,0.5)',
-              transition: 'width 400ms ease-out',
-            }}
-          >
-            <span
-              aria-hidden="true"
-              style={{
-                position: 'absolute', right: -6, top: '50%', transform: 'translateY(-50%)',
-                width: 11, height: 11, borderRadius: '50%',
-                background: 'radial-gradient(circle at 35% 35%, #fff 0%, #C4B5FD 45%, #8B5CF6 100%)',
-                boxShadow: '0 0 10px rgba(168,85,247,0.9)',
-                pointerEvents: 'none',
-              }}
-            />
-          </div>
-        </div>
+      <div className="sp-cr-ring" style={{ position: 'relative', flex: 'none', width: 68, height: 68 }}>
+        <svg width="68" height="68" viewBox="0 0 68 68" aria-hidden="true" style={{ display: 'block' }}>
+          <circle cx="34" cy="34" r="28" fill="none" stroke="#26253b" strokeWidth="6" />
+          <circle cx="34" cy="34" r="28" fill="none" stroke="#8b5cf6" strokeWidth="6" strokeLinecap="round"
+            strokeDasharray="175.9" strokeDashoffset={ringOffset} transform="rotate(-90 34 34)"
+            style={{ transition: 'stroke-dashoffset .35s ease' }} />
+        </svg>
+        <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: '#fff' }}>
+          {clamped}/{total}
+        </span>
       </div>
 
-      <button
-        type="button"
-        aria-label="Scroll steps right"
-        disabled={!canRight}
-        onClick={() => nudge(260)}
-        className="sp-step-arrow"
-        style={arrowBtn(1, 'Scroll steps right', canRight)}
-      >
-        ›
-      </button>
-    </div>
+      <div className="sp-cr-m">
+        <div className="sp-cr-row">
+          <span className="sp-cr-cur">{currentLabel}</span>
+          <span className="sp-cr-next">Next: {nextLabel}</span>
+        </div>
+        <ol className="sp-cr-dots">
+          {STEPS.map((s, i) => {
+            const active = i === clamped - 1;
+            const reached = i < clamped;
+            // Forward jumps stay disabled, exactly as the previous stepper did:
+            // a step is only reachable once you have actually been there.
+            const canGoBack = i + 1 < clamped;
+            return (
+              <li key={s.n} style={{ display: 'flex' }}>
+                <button
+                  type="button"
+                  className="sp-cr-dot"
+                  data-off={canGoBack ? '0' : '1'}
+                  onClick={() => { if (canGoBack) go(s.n); }}
+                  disabled={!canGoBack}
+                  aria-label={`Go to step ${s.n}: ${s.t}`}
+                  aria-current={active ? 'step' : undefined}
+                  title={canGoBack ? `Go back to ${s.t}` : s.t}
+                  style={{
+                    width: active ? 28 : 8,
+                    background: active ? '#c4b5fd' : reached ? '#8b5cf6' : '#34324f',
+                  }}
+                />
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+
+      <div style={{ flex: 'none', display: 'flex', gap: 8 }}>
+        <button
+          type="button"
+          className="sp-cr-btn"
+          aria-label="Previous step"
+          disabled={atStart}
+          onClick={() => { if (!atStart) go(clamped - 1); }}
+          style={{ width: 48, height: 48, borderRadius: '50%', border: '1px solid #34324f', background: '#15142a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="sp-cr-btn"
+          aria-label="Next step"
+          disabled={!nextEnabled}
+          onClick={() => { if (nextEnabled) go(clamped + 1); }}
+          style={{ width: 48, height: 48, borderRadius: '50%', border: 0, background: '#7c3aed', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </button>
+      </div>
+    </nav>
   );
 }
 
@@ -1267,9 +1094,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         @media (max-width: 768px) { .sp-wiz-root { padding: 14px; gap: 12px; } }
       `}</style>
 
-      <div style={{ ...card, padding: '14px 20px' }}>
-        <WizardStepper step={currentStep} go={setCurrentStep} />
-      </div>
+      <WizardStepper step={currentStep} go={setCurrentStep} canAdvance={currentStep === 3 ? hasContent : true} />
 
       <div style={currentStep === 1 || currentStep === 2 || currentStep === 3 || currentStep === 4 || currentStep === 5 || currentStep === 6 || currentStep === 7 || currentStep === 8 ? { background: 'transparent' } : { ...card, padding: '28px 32px' }}>
         {/* ================= STEP 1 — IDEA ================= */}
