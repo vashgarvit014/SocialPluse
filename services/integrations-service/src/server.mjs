@@ -51,7 +51,7 @@ function getPool() {
 const handleCanvaRoute = createCanvaRouter({ query: (...args) => getPool().query(...args) });
 const handleLinkedInRoute = createLinkedInRouter({ query: (...args) => getPool().query(...args) });
 const handleFacebookRoute = createFacebookRouter({ query: (...args) => getPool().query(...args) });
-const handleInstagramRoute = createInstagramRouter({ query: (...args) => getPool().query(...args) });
+const handleInstagramRoute = createInstagramRouter({ query: (...args) => getPool().query(...args) }, { log });
 // WhatsApp's connections store also needs pool.connect() for one transaction
 // (beginQrAttempt) — the other providers only ever call .query().
 const handleWhatsAppRoute = createWhatsAppRouter({ query: (...args) => getPool().query(...args), connect: (...args) => getPool().connect(...args) });
@@ -166,7 +166,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
     }
     const subpath = url.pathname.replace(/^\/instagram/, '');
-    const handled = await handleInstagramRoute(subpath, req, res);
+    const handled = await handleInstagramRoute(subpath, req, res, { requestId });
     if (handled !== null) return;
     return send(res, 404, { code: 'NOT_FOUND', message: 'No such Instagram route.' });
   }

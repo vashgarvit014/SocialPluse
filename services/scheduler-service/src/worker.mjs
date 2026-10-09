@@ -1,36 +1,53 @@
-// Due-job execution loop. Faithful port of the publish-building logic from
-// src/app/api/scheduler/check/route.ts#publishPost, BUT calling
-// publishing-service's internal endpoints directly (x-internal-secret +
-// x-actor-user-id) instead of looping back through the monolith's own
-// /api/{platform}/publish over HTTP with a signed actor header — this is
-// the "scheduler -> publishing-service" boundary the brief requires
-// ("scheduler must NOT call LinkedIn/Facebook/Instagram/Whapi directly").
+// Due-job execution loop.
 //
-// Stable attemptId `sched:${post.id}:${platform}` preserved exactly from
-// the original — this is what lets publishing-service's durable
-// idempotency (publish_attempts UNIQUE(platform, attempt_id)) catch a
-// retried/duplicate claim of the same post+platform and refuse to publish
-// it twice, even if THIS service's own claim/lock bookkeeping is ever
-// imperfect (crash between claim and finishJob, etc.) — defense in depth,
-// not the only guard.
+// One post is claimed atomically (claimDueJob, FOR UPDATE SKIP LOCKED), then
+// its TARGET PLATFORMS ARE PROCESSED INDEPENDENTLY. There is no transaction
+// spanning provider calls: an external publish cannot be rolled back, and one
+// platform failing must never discard another platform's success. Database
+// bookkeeping per platform is transactional in itself; the publish calls are
+// not grouped.
+//
+// Order per platform:
+//   1. preflight the user's CURRENT connection (scoped to post.userId)
+//   2. disconnected -> CONNECTION_REQUIRED, no outbound publish at all
+//   3. connected    -> atomically claim the platform row -> PROCESSING
+//   4. publish through publishing-service, then record the real outcome
+//
+// Stable attemptId `sched:${post.id}:${platform}` is preserved exactly — it is
+// what lets publishing-service's durable idempotency (publish_attempts UNIQUE)
+// refuse a second publish of the same post+platform even if this service's own
+// bookkeeping is ever interrupted mid-flight.
 
 import { isTransientError, nextRetry, MAX_ATTEMPTS } from './retry-policy.mjs';
+import { POST_STATUS, PLATFORM_STATUS, resolveOverallStatus, summarizePlatforms } from './status.mjs';
 
 const PLATFORM_ROUTE = { linkedin: '/linkedin', facebook: '/facebook', instagram: '/instagram', whatsapp: '/whapi' };
+
+// Publishing-service error codes that mean "the user has disconnected this
+// platform" — surfaced by its own credential reads (disconnected_at IS NULL)
+// as well as by our preflight. Either way the correct outcome is
+// CONNECTION_REQUIRED, never a generic FAILED and never a retry.
+const CONNECTION_ERROR_CODES = new Set([
+  'LINKEDIN_NOT_CONNECTED', 'FACEBOOK_NOT_CONNECTED', 'INSTAGRAM_NOT_CONNECTED',
+  'WHATSAPP_NOT_CHANNEL_OWNER', 'PLATFORM_NOT_CONNECTED', 'AUTH_REQUIRED',
+]);
+
+const PLATFORM_LABEL = { linkedin: 'LinkedIn', facebook: 'Facebook', instagram: 'Instagram', whatsapp: 'WhatsApp' };
 
 function stripAllHashtags(s) {
   return s.replace(/#[A-Za-z0-9_]+/g, ' ').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-export function createWorker({ store, log, publishingServiceUrl, internalSecret, workerId, pollIntervalMs = 15_000 }) {
+export function createWorker({
+  store, platformStore, connections, notifier, log,
+  publishingServiceUrl, internalSecret, workerId, pollIntervalMs = 15_000,
+}) {
   let lastLoopAt = null;
   let running = false;
   let timer = null;
+  let lastStats = { due: 0, published: 0, partial: 0, connectionRequired: 0, failed: 0, retrying: 0 };
 
-  async function publishOnePlatform(post, platform, account) {
-    const route = PLATFORM_ROUTE[platform];
-    if (!route) return { ok: false, code: 'PUBLISH_FAILED', message: `Unknown platform ${platform}` };
-
+  function buildBody(post, platform, account) {
     const mediaList = post.mediaList;
     const mediaUrls = post.mediaUrls || mediaList?.map((m) => m.url);
     const mediaUrl = post.mediaUrl || post.videoUrl || post.imageUrl || mediaUrls?.[0];
@@ -39,10 +56,12 @@ export function createWorker({ store, log, publishingServiceUrl, internalSecret,
     const isWhapp = platform === 'whatsapp';
 
     const content = post.platformContent?.[platform]
-      ? (isWhapp ? stripAllHashtags(post.platformContent[platform].caption) : [post.platformContent[platform].caption, (post.platformContent[platform].hashtags || []).map((t) => '#' + t.replace(/^#+/, '')).join(' ')].filter(Boolean).join('\n\n'))
+      ? (isWhapp
+        ? stripAllHashtags(post.platformContent[platform].caption)
+        : [post.platformContent[platform].caption, (post.platformContent[platform].hashtags || []).map((t) => '#' + t.replace(/^#+/, '')).join(' ')].filter(Boolean).join('\n\n'))
       : (isWhapp ? stripAllHashtags(post.content) : post.content);
 
-    const body = {
+    return {
       content,
       imageUrl: !isVideo ? post.imageUrl || mediaUrl : undefined,
       videoUrl: isVideo ? post.videoUrl || mediaUrl : undefined,
@@ -52,12 +71,18 @@ export function createWorker({ store, log, publishingServiceUrl, internalSecret,
       isCarousel: post.isCarousel === true || undefined,
       trialReel: post.trialReel === true ? true : undefined,
       collaborator: post.collaborator || post.editorState?.collaborator || undefined,
-      pageId: account.pageId,
+      pageId: account?.pageId,
       // Whapi uses groupId, not pageId/userId.
-      groupId: isWhapp ? (account.pageId || account.userId) : undefined,
+      groupId: isWhapp ? (account?.pageId || account?.userId) : undefined,
       attemptId: `sched:${post.id}:${platform}`,
     };
+  }
 
+  async function callPublish(post, platform, account) {
+    const route = PLATFORM_ROUTE[platform];
+    if (!route) return { ok: false, code: 'UNSUPPORTED_PLATFORM', message: `Unknown platform ${platform}` };
+
+    const body = buildBody(post, platform, account);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60_000);
     try {
@@ -68,20 +93,18 @@ export function createWorker({ store, log, publishingServiceUrl, internalSecret,
         signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.success) return { ok: true };
-      // A duplicate-claim response means another attempt already claimed
-      // this exact post+platform's attemptId — but that prior attempt could
-      // itself have FAILED (e.g. this exact scenario: a permanently-failed
-      // job later re-claimed by a manual retry/test reset, reusing the same
-      // stable attemptId). Blindly treating "duplicate" as success would
-      // mark a post PUBLISHED when it never actually was — found by testing
-      // this exact path, not assumed safe. Look up what actually happened.
+      if (res.ok && data.success) return { ok: true, externalPostId: data.postId || null };
+
+      // A duplicate-claim response means a prior attempt already claimed this
+      // exact post+platform attemptId — but that prior attempt could itself
+      // have FAILED. Blindly treating "duplicate" as success would mark a post
+      // PUBLISHED when it never was. Look up what actually happened.
       if (data.code === 'DUPLICATE_PUBLISH_REQUEST' || data.code === 'WHAPI_DUPLICATE_REQUEST') {
         const outcome = await store.getAttemptOutcome(platform === 'whatsapp' ? 'whapi' : platform, body.attemptId);
-        if (outcome?.status === 'SUCCESS') return { ok: true, postId: outcome.providerPostId, duplicate: true };
-        return { ok: false, code: data.code, message: 'A prior attempt for this post already failed; it was not published.' };
+        if (outcome?.status === 'SUCCESS') return { ok: true, externalPostId: outcome.providerPostId || null, duplicate: true };
+        return { ok: false, code: data.code || 'PUBLISH_FAILED', message: 'A prior attempt for this post already failed; it was not published.' };
       }
-      return { ok: false, code: data.code || 'PUBLISH_FAILED', message: data.message };
+      return { ok: false, code: data.code || 'PUBLISH_FAILED', message: data.message || 'Publish failed.' };
     } catch (e) {
       return { ok: false, code: 'PUBLISH_FAILED', message: e instanceof Error ? e.message : 'Network error' };
     } finally {
@@ -89,42 +112,199 @@ export function createWorker({ store, log, publishingServiceUrl, internalSecret,
     }
   }
 
+  /**
+   * Process exactly one platform. Never throws — always returns a result so a
+   * failure here cannot abort the loop over the remaining platforms.
+   */
+  async function processPlatform(post, platform, account, rowIndex) {
+    const userId = post.userId;
+    const logBase = { userId, scheduledPostId: post.id, platform };
+
+    // Already went out — a re-claim of this post (bounded retry, stale-lock
+    // recovery, or "Retry failed") must never publish it a second time.
+    if (rowIndex?.status === PLATFORM_STATUS.PUBLISHED) {
+      log.info({ ...logBase, event: 'PLATFORM_SKIP_ALREADY_PUBLISHED' });
+      return { platform, ok: true, skipped: true, externalPostId: rowIndex.externalPostId };
+    }
+
+    // --- CONNECTION PREFLIGHT (authoritative; no publish call if it fails) ---
+    const pf = await connections.preflight(userId, platform, account || {});
+    if (!pf.ok) {
+      await platformStore.finishPlatform(post.id, userId, platform, {
+        status: PLATFORM_STATUS.CONNECTION_REQUIRED,
+        errorCode: pf.code,
+        errorMessage: pf.message,
+      });
+      log.warn({ ...logBase, event: 'PLATFORM_CONNECTION_REQUIRED', errorCode: pf.code });
+      await notifier?.notify({
+        userId,
+        type: 'PLATFORM_CONNECTION_REQUIRED',
+        title: `${PLATFORM_LABEL[platform] || platform} disconnected`,
+        message: `Your scheduled ${PLATFORM_LABEL[platform] || platform} post could not be published because ${PLATFORM_LABEL[platform] || platform} is disconnected. Reconnect ${PLATFORM_LABEL[platform] || platform} and retry.`,
+        metadata: { scheduledPostId: post.id, platform, errorCode: pf.code },
+      });
+      return { platform, ok: false, connectionRequired: true, code: pf.code, message: pf.message };
+    }
+
+    // --- ATOMIC PLATFORM CLAIM: PENDING/FAILED/CONNECTION_REQUIRED -> PROCESSING ---
+    const claimed = await platformStore.claimPlatform(post.id, platform, userId, {
+      connectionId: pf.connectionId, destination: pf.destination,
+    });
+    if (!claimed) {
+      // Another worker holds it, or it is already PUBLISHED. Either way: skip.
+      log.info({ ...logBase, event: 'PLATFORM_CLAIM_SKIPPED' });
+      return { platform, ok: false, skipped: true, code: 'PLATFORM_CLAIMED_ELSEWHERE' };
+    }
+
+    log.info({ ...logBase, event: 'PLATFORM_PUBLISH_STARTED', attempt: claimed.attemptCount });
+    const result = await callPublish(post, platform, account);
+
+    if (result.ok) {
+      await platformStore.finishPlatform(post.id, userId, platform, {
+        status: PLATFORM_STATUS.PUBLISHED, externalPostId: result.externalPostId,
+      });
+      log.info({ ...logBase, event: 'PLATFORM_PUBLISH_SUCCESS', externalPostId: result.externalPostId || null });
+      return { platform, ok: true, externalPostId: result.externalPostId };
+    }
+
+    const connectionFailed = CONNECTION_ERROR_CODES.has(result.code);
+    const status = connectionFailed ? PLATFORM_STATUS.CONNECTION_REQUIRED : PLATFORM_STATUS.FAILED;
+    await platformStore.finishPlatform(post.id, userId, platform, {
+      status, errorCode: result.code, errorMessage: result.message,
+    });
+    log.warn({ ...logBase, event: connectionFailed ? 'PLATFORM_CONNECTION_REQUIRED' : 'PLATFORM_PUBLISH_FAILED', errorCode: result.code });
+    if (connectionFailed) {
+      await notifier?.notify({
+        userId,
+        type: 'PLATFORM_CONNECTION_REQUIRED',
+        title: `${PLATFORM_LABEL[platform] || platform} disconnected`,
+        message: `Your scheduled ${PLATFORM_LABEL[platform] || platform} post could not be published because ${PLATFORM_LABEL[platform] || platform} is disconnected. Reconnect ${PLATFORM_LABEL[platform] || platform} and retry.`,
+        metadata: { scheduledPostId: post.id, platform, errorCode: result.code },
+      });
+    }
+    return { platform, ok: false, connectionRequired: connectionFailed, code: result.code, message: result.message };
+  }
+
+  async function publishOnePost(post) {
+    const userId = post.userId;
+    const logBase = { userId, scheduledPostId: post.id };
+    log.info({ ...logBase, event: 'SCHEDULED_PUBLISH_STARTED', platforms: (post.platforms || []).join(',') });
+
+    // Legacy rows scheduled before per-platform tracking have no rows yet.
+    let platformRows = await platformStore.listForPostUnscoped(post.id);
+    if (!platformRows.length) {
+      await platformStore.syncForPost(post.id, userId, (post.platforms || []).map((p) => ({ platform: p })));
+      platformRows = await platformStore.listForPostUnscoped(post.id);
+    }
+
+    const results = [];
+    for (const platform of post.platforms || []) {
+      const account = (post.accounts || []).find((a) => a.platform === platform);
+      const rowIndex = platformRows.find((r) => r.platform === platform);
+      const result = await processPlatform(post, platform, account, rowIndex);
+      // A skipped platform counts as satisfied for the aggregate — it already
+      // published in an earlier attempt.
+      results.push(result.skipped && result.ok ? { platform, ok: true, ...result } : result);
+    }
+
+    // Re-read: every platform write above just landed.
+    const fresh = await platformStore.listForPostUnscoped(post.id);
+    const summary = summarizePlatforms(fresh);
+    const anyTransientFailure = results.some((r) => !r.ok && !r.skipped && !r.connectionRequired && isTransientError(r.code));
+    const anyConnectionFailure = results.some((r) => r.connectionRequired && !r.skipped);
+    const retryCount = post.retry_count || 0;
+
+    let nextStatus;
+    let nextRetryAt = null;
+    let nextRetryCount = retryCount;
+
+    const allSettled = fresh.every((r) => r.status === PLATFORM_STATUS.PUBLISHED || r.status === PLATFORM_STATUS.FAILED || r.status === PLATFORM_STATUS.CONNECTION_REQUIRED);
+    const allPublished = fresh.length > 0 && fresh.every((r) => r.status === PLATFORM_STATUS.PUBLISHED);
+
+    if (allPublished) {
+      nextStatus = POST_STATUS.PUBLISHED;
+    } else if (allSettled && anyTransientFailure && retryCount < MAX_ATTEMPTS - 1) {
+      // Bounded retry: only the platforms that are not PUBLISHED get
+      // re-processed, because processPlatform skips PUBLISHED rows.
+      nextStatus = POST_STATUS.SCHEDULED;
+      nextRetryAt = nextRetry(retryCount);
+      nextRetryCount = retryCount + 1;
+    } else {
+      nextStatus = resolveOverallStatus(fresh, { postStatus: undefined });
+    }
+
+    await store.finishJob(post.id, { status: nextStatus, retryCount: nextRetryCount, nextRetryAt });
+
+    // --- NOTIFICATIONS (terminal states only; a retry in flight stays quiet) ---
+    if (nextStatus === POST_STATUS.PUBLISHED) {
+      log.info({ ...logBase, event: 'SCHEDULED_POST_COMPLETE', result: 'published' });
+      await notifier?.notify({
+        userId, type: 'SCHEDULED_POST_PUBLISHED',
+        title: 'Scheduled post published',
+        message: `Your scheduled post was published to ${summary.published} of ${summary.total} platform${summary.total === 1 ? '' : 's'}.`,
+        metadata: { scheduledPostId: post.id, published: summary.published, total: summary.total },
+      });
+    } else if (nextStatus === POST_STATUS.PARTIALLY_PUBLISHED) {
+      log.warn({ ...logBase, event: 'SCHEDULED_POST_PARTIAL_SUCCESS', published: summary.published, total: summary.total });
+      await notifier?.notify({
+        userId, type: 'SCHEDULED_POST_PARTIAL_SUCCESS',
+        title: 'Scheduled post partially published',
+        message: `${summary.headline} ${summary.detail}`.trim(),
+        metadata: { scheduledPostId: post.id, published: summary.published, total: summary.total, reconnect: summary.reconnectPlatforms, failed: summary.failedPlatforms },
+      });
+    } else if (nextStatus === POST_STATUS.CONNECTION_REQUIRED || nextStatus === POST_STATUS.FAILED) {
+      log.error({ ...logBase, event: 'SCHEDULED_POST_COMPLETE', result: nextStatus, errorCode: fresh.find((r) => r.errorCode)?.errorCode || null });
+      await notifier?.notify({
+        userId, type: 'SCHEDULED_POST_FAILED',
+        title: 'Scheduled post could not be published',
+        message: summary.detail || 'Your scheduled post could not be published. Open the scheduler to review and retry.',
+        metadata: { scheduledPostId: post.id, published: summary.published, total: summary.total, status: nextStatus },
+      });
+    } else if (nextStatus === POST_STATUS.SCHEDULED) {
+      log.info({ ...logBase, event: 'SCHEDULED_POST_RETRY_SCHEDULED', retryAt: nextRetryAt, attempt: nextRetryCount });
+    }
+
+    return { status: nextStatus, summary };
+  }
+
+  /**
+   * Publish exactly ONE already-claimed post. Used by the user-triggered
+   * "Retry failed" path so a retry can never sweep in unrelated due posts
+   * the way runOnce() would.
+   */
+  async function publishClaimed(post) {
+    return publishOnePost(post);
+  }
+
   async function runOnce() {
     const claimed = await store.claimDueJob(workerId, { now: new Date() });
-    let publishedCount = 0;
+    const stats = { due: claimed.length, published: 0, partial: 0, connectionRequired: 0, failed: 0, retrying: 0 };
     for (const post of claimed) {
       if (!post.userId) {
-        log.warn({ event: 'publish_skipped_unowned', postId: post.id });
-        await store.finishJob(post.id, { status: 'failed', retryCount: post.retry_count || 0 });
+        // No owner (legacy import) — cannot resolve a connection, must not publish.
+        log.warn({ event: 'publish_skipped_unowned', scheduledPostId: post.id });
+        await store.finishJob(post.id, { status: POST_STATUS.FAILED, retryCount: post.retry_count || 0 });
         continue;
       }
-      const results = [];
-      for (const platform of post.platforms || []) {
-        const account = (post.accounts || []).find((a) => a.platform === platform);
-        if (!account) { results.push({ platform, ok: false, code: 'PUBLISH_FAILED' }); continue; }
-        const result = await publishOnePlatform(post, platform, account);
-        results.push({ platform, ...result });
-        log.info({ event: result.ok ? 'publish_success' : 'publish_failed', postId: post.id, platform, code: result.code });
-      }
-
-      const anySuccess = results.some((r) => r.ok);
-      const failed = results.filter((r) => !r.ok);
-      const allTransient = failed.length > 0 && failed.every((r) => isTransientError(r.code));
-      const retryCount = post.retry_count || 0;
-
-      if (anySuccess || failed.length === 0) {
-        await store.finishJob(post.id, { status: 'published', retryCount, failedPlatforms: failed.length ? failed.map((f) => f.platform) : undefined });
-        publishedCount++;
-      } else if (allTransient && retryCount < MAX_ATTEMPTS - 1) {
-        const retryAt = nextRetry(retryCount);
-        await store.finishJob(post.id, { status: 'pending', retryCount: retryCount + 1, nextRetryAt: retryAt });
-        log.info({ event: 'publish_retry_scheduled', postId: post.id, retryCount: retryCount + 1, retryAt });
-      } else {
-        await store.finishJob(post.id, { status: 'failed', retryCount, failedPlatforms: failed.map((f) => f.platform) });
+      try {
+        const outcome = await publishOnePost(post);
+        if (outcome.status === POST_STATUS.PUBLISHED) stats.published++;
+        else if (outcome.status === POST_STATUS.PARTIALLY_PUBLISHED) stats.partial++;
+        else if (outcome.status === POST_STATUS.CONNECTION_REQUIRED) stats.connectionRequired++;
+        else if (outcome.status === POST_STATUS.FAILED) stats.failed++;
+        else if (outcome.status === POST_STATUS.SCHEDULED) stats.retrying++;
+      } catch (e) {
+        // One post's unexpected error must not stop the whole tick.
+        log.error({ event: 'scheduled_post_error', userId: post.userId, scheduledPostId: post.id, message: e instanceof Error ? e.message : 'unknown' });
+        try { await store.finishJob(post.id, { status: POST_STATUS.FAILED, retryCount: post.retry_count || 0 }); } catch { /* already finalized */ }
       }
     }
+    lastStats = stats;
     lastLoopAt = new Date().toISOString();
-    return publishedCount;
+    if (claimed.length) {
+      log.info({ event: 'scheduler_tick', ...stats });
+    }
+    return stats.published;
   }
 
   function start() {
@@ -142,5 +322,5 @@ export function createWorker({ store, log, publishingServiceUrl, internalSecret,
     if (timer) clearTimeout(timer);
   }
 
-  return { start, stop, runOnce, status: () => ({ running, lastLoopAt }) };
+  return { start, stop, runOnce, publishClaimed, status: () => ({ running, lastLoopAt, stats: lastStats }) };
 }

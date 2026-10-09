@@ -1,4 +1,36 @@
 export interface PostMedia { id: string; url: string; type: 'image' | 'video'; name?: string; altText?: string }
+
+// Per-platform row for a scheduled post, returned by GET /api/scheduler.
+// A multi-platform post is never reduced to one status: LinkedIn can be
+// PUBLISHED while Instagram is CONNECTION_REQUIRED.
+export interface PlatformPostStatus {
+  id: string;
+  scheduledPostId: string;
+  platform: string;
+  platformConnectionId: string | null;
+  destination: string | null;
+  status: 'PENDING' | 'PROCESSING' | 'PUBLISHED' | 'FAILED' | 'CONNECTION_REQUIRED' | 'CANCELLED';
+  attemptCount: number;
+  lastAttemptAt: string | null;
+  publishedAt: string | null;
+  externalPostId: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PostSummary {
+  total: number;
+  published: number;
+  allPublished: boolean;
+  anyConnectionRequired: boolean;
+  reconnectPlatforms: string[];
+  failedPlatforms: string[];
+  headline: string;
+  detail: string;
+}
+
 export interface PostRecord {
   id: string; content: string; imageUrl: string; videoUrl?: string; mediaUrl?: string;
   mediaType?: 'image' | 'video' | null; mediaUrls?: string[]; mediaList?: PostMedia[];
@@ -19,6 +51,11 @@ export interface PostRecord {
   previousScheduledAt?: string | null;
   source?: string; editorState?: Record<string, unknown>;
   platformContent?: Record<string, { caption: string; hashtags: string[] }>;
+  // Derived server-side from platformStatuses on every read (never stored),
+  // so it can never disagree with the rows behind it.
+  platformStatuses?: PlatformPostStatus[];
+  overallStatus?: string;
+  summary?: PostSummary;
   [key: string]: unknown;
 }
 export function cancelPost(post: PostRecord, now = new Date().toISOString()): PostRecord {

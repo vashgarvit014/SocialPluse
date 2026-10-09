@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { PostRecord } from '@/lib/posts';
+import type { PlatformPostStatus, PostRecord } from '@/lib/posts';
 
 export type SchedulerMode = 'drafts' | 'scheduled' | 'published';
 export type CalendarView = 'week' | 'month' | 'list';
@@ -35,6 +35,8 @@ type SchedulerCalendarProps = {
   onSchedule?: (post: PostRecord) => void;
   onDelete?: (post: PostRecord) => void;
   onDuplicate?: (post: PostRecord) => void;
+  onRetryFailed?: (post: PostRecord) => void;
+  onReconnect?: (platform: string) => void;
   platformColors: Record<string, string>;
   PlatformIcon: ({ platform, size }: { platform: string; size?: number }) => React.JSX.Element;
   getMedia: (post: PostRecord) => { url: string; isVideo: boolean };
@@ -53,19 +55,33 @@ function addDays(d: Date, n: number): Date {
 }
 
 function statusBadge(mode: SchedulerMode, post: PostRecord): { label: string; bg: string; color: string; border: string } {
+  // Prefer the server-derived overallStatus (computed from the per-platform
+  // rows on every read). The stored parent status can lag behind the rows, so
+  // trusting it here would hide a CONNECTION_REQUIRED / PARTIALLY_PUBLISHED
+  // result that the rows already record.
+  const derived = post.overallStatus || post.status;
   if (mode === 'drafts') {
-    const cancelled = !!(post as unknown as { previousScheduledAt?: string }).previousScheduledAt || post.status === 'cancelled';
+    const cancelled = !!(post as unknown as { previousScheduledAt?: string }).previousScheduledAt || derived === 'cancelled';
     return cancelled
       ? { label: 'SCHEDULE CANCELLED', bg: '#fffbeb', color: '#b45309', border: '#fde68a' }
       : { label: 'DRAFT', bg: '#f1f5f9', color: '#64748b', border: '#e2e8f0' };
   }
   if (mode === 'scheduled') {
-    if (post.status === 'publishing') {
+    if (derived === 'publishing') {
       return { label: 'PUBLISHING', bg: '#fffbeb', color: '#b45309', border: '#fde68a' };
     }
-    return post.status === 'failed'
+    if (derived === 'partially_published') {
+      return { label: 'PARTIALLY PUBLISHED', bg: '#fffbeb', color: '#b45309', border: '#fde68a' };
+    }
+    if (derived === 'connection_required') {
+      return { label: 'CONNECTION REQUIRED', bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' };
+    }
+    return derived === 'failed'
       ? { label: 'FAILED', bg: '#fee2e2', color: '#dc2626', border: '#fecaca' }
       : { label: 'SCHEDULED', bg: '#eef2ff', color: '#4338ca', border: '#c7d2fe' };
+  }
+  if (derived === 'partially_published') {
+    return { label: 'PARTIALLY PUBLISHED', bg: '#fffbeb', color: '#b45309', border: '#fde68a' };
   }
   return { label: 'PUBLISHED', bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' };
 }
@@ -78,6 +94,8 @@ function PostCard(props: {
   onPostClick: (post: PostRecord) => void;
   onReschedule?: (post: PostRecord) => void;
   onCancel?: (id: string) => void;
+  onRetryFailed?: (post: PostRecord) => void;
+  onReconnect?: (platform: string) => void;
   platformColors: Record<string, string>;
   PlatformIcon: ({ platform, size }: { platform: string; size?: number }) => React.JSX.Element;
   getMedia: (post: PostRecord) => { url: string; isVideo: boolean };
@@ -98,13 +116,67 @@ function PostCard(props: {
           )}
         </div>
         <div style={{ fontSize: 11, color: '#334155', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{post.content.split('\n')[0].slice(0, 60) || 'Untitled draft'}</div>
+        <PlatformStatusRows rows={post.platformStatuses || []} compact />
         {mode === 'scheduled' && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-            <button onClick={(e) => { e.stopPropagation(); props.onReschedule?.(post); }} style={{ flex: 1, padding: '4px 6px', borderRadius: 6, fontSize: 10, fontWeight: 600, border: 'none', backgroundColor: '#eef2ff', color: '#4338ca', cursor: 'pointer' }}>Reschedule</button>
-            <button onClick={(e) => { e.stopPropagation(); props.onCancel?.(post.id); }} style={{ flex: 1, padding: '4px 6px', borderRadius: 6, fontSize: 10, fontWeight: 600, border: 'none', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}>Cancel</button>
+          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+            {(() => {
+              const needsReconnect = (post.platformStatuses || []).filter(r => r.status === 'CONNECTION_REQUIRED');
+              const hasRetryable = (post.platformStatuses || []).some(r => r.status === 'FAILED' || r.status === 'CONNECTION_REQUIRED');
+              return (
+                <>
+                  {needsReconnect.length > 0 && (
+                    <button onClick={(e) => { e.stopPropagation(); props.onReconnect?.(needsReconnect[0].platform); }} style={{ flex: 1, minWidth: 96, padding: '4px 6px', borderRadius: 6, fontSize: 10, fontWeight: 700, border: 'none', backgroundColor: '#fef2f2', color: '#b91c1c', cursor: 'pointer' }}>Reconnect {PLATFORM_LABEL[needsReconnect[0].platform] || needsReconnect[0].platform}</button>
+                  )}
+                  {hasRetryable && (
+                    <button onClick={(e) => { e.stopPropagation(); props.onRetryFailed?.(post); }} style={{ flex: 1, minWidth: 84, padding: '4px 6px', borderRadius: 6, fontSize: 10, fontWeight: 700, border: 'none', backgroundColor: '#ecfdf5', color: '#047857', cursor: 'pointer' }}>Retry Failed</button>
+                  )}
+                  {needsReconnect.length === 0 && !hasRetryable && (
+                    <>
+                      <button onClick={(e) => { e.stopPropagation(); props.onReschedule?.(post); }} style={{ flex: 1, padding: '4px 6px', borderRadius: 6, fontSize: 10, fontWeight: 600, border: 'none', backgroundColor: '#eef2ff', color: '#4338ca', cursor: 'pointer' }}>Reschedule</button>
+                      <button onClick={(e) => { e.stopPropagation(); props.onCancel?.(post.id); }} style={{ flex: 1, padding: '4px 6px', borderRadius: 6, fontSize: 10, fontWeight: 600, border: 'none', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}>Cancel</button>
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const PLATFORM_LABEL: Record<string, string> = { linkedin: 'LinkedIn', facebook: 'Facebook', instagram: 'Instagram', whatsapp: 'WhatsApp' };
+
+const PLATFORM_ROW_STYLE: Record<PlatformPostStatus['status'], { icon: string; color: string; label: string }> = {
+  PUBLISHED: { icon: '✓', color: '#059669', label: 'Published' },
+  CONNECTION_REQUIRED: { icon: '⚠', color: '#b91c1c', label: 'Connection Required' },
+  FAILED: { icon: '✕', color: '#dc2626', label: 'Failed' },
+  PROCESSING: { icon: '…', color: '#b45309', label: 'Publishing' },
+  PENDING: { icon: '•', color: '#64748b', label: 'Scheduled' },
+  CANCELLED: { icon: '–', color: '#94a3b8', label: 'Cancelled' },
+};
+
+// Per-platform outcome lines — the whole point of tracking status per
+// platform: "3 of 4 published, Instagram needs reconnection" must be visible
+// without opening anything, and each row carries its own actionable state.
+function PlatformStatusRows({ rows, compact }: { rows: PlatformPostStatus[]; compact?: boolean }) {
+  if (!rows.length) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6 }}>
+      {rows.map(r => {
+        const st = PLATFORM_ROW_STYLE[r.status] || PLATFORM_ROW_STYLE.PENDING;
+        return (
+          <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: compact ? 10 : 11 }}>
+            <span style={{ width: 13, height: 13, borderRadius: '50%', backgroundColor: '#e2e8f0', color: '#475569', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 800, flexShrink: 0 }}>
+              {(r.platform || '').slice(0, 2).toUpperCase()}
+            </span>
+            <span style={{ fontWeight: 700, color: '#334155', minWidth: 62 }}>{PLATFORM_LABEL[r.platform] || r.platform}</span>
+            <span style={{ color: st.color, fontWeight: 800 }}>{st.icon}</span>
+            <span style={{ color: st.color, fontWeight: 700 }}>{st.label}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -142,6 +214,8 @@ function DayTimelineDrawer(props: {
   onSchedule?: (post: PostRecord) => void;
   onDelete?: (post: PostRecord) => void;
   onDuplicate?: (post: PostRecord) => void;
+  onRetryFailed?: (post: PostRecord) => void;
+  onReconnect?: (platform: string) => void;
   platformColors: Record<string, string>;
   PlatformIcon: ({ platform, size }: { platform: string; size?: number }) => React.JSX.Element;
   getMedia: (post: PostRecord) => { url: string; isVideo: boolean };
@@ -162,19 +236,29 @@ function DayTimelineDrawer(props: {
 
   const actionsFor = (post: PostRecord): Array<{ label: string; danger?: boolean; run: () => void }> => {
     const acts: Array<{ label: string; danger?: boolean; run: () => void }> = [{ label: 'Preview', run: () => props.onPostClick(post) }];
-    if (post.status === 'pending') {
+    // Keyed off the derived status, same as the badge.
+    const st = post.overallStatus || post.status;
+    if (st === 'pending') {
       if (props.onEdit) acts.push({ label: 'Edit', run: () => props.onEdit?.(post) });
       if (props.onReschedule) acts.push({ label: 'Reschedule', run: () => props.onReschedule?.(post) });
       if (props.onCancel) acts.push({ label: 'Cancel → Draft', danger: true, run: () => props.onCancel?.(post.id) });
-    } else if (post.status === 'failed') {
-      if (props.onSchedule) acts.push({ label: 'Retry', run: () => props.onSchedule?.(post) });
+    } else if (st === 'failed' || st === 'partially_published' || st === 'connection_required') {
+      // "Retry failed" republishes ONLY the platforms that did not go out —
+      // PUBLISHED rows are excluded server-side, so this can never duplicate
+      // a platform that already succeeded.
+      const needsReconnect = (post.platformStatuses || []).some(r => r.status === 'CONNECTION_REQUIRED');
+      if (props.onReconnect && needsReconnect) {
+        const first = (post.platformStatuses || []).find(r => r.status === 'CONNECTION_REQUIRED');
+        if (first) acts.push({ label: `Reconnect ${PLATFORM_LABEL[first.platform] || first.platform}`, run: () => props.onReconnect?.(first.platform) });
+      }
+      if (props.onRetryFailed) acts.push({ label: 'Retry Failed', run: () => props.onRetryFailed?.(post) });
       if (props.onEdit) acts.push({ label: 'Edit', run: () => props.onEdit?.(post) });
-      if (props.onCancel) acts.push({ label: 'Move to Drafts', run: () => props.onCancel?.(post.id) });
-    } else if (post.status === 'draft' || post.status === 'cancelled') {
+      if (props.onCancel && st === 'failed') acts.push({ label: 'Move to Drafts', run: () => props.onCancel?.(post.id) });
+    } else if (st === 'draft' || st === 'cancelled') {
       if (props.onEdit) acts.push({ label: 'Edit', run: () => props.onEdit?.(post) });
       if (props.onSchedule) acts.push({ label: (post as unknown as { previousScheduledAt?: string }).previousScheduledAt ? 'Schedule Again' : 'Schedule', run: () => props.onSchedule?.(post) });
       if (props.onDelete) acts.push({ label: 'Delete', danger: true, run: () => props.onDelete?.(post) });
-    } else if (post.status === 'published') {
+    } else if (st === 'published' || st === 'partially_published') {
       if (props.onDuplicate) acts.push({ label: 'Duplicate as Draft', run: () => props.onDuplicate?.(post) });
     }
     return acts;
@@ -207,6 +291,7 @@ function DayTimelineDrawer(props: {
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginTop: 3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' as const }}>{post.content.split('\n')[0].slice(0, 80) || 'Untitled'}</div>
           <div style={{ fontSize: 11, color: '#64748b', marginTop: 1, overflow: 'hidden', whiteSpace: 'nowrap' as const, textOverflow: 'ellipsis' }}>{edited ? `Edited ${props.formatTime(post.updatedAt || '')} · ${timeAgo(post.updatedAt)}` : post.platforms.join(' + ') || (mode === 'drafts' ? 'Draft' : 'No platform')}</div>
+          <PlatformStatusRows rows={post.platformStatuses || []} />
         </div>
         <div style={{ position: 'relative' as const, flexShrink: 0 }}>
           <button aria-label="Post actions" onClick={() => setMenuPostId(menuOpen ? null : post.id)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#475569', cursor: 'pointer', fontSize: 14, fontWeight: 800 }}>⋮</button>
@@ -290,6 +375,7 @@ export default function SchedulerCalendar(props: SchedulerCalendarProps) {
     mode, formatTime: props.formatTime, dateOf: props.dateOf,
     onPostClick: props.onPostClick, onReschedule: props.onReschedule, onCancel: props.onCancel,
     onEdit: props.onEdit, onDelete: props.onDelete,
+    onRetryFailed: props.onRetryFailed, onReconnect: props.onReconnect,
     platformColors: props.platformColors, PlatformIcon: props.PlatformIcon, getMedia: props.getMedia,
   };
   // Day-timeline drawer: null = closed, otherwise the YYYY-MM-DD key whose
@@ -379,6 +465,8 @@ export default function SchedulerCalendar(props: SchedulerCalendarProps) {
           onSchedule={props.onSchedule ? (post) => { setTimelineDay(null); props.onSchedule?.(post); } : undefined}
           onDelete={props.onDelete}
           onDuplicate={props.onDuplicate}
+          onRetryFailed={props.onRetryFailed}
+          onReconnect={props.onReconnect}
           platformColors={props.platformColors}
           PlatformIcon={props.PlatformIcon}
           getMedia={props.getMedia}

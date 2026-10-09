@@ -299,6 +299,37 @@ async function migrate(client: PoolClient) {
   await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_posts_due ON scheduled_posts(scheduled_at) WHERE status = 'pending'`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_posts_user_status ON scheduled_posts(user_id, status)`);
 
+  // Per-platform rows for a scheduled post. A multi-platform post cannot be
+  // reduced to one overall status: LinkedIn succeeding while Instagram is
+  // disconnected is a PARTIAL result, and "Retry failed" must be able to
+  // re-run exactly one platform without republishing the others.
+  //
+  // Canonical DDL — services/scheduler-service/src/platform-store.mjs carries
+  // the same idempotent statement because scheduler-service owns this table
+  // and may boot before the web app does.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS scheduled_post_platforms (
+      id UUID PRIMARY KEY,
+      scheduled_post_id TEXT NOT NULL REFERENCES scheduled_posts(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      platform TEXT NOT NULL,
+      platform_connection_id UUID,
+      destination TEXT,
+      status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PROCESSING', 'PUBLISHED', 'FAILED', 'CONNECTION_REQUIRED', 'CANCELLED')),
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      last_attempt_at TIMESTAMPTZ,
+      published_at TIMESTAMPTZ,
+      external_post_id TEXT,
+      error_code TEXT,
+      error_message TEXT,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL,
+      UNIQUE (scheduled_post_id, platform)
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_spp_user_platform_status ON scheduled_post_platforms(user_id, platform, status)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_spp_post ON scheduled_post_platforms(scheduled_post_id)`);
+
   // Platform OAuth credentials, one row per (app user, provider account).
   // Replaces facebook-tokens.json / linkedin-tokens.json, which were keyed by
   // the PROVIDER's user id and had no app-user association — so any user

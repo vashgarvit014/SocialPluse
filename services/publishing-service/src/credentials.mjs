@@ -48,10 +48,15 @@ export function createCredentialsStore(pool) {
 
     // Mirrors platform-connections.ts#getInstagramAccount exactly.
     async getInstagramAccount(userId, pageId) {
+      // meta.instagramDisabled is the user's own Instagram Disconnect (see
+      // integrations-service providers/instagram/routes.mjs). Honoured here
+      // too: disconnect intent must be authoritative at publish time even
+      // though the Facebook Page token underneath would still work at Meta.
       const { rows } = await pool.query(
-        `SELECT credentials FROM platform_connections WHERE user_id = $1 AND platform = 'facebook' AND disconnected_at IS NULL`,
+        `SELECT credentials, meta FROM platform_connections WHERE user_id = $1 AND platform = 'facebook' AND disconnected_at IS NULL`,
         [userId],
       );
+      if (rows[0]?.meta?.instagramDisabled === true) return null;
       const pages = rows[0]?.credentials?.pages;
       if (!Array.isArray(pages) || pages.length === 0) return null;
       const page = (pageId && pages.find((p) => p.id === pageId)) || pages.find((p) => p.instagramAccountId);

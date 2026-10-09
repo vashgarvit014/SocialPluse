@@ -165,6 +165,12 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
 
   const [cancelTarget, setCancelTarget] = useState<{ id: string; redirectHome?: boolean } | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  // Pre-disconnect warning: "Instagram has 4 scheduled posts." Populated by
+  // GET /api/scheduler/connectivity-warning before anything is revoked.
+  // `unverified` means the count could not be fetched, so the dialog warns
+  // that scheduled posts may be affected rather than claiming a number.
+  const [disconnectTarget, setDisconnectTarget] = useState<{ platform: string; count: number; unverified?: boolean } | null>(null);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [rescheduleTarget, setRescheduleTarget] = useState<PostRecord | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [rescheduleTime, setRescheduleTime] = useState('');
@@ -1789,6 +1795,35 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   }, []);
 
   const disconnectPlatform = async (platform: string) => {
+    // Check FIRST whether this platform still has future scheduled posts. The
+    // count comes from the server (authoritative, user-scoped) — never from a
+    // client-side guess.
+    //
+    // FAIL CLOSED: if the check cannot complete we must NOT silently
+    // disconnect. Proceeding blind could strand real scheduled posts with no
+    // warning at all, which is the exact outcome this prompt exists to
+    // prevent. The user can still disconnect from the confirmation dialog.
+    let count: number | null = null;
+    try {
+      const warn = await fetch(`/api/scheduler/connectivity-warning?platform=${encodeURIComponent(platform)}`);
+      if (warn.ok) {
+        const data = await warn.json();
+        if (typeof data.count === 'number') count = data.count;
+      }
+    } catch { count = null; }
+
+    if (count === null) {
+      setDisconnectTarget({ platform, count: 0, unverified: true });
+      return;
+    }
+    if (count > 0) {
+      setDisconnectTarget({ platform, count });
+      return;
+    }
+    await performDisconnect(platform);
+  };
+
+  const performDisconnect = async (platform: string) => {
     const doomed = accounts.find(a => a.platform === platform);
     // Remove server-held credentials first so the account can never publish again.
     try {
@@ -1804,6 +1839,82 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       return updated;
     });
     setSelectedPlatforms(prev => prev.filter(p => p !== platform));
+    // Refresh so the Scheduler immediately shows CONNECTION_REQUIRED on the
+    // affected rows instead of waiting for the next manual reload.
+    loadScheduledPosts();
+  };
+
+  const confirmDisconnectPlatform = async () => {
+    if (!disconnectTarget || isDisconnecting) return;
+    setIsDisconnecting(true);
+    try {
+      await performDisconnect(disconnectTarget.platform);
+      const label = labelForPlatform(disconnectTarget.platform);
+      notify(disconnectTarget.unverified
+        ? `${label} disconnected. Any scheduled posts for it will wait for reconnection.`
+        : disconnectTarget.count > 0
+          ? `${label} disconnected. ${disconnectTarget.count} scheduled post${disconnectTarget.count === 1 ? '' : 's'} will wait for reconnection.`
+          : `${label} disconnected.`, false);
+    } finally {
+      setDisconnectTarget(null);
+      setIsDisconnecting(false);
+    }
+  };
+
+  const labelForPlatform = (p: string) => p === 'linkedin' ? 'LinkedIn' : p === 'whatsapp' ? 'WhatsApp' : p === 'facebook' ? 'Facebook' : p === 'instagram' ? 'Instagram' : p;
+
+  // "Retry failed" — server re-runs ONLY the platforms that did not publish.
+  // PUBLISHED rows are excluded server-side, so LinkedIn/Facebook/WhatsApp
+  // that already succeeded are never republished.
+  const retryFailedPost = async (post: PostRecord) => {
+    try {
+      const res = await fetch('/api/scheduler/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: post.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        notify(data.error || 'There is no failed platform to retry.', true);
+        return;
+      }
+      const retried: string[] = Array.isArray(data.retried) ? data.retried : [];
+      notify(data.summary?.headline
+        ? `Retried ${retried.map(labelForPlatform).join(', ')}. ${data.summary.headline}`
+        : 'Retry finished.', false);
+      await loadScheduledPosts();
+    } catch {
+      notify('Retry failed. Please try again.', true);
+    }
+  };
+
+  // "Reconnect <platform>". Instagram has a direct opt-out to clear (no OAuth
+  // of its own); everything else goes through the normal connection flow.
+  const reconnectPlatform = async (platform: string) => {
+    if (platform === 'instagram') {
+      try {
+        const res = await fetch('/api/instagram/reconnect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ platform: 'instagram' }),
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          notify(data.rowsReleased
+            ? `Instagram reconnected. ${data.rowsReleased} scheduled post${data.rowsReleased === 1 ? '' : 's'} ready to retry.`
+            : 'Instagram reconnected.', false);
+          await loadScheduledPosts();
+          return;
+        }
+        // 409 = no Facebook connection underneath to re-enable against.
+        if (res.status === 409) {
+          notify('Connect Facebook with a linked Instagram account first.', true);
+          connectPlatform('facebook');
+          return;
+        }
+      } catch { /* fall through to the normal flow */ }
+    }
+    connectPlatform(platform);
   };
 
   // Stable identity for one connected account. Facebook accounts can publish
@@ -3178,9 +3289,20 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
   const charCount = content.length;
 
-  const pendingPosts = allPosts.filter(p => p.status === 'pending').sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
-  const publishedPosts = allPosts.filter(p => p.status === 'published');
-  const failedPosts = allPosts.filter(p => p.status === 'failed');
+  // Which view a post belongs to is decided by its DERIVED status. A post that
+  // published to 2 of 4 platforms is "published" enough to leave the calendar,
+  // but it still needs its Retry action, so it is surfaced in BOTH the
+  // Scheduled (needs attention) and Published (history) lists.
+  const effectiveStatus = (p: PostRecord) => p.overallStatus || p.status;
+  const pendingPosts = allPosts.filter(p => {
+    const s = effectiveStatus(p);
+    return s === 'pending' || s === 'publishing' || s === 'connection_required' || s === 'partially_published';
+  }).sort((a, b) => (a.scheduledAt || '').localeCompare(b.scheduledAt || ''));
+  const publishedPosts = allPosts.filter(p => {
+    const s = effectiveStatus(p);
+    return s === 'published' || s === 'partially_published';
+  });
+  const failedPosts = allPosts.filter(p => effectiveStatus(p) === 'failed');
   const cancelledPosts = allPosts.filter(p => p.status === 'cancelled');
   const attemptedCount = publishedPosts.length + failedPosts.length;
   const successRate = attemptedCount > 0 ? Math.round((publishedPosts.length / attemptedCount) * 100) : null;
@@ -3821,6 +3943,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
                 onNextWeek={() => setCalendarWeekStart(w => addDaysLocal(w, 7))}
                 onToday={goCalToday}
                 onPostClick={(post) => setPreviewPost(post)}
+                onRetryFailed={(post) => retryFailedPost(post)}
+                onReconnect={(platform) => reconnectPlatform(platform)}
                 onEdit={(post) => editPost(post, false)}
                 onSchedule={(post) => editPost(post, true)}
                 onDelete={(post) => deleteDraft(post)}
@@ -3853,6 +3977,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
                 onNextWeek={() => setCalendarWeekStart(w => addDaysLocal(w, 7))}
                 onToday={goCalToday}
                 onPostClick={(post) => setPreviewPost(post)}
+                onRetryFailed={(post) => retryFailedPost(post)}
+                onReconnect={(platform) => reconnectPlatform(platform)}
                 onReschedule={(post) => openReschedule(post)}
                 onCancel={(id) => cancelScheduled(id)}
                 onEdit={(post) => editPost(post, post.status === 'failed')}
@@ -3886,6 +4012,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
                 onNextWeek={() => setCalendarWeekStart(w => addDaysLocal(w, 7))}
                 onToday={goCalToday}
                 onPostClick={(post) => setPreviewPost(post)}
+                onRetryFailed={(post) => retryFailedPost(post)}
+                onReconnect={(platform) => reconnectPlatform(platform)}
                 onDuplicate={(post) => duplicatePost(post)}
                 platformColors={platformColors}
                 PlatformIcon={PlatformIcon}
@@ -4615,6 +4743,37 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               >
                 {whatsappConnecting ? 'Preparing…' : whatsappQrImage && whatsappQrStatus !== 'EXPIRED' && whatsappQrStatus !== 'CANCELLED' ? 'Refresh QR' : 'Generate New QR'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Disconnect warning — shown only when the platform has future scheduled posts */}
+      {disconnectTarget && (
+        <div onClick={() => !isDisconnecting && setDisconnectTarget(null)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(2px)', zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'overlayIn 0.15s ease-out' }}>
+          <div onClick={e => e.stopPropagation()} style={{ backgroundColor: '#fff', borderRadius: '16px', width: '100%', maxWidth: '420px', boxShadow: '0 24px 64px rgba(15,23,42,0.3)', animation: 'modalPopIn 0.2s cubic-bezier(0.16,1,0.3,1)', padding: '24px' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', marginBottom: '14px' }}>⚠️</div>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>
+              {disconnectTarget.unverified
+                ? `Disconnect ${labelForPlatform(disconnectTarget.platform)}?`
+                : `${labelForPlatform(disconnectTarget.platform)} has ${disconnectTarget.count} scheduled post${disconnectTarget.count === 1 ? '' : 's'}.`}
+            </h3>
+            <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.55, margin: '0 0 20px' }}>
+              {disconnectTarget.unverified
+                ? 'We could not check for scheduled posts, so any that are due will wait until the account is reconnected.'
+                : `Disconnecting ${labelForPlatform(disconnectTarget.platform)} will prevent these posts from publishing until the account is reconnected. You can reconnect and retry them at any time.`}
+            </p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setDisconnectTarget(null)}
+                disabled={isDisconnecting}
+                style={{ flex: 1, padding: '11px', borderRadius: '10px', border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#334155', fontSize: '13px', fontWeight: 700, cursor: isDisconnecting ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >Keep Connected</button>
+              <button
+                onClick={confirmDisconnectPlatform}
+                disabled={isDisconnecting}
+                style={{ flex: 1, padding: '11px', borderRadius: '10px', border: 'none', backgroundColor: isDisconnecting ? '#fca5a5' : '#dc2626', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: isDisconnecting ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >{isDisconnecting ? 'Disconnecting…' : 'Disconnect Anyway'}</button>
             </div>
           </div>
         </div>

@@ -68,11 +68,19 @@ export function createFacebookVault(pool) {
     // Mirrors platform-connections.ts#getInstagramAccount exactly, INCLUDING
     // the Page access token (getFacebookAuth above deliberately omits it —
     // this is the one place that token is read back out, same as original).
+    //
+    // PLUS the user's own Instagram opt-out: `meta.instagramDisabled` is set
+    // by POST /instagram/disconnect. Instagram has no OAuth of its own, so
+    // without this the Disconnect button would be a no-op and a user who
+    // "disconnected Instagram" would still be published to from a scheduled
+    // post. Disconnect intent is authoritative here even though the Facebook
+    // Page token underneath would still work at Meta.
     async getInstagramAccount(userId, pageId) {
       const { rows } = await pool.query(
-        `SELECT credentials FROM platform_connections WHERE user_id = $1 AND platform = 'facebook' AND disconnected_at IS NULL`,
+        `SELECT credentials, meta FROM platform_connections WHERE user_id = $1 AND platform = 'facebook' AND disconnected_at IS NULL`,
         [userId],
       );
+      if (rows[0]?.meta?.instagramDisabled === true) return null;
       const creds = rows[0]?.credentials;
       const pages = creds && Array.isArray(creds.pages) ? creds.pages : [];
       if (pages.length === 0) return null;
@@ -88,6 +96,32 @@ export function createFacebookVault(pool) {
         [userId, new Date().toISOString()],
       );
       return rows.length > 0;
+    },
+
+    // The user's own Instagram opt-out, stored on the Facebook row Instagram
+    // derives from (meta is preserved as an object — only the key we own is
+    // touched, so pageCount and any other meta survive).
+    async setInstagramDisabled(userId, disabled) {
+      const now = new Date().toISOString();
+      const { rows } = await pool.query(
+        `UPDATE platform_connections
+            SET meta = CASE WHEN $3 THEN COALESCE(meta, '{}'::jsonb) || '{"instagramDisabled": true}'::jsonb
+                            ELSE COALESCE(meta, '{}'::jsonb) - 'instagramDisabled' END,
+                updated_at = $2
+          WHERE user_id = $1 AND platform = 'facebook' AND disconnected_at IS NULL
+          RETURNING id`,
+        [userId, now, disabled === true],
+      );
+      return rows.length > 0;
+    },
+
+    async getInstagramDisabled(userId) {
+      const { rows } = await pool.query(
+        `SELECT meta FROM platform_connections WHERE user_id = $1 AND platform = 'facebook' AND disconnected_at IS NULL`,
+        [userId],
+      );
+      if (!rows[0]) return null; // no Facebook connection at all
+      return rows[0].meta?.instagramDisabled === true;
     },
   };
 }

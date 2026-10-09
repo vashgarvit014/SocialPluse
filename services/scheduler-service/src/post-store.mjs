@@ -68,13 +68,13 @@ export function createPostStore(pool, legacyFilePath) {
       return rows[0] ? hydrate(rows[0]) : null;
     },
 
-    async upsertUserPost(userId, post) {
+    async upsertUserPost(userId, post, db = pool) {
       await ensureLegacyImported();
-      const existingRows = post.id ? (await pool.query(`SELECT ${SELECT_COLUMNS} FROM scheduled_posts WHERE id = $1 AND user_id = $2`, [post.id, userId])).rows : [];
+      const existingRows = post.id ? (await db.query(`SELECT ${SELECT_COLUMNS} FROM scheduled_posts WHERE id = $1 AND user_id = $2`, [post.id, userId])).rows : [];
       const existing = existingRows[0] ? hydrate(existingRows[0]) : null;
       const now = new Date().toISOString();
       const record = { ...post, id: existing?.id || post.id || randomUUID() };
-      await pool.query(
+      await db.query(
         `INSERT INTO scheduled_posts (id, user_id, status, scheduled_at, created_at, updated_at, payload)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, scheduled_at = EXCLUDED.scheduled_at, updated_at = EXCLUDED.updated_at, payload = EXCLUDED.payload
@@ -84,14 +84,14 @@ export function createPostStore(pool, legacyFilePath) {
       return record;
     },
 
-    async updateUserPost(userId, id, update) {
+    async updateUserPost(userId, id, update, db = pool) {
       await ensureLegacyImported();
-      const { rows } = await pool.query(`SELECT ${SELECT_COLUMNS} FROM scheduled_posts WHERE id = $1 AND user_id = $2`, [id, userId]);
+      const { rows } = await db.query(`SELECT ${SELECT_COLUMNS} FROM scheduled_posts WHERE id = $1 AND user_id = $2`, [id, userId]);
       if (!rows[0]) throw new Error('Post not found');
       const current = hydrate(rows[0]);
       const next = update(current);
       const now = new Date().toISOString();
-      await pool.query(`UPDATE scheduled_posts SET status = $3, scheduled_at = $4, updated_at = $5, payload = $6 WHERE id = $1 AND user_id = $2`, [id, userId, next.status, next.scheduledAt ?? null, now, JSON.stringify({ ...next, updatedAt: now })]);
+      await db.query(`UPDATE scheduled_posts SET status = $3, scheduled_at = $4, updated_at = $5, payload = $6 WHERE id = $1 AND user_id = $2`, [id, userId, next.status, next.scheduledAt ?? null, now, JSON.stringify({ ...next, updatedAt: now })]);
       return { ...next, updatedAt: now };
     },
 
@@ -217,6 +217,69 @@ export function createPostStore(pool, legacyFilePath) {
       const { rows } = await pool.query('SELECT status, provider_post_id FROM publish_attempts WHERE platform = $1 AND attempt_id = $2', [platform, attemptId]);
       if (!rows[0]) return null;
       return { status: rows[0].status, providerPostId: rows[0].provider_post_id };
+    },
+
+    // Re-arm a post the USER asked to retry. Strictly user-scoped: you can
+    // only retry your own post, and only from a terminal state. Keeps the
+    // original scheduled_at (already in the past, so the worker claims it on
+    // the next tick) and clears next_retry_at so bounded backoff doesn't
+    // push a user-initiated retry into the future.
+    async armForRetry(userId, id) {
+      const { rows } = await pool.query(`SELECT ${SELECT_COLUMNS} FROM scheduled_posts WHERE id = $1 AND user_id = $2`, [id, userId]);
+      if (!rows[0]) throw new Error('Post not found');
+      const current = hydrate(rows[0]);
+      if (!['failed', 'connection_required', 'partially_published', 'published'].includes(current.status)) {
+        throw new Error('Only a failed or partially published post can be retried.');
+      }
+      const now = new Date().toISOString();
+      const next = { ...current, status: 'pending', updatedAt: now };
+      await pool.query(
+        `UPDATE scheduled_posts SET status = 'pending', updated_at = $3, payload = $4, locked_at = NULL, locked_by = NULL, retry_count = 0, next_retry_at = NULL
+          WHERE id = $1 AND user_id = $2`,
+        [id, userId, now, JSON.stringify(next)],
+      );
+      return next;
+    },
+
+    // Claim ONE specific post, for the user-triggered "Retry failed" path.
+    //
+    // The background worker must NOT be used for this: runOnce() claims every
+    // due post, so a user clicking "Retry failed" on one post would silently
+    // publish unrelated posts too. Same FOR UPDATE SKIP LOCKED guard as
+    // claimDueJob, but narrowed to one id and one owner.
+    async claimPostById(userId, id, workerId, { now = new Date(), staleLockMs = 5 * 60 * 1000 } = {}) {
+      const nowIso = now.toISOString();
+      const staleCutoff = new Date(now.getTime() - staleLockMs).toISOString();
+      const { rows } = await pool.query(
+        `UPDATE scheduled_posts SET status = 'publishing', locked_at = $3, locked_by = $4, updated_at = $3
+          WHERE id = $1 AND user_id = $2
+            AND scheduled_at IS NOT NULL AND scheduled_at <= $3
+            AND (next_retry_at IS NULL OR next_retry_at <= $3)
+            AND (
+              status = 'pending'
+              OR (status = 'publishing' AND locked_at IS NOT NULL AND locked_at < $5)
+            )
+        RETURNING ${SELECT_COLUMNS}`,
+        [id, userId, nowIso, workerId, staleCutoff],
+      );
+      return rows[0] ? { ...hydrate(rows[0]), userId: rows[0].user_id } : null;
+    },
+
+    // Real scheduler health for the Superadmin System Health page. Every
+    // number is read from the database — nothing here is a canned status.
+    async getSchedulerHealth() {
+      const nowIso = new Date().toISOString();
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const [due, processing, failed] = await Promise.all([
+        pool.query(`SELECT COUNT(*)::int AS n FROM scheduled_posts WHERE status = 'pending' AND scheduled_at IS NOT NULL AND scheduled_at <= $1`, [nowIso]),
+        pool.query(`SELECT COUNT(*)::int AS n FROM scheduled_posts WHERE status = 'publishing'`),
+        pool.query(`SELECT COUNT(*)::int AS n FROM scheduled_posts WHERE status IN ('failed', 'connection_required', 'partially_published') AND updated_at >= $1`, [since]),
+      ]);
+      return {
+        dueJobs: due.rows[0]?.n || 0,
+        processingJobs: processing.rows[0]?.n || 0,
+        failedLast24h: failed.rows[0]?.n || 0,
+      };
     },
   };
 }

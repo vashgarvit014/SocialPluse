@@ -200,6 +200,9 @@ const FACEBOOK_ROUTES = new Map([
 const INSTAGRAM_ROUTES = new Map([
   ['/api/instagram/status', { skipAuth: false }],
   ['/api/instagram/disconnect', { skipAuth: false }],
+  // Clears the user's Instagram opt-out and re-arms the scheduled rows the
+  // disconnect marked CONNECTION_REQUIRED (see providers/instagram/routes.mjs).
+  ['/api/instagram/reconnect', { skipAuth: false }],
 ]);
 
 // WhatsApp/Whapi (Phase 3B, this round). All session-gated — no callback
