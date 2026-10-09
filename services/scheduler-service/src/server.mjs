@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { createLogger } from '../packages/logger/index.mjs';
 import { verifyInternalSecret } from '../packages/service-auth/index.mjs';
+import { carouselMediaError } from '../packages/validation/carousel.mjs';
 import { createPostStore } from './post-store.mjs';
 import { cancelPost, reschedulePost } from './posts.mjs';
 import { createWorker } from './worker.mjs';
@@ -77,6 +78,12 @@ async function handleUpsert(req, res) {
     if (!draft && (!body.scheduledAt || !Number.isFinite(Date.parse(body.scheduledAt)) || Date.parse(body.scheduledAt) <= Date.now() + 300000)) {
       return send(res, 400, { error: 'Schedule time must be at least 5 minutes from now' });
     }
+    // Multiple Images: 1–9 images required when scheduling. Draft saves skip
+    // the minimum so an in-progress post can be stored before its first
+    // slide exists (the publish-time guard in publishing-service still
+    // enforces 1–9 at execution).
+    const carouselErr = carouselMediaError(body, { requireMedia: !draft });
+    if (carouselErr) return send(res, 400, { error: carouselErr.message });
     const existing = body.id ? await store.getUserPost(userId, body.id) : undefined;
     if (body.id && (!existing || !['draft', 'cancelled', 'pending', 'scheduled'].includes(existing.status))) {
       return send(res, 409, { error: 'Post is missing or no longer editable' });

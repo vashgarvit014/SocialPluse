@@ -139,7 +139,7 @@ export interface StudioWorkspaceProps {
   dragOverPreview: boolean; setDragOverPreview: (v: boolean) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   generatedImage: string; generatedVideo: string;
-  // carousel (multi-image swipeable post — ordered image-only subset, 2–9)
+  // carousel (multi-image swipeable post — ordered image-only subset, 1–9)
   isCarousel: boolean; setIsCarousel: (v: boolean) => void;
   carouselSlides: MediaItem[]; carouselValidation: { valid: boolean; reason: string };
   toggleCarouselSlide: (id: string) => void; moveCarouselSlide: (id: string, dir: -1 | 1) => void; removeCarouselSlide: (id: string) => void;

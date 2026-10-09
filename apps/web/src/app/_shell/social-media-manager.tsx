@@ -6,6 +6,7 @@ import SchedulerCalendar from './scheduler-calendar';
 import ConnectPlatforms from './connect-platforms';
 import AssetLibrary from './asset-library';
 import { newestDrafts, postMedia, type PostRecord } from '@/lib/posts';
+import { carouselMediaIssue } from '@/lib/carousel-rules';
 import { returnStore } from '@/lib/editor-return';
 import { clearAllUserState, identityChanged, purgeForeignUserState, userScopedKey } from '@/lib/client-identity';
 import { SP_LOGO, STUDIO_MARK } from './brand-assets';
@@ -178,9 +179,10 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]); // Publish gallery (Media Preview) — up to 9
   const [topicMediaItems, setTopicMediaItems] = useState<MediaItem[]>([]); // Reference media for AI vision (Topic & Idea) — up to 4
   // Carousel (multi-image swipeable post) — an explicit ordered subset of
-  // mediaItems, image-only, 2–9 slides. LinkedIn (≤9 images) and Facebook
+  // mediaItems, image-only, 1–9 slides. LinkedIn (≤9 images) and Facebook
   // (multi-photo) already publish multi-image natively; Instagram takes the
-  // CAROUSEL container path (2–10, public URLs only).
+  // CAROUSEL container path for 2+ slides (≤9, public URLs only) and the
+  // regular single-media path when exactly 1 slide is selected.
   const [isCarousel, setIsCarousel] = useState(false);
   const [carouselSlideIds, setCarouselSlideIds] = useState<string[]>([]);
   // Instagram Trial Reel intent: only meaningful for Instagram + a single
@@ -2080,7 +2082,9 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     .filter((m): m is MediaItem => !!m && m.type === 'image');
   const carouselValidation = ((): { valid: boolean; reason: string } => {
     if (!isCarousel) return { valid: false, reason: '' };
-    if (carouselSlides.length < 2) return { valid: false, reason: 'Pick at least 2 image slides for the carousel.' };
+    // Multiple Images accepts 1–9 slides (shared rule — see lib/carousel-rules).
+    const issue = carouselMediaIssue(carouselSlides.length);
+    if (issue) return { valid: false, reason: issue };
     return { valid: true, reason: '' };
   })();
   const publishMediaList = (isCarousel ? carouselSlides : (postHasVideo ? mediaItems : [...mediaItems, ...topicImagesForPost])).slice(0, 9);
@@ -2122,8 +2126,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     if (!aspectRatio) { setGenerationError('Please choose an aspect ratio first.'); return; }
     if (isGeneratingCarousel || isGeneratingImage) return;
     const room = 9 - mediaItems.length;
-    if (room < 2) { setGenerationError('Carousel needs room for at least 2 new slides — remove some media first (max 9).'); return; }
-    const toMake = Math.min(Math.max(2, count), 9, room);
+    if (room < 1) { setGenerationError('Gallery is full (max 9) — remove some media first.'); return; }
+    const toMake = Math.min(Math.max(1, count), 9, room);
     setIsGeneratingCarousel(true);
     setIsCarousel(true);
     setGenerationError('');
@@ -2135,7 +2139,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       else break;
     }
     if (made.length) setCarouselSlideIds(prev => [...prev, ...made].slice(0, 9));
-    if (made.length < toMake && made.length >= 2) setGenerationError(`Made ${made.length} of ${toMake} slides — the rest failed, add more manually or retry.`);
+    if (made.length < toMake && made.length >= 1) setGenerationError(`Made ${made.length} of ${toMake} slides — the rest failed, add more manually or retry.`);
     setIsGeneratingCarousel(false);
   };
 

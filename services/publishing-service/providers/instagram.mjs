@@ -45,7 +45,10 @@ export async function publishToInstagram({ ig, content, imageUrl, videoUrl, medi
   const resolvedType = mediaType || (videoUrl ? 'video' : imageUrl ? 'image' : undefined);
   if (!rawMedia) return { ok: false, code: 'INSTAGRAM_MEDIA_REQUIRED', message: 'Instagram requires an image or video — text-only posts are not supported by the API.', status: 400 };
 
-  const wantsCarousel = isCarousel === true || orderedUrls.length > 1;
+  // Multiple Images with exactly ONE media item publishes through the normal
+  // single-media path below — Instagram's CAROUSEL container API requires two
+  // or more children, so a 1-image carousel must not enter this branch.
+  const wantsCarousel = orderedUrls.length > 1;
   const hasVideoInList = (Array.isArray(mediaList) ? mediaList.some((m) => m.type === 'video') : false) || orderedUrls.some((u) => u.startsWith('data:video/')) || resolvedType === 'video' || typeof videoUrl === 'string';
   if (wantsCarousel && hasVideoInList) return { ok: false, code: 'INSTAGRAM_CAROUSEL_VIDEO', message: 'Instagram carousels accept images only — remove the video or switch this post back to a single post.', status: 400 };
 
@@ -65,9 +68,10 @@ export async function publishToInstagram({ ig, content, imageUrl, videoUrl, medi
   }
 
   if (wantsCarousel) {
-    let slides = orderedUrls.length > 1 ? orderedUrls : [rawMedia];
-    if (slides.length > 10) return { ok: false, code: 'INSTAGRAM_CAROUSEL_MAX', message: 'Use at most 10 carousel images.', status: 400 };
-    if (slides.length < 2) return { ok: false, code: 'INSTAGRAM_CAROUSEL_MIN', message: 'A carousel needs at least 2 images — add another slide or switch back to a single post.', status: 400 };
+    // wantsCarousel means 2+ ordered URLs — the app-level cap for Multiple
+    // Images is 9 images (matches LinkedIn/Facebook and the UI gallery cap).
+    let slides = orderedUrls;
+    if (slides.length > 9) return { ok: false, code: 'INSTAGRAM_CAROUSEL_MAX', message: 'You can add up to 9 images.', status: 400 };
     try {
       slides = await Promise.all(slides.map((url) => prepareInstagramMedia(url)));
       const childIds = [];

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { Pool } from 'pg';
 import { createLogger } from '../packages/logger/index.mjs';
 import { verifyInternalSecret } from '../packages/service-auth/index.mjs';
+import { carouselMediaError } from '../packages/validation/carousel.mjs';
 import { createCredentialsStore } from './credentials.mjs';
 import { createIdempotencyStore } from './idempotency.mjs';
 import { publishToLinkedIn } from '../providers/linkedin.mjs';
@@ -137,6 +138,11 @@ async function handleLinkedIn(req, res, requestId) {
   if (!content) return err(res, 'PUBLISH_FAILED', 'Post content is required.', 400, attemptId);
   const attempt = typeof attemptId === 'string' && attemptId ? attemptId : `att_${Date.now().toString(36)}`;
 
+  // Multiple Images must carry 1–9 images — reject before the idempotency
+  // claim so a bad payload never burns a publish attempt.
+  const carouselErr = carouselMediaError(body);
+  if (carouselErr) return err(res, carouselErr.code, carouselErr.message, 400, attempt);
+
   const claim = await idempotency.claimAttempt({ attemptId: attempt, platform: 'linkedin', userId });
   if (claim.duplicate) return err(res, 'DUPLICATE_PUBLISH_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attempt);
 
@@ -167,6 +173,9 @@ async function handleFacebook(req, res, requestId) {
   if (!content) return err(res, 'PUBLISH_FAILED', 'Post content is required.', 400, attemptId);
   const attempt = typeof attemptId === 'string' && attemptId ? attemptId : `att_${Date.now().toString(36)}`;
 
+  const carouselErr = carouselMediaError(body);
+  if (carouselErr) return err(res, carouselErr.code, carouselErr.message, 400, attempt);
+
   const claim = await idempotency.claimAttempt({ attemptId: attempt, platform: 'facebook', userId, destination: pageId });
   if (claim.duplicate) return err(res, 'DUPLICATE_PUBLISH_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attempt);
 
@@ -196,6 +205,9 @@ async function handleInstagram(req, res, requestId) {
   const { pageId, attemptId } = body;
   const attempt = typeof attemptId === 'string' && attemptId ? attemptId : `att_${Date.now().toString(36)}`;
 
+  const carouselErr = carouselMediaError(body);
+  if (carouselErr) return err(res, carouselErr.code, carouselErr.message, 400, attempt);
+
   const claim = await idempotency.claimAttempt({ attemptId: attempt, platform: 'instagram', userId, destination: pageId });
   if (claim.duplicate) return err(res, 'DUPLICATE_PUBLISH_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attempt);
 
@@ -224,6 +236,9 @@ async function handleWhapi(req, res, requestId) {
   const body = await readJsonBody(req);
   const { groupId, attemptId } = body;
   const attempt = typeof attemptId === 'string' && attemptId ? attemptId : `whapi_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+  const carouselErr = carouselMediaError(body);
+  if (carouselErr) return err(res, carouselErr.code, carouselErr.message, 400, attempt);
 
   const claim = await idempotency.claimAttempt({ attemptId: attempt, platform: 'whapi', userId, destination: groupId });
   if (claim.duplicate) return err(res, 'WHAPI_DUPLICATE_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attempt);

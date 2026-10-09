@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import StudioWizard from '@/app/_shell/studio-wizard';
+import { carouselMediaIssue } from '@/lib/carousel-rules';
 import { SP_LOGO } from '../_shell/brand-assets';
 
 // Loose mount for preview only (real component, mock props).
@@ -30,7 +31,10 @@ export default function PreviewClient() {
   // Step 6 demo state (?step=6): mock gallery visual + uploaded logo so
   // placement, preview, apply and ALT flows are reviewable instantly.
   // ?logo=0 simulates "no logo uploaded"; ?multi=1 simulates 2 images.
-  const demoBrand = stepParam === 4 || stepParam === 6 || stepParam === 7 || stepParam === 8;
+  // Step 5 demo state (?step=5): mock gallery (and logo) so Post Format —
+  // Single vs Multiple Images, slide strip, AI slides stepper — is
+  // reviewable immediately. ?format=carousel opens it on Multiple Images.
+  const demoBrand = stepParam === 4 || stepParam === 5 || stepParam === 6 || stepParam === 7 || stepParam === 8;
   const wantLogo = search.get('logo') !== '0';
   const wantMulti = search.get('multi') === '1';
   const mockVisual = (label: string) =>
@@ -52,6 +56,11 @@ export default function PreviewClient() {
   const [genImg, setGenImg] = useState('');
   const [busyImg, setBusyImg] = useState(false);
   const [carousel, setCarousel] = useState(false);
+  // ?format=carousel opens Step 5 directly on Multiple Images with the mock
+  // gallery selected as slides (1 image by default — add ?multi=1 for 2).
+  const formatParam = search.get('format') === 'carousel';
+  const [carouselIds, setCarouselIds] = useState<string[]>([]);
+  const [carouselSlideCount, setCarouselSlideCountState] = useState(4);
   const [logoImg, setLogoImg] = useState<string>('');
   const [altBusyMock, setAltBusyMock] = useState(false);
   const [logoPos, setLogoPos] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center'>('bottom-right');
@@ -100,6 +109,10 @@ export default function PreviewClient() {
       { id: 'mock-1', url: mockVisual('Brand visual'), type: 'image', name: 'mock-visual-1', altText: 'A brand visual showing the SocialPulse mark over a purple gradient.' },
       ...(wantMulti ? [{ id: 'mock-2', url: mockVisual('Second visual'), type: 'image' as const, name: 'mock-visual-2', altText: 'A second brand visual over a pink and orange gradient.' }] : []),
     ]);
+    if (formatParam) {
+      setCarousel(true);
+      setCarouselIds(['mock-1', ...(wantMulti ? ['mock-2'] : [])]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const noop = () => {};
@@ -128,6 +141,49 @@ export default function PreviewClient() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Carousel state mirrors the real manager: an ordered, image-only subset
+  // of the gallery validated by the shared 1–9 rule (lib/carousel-rules.ts).
+  const carouselSlides = carousel
+    ? carouselIds.map(id => gallery.find(g => g.id === id)).filter((g): g is NonNullable<typeof g> => !!g && g.type === 'image')
+    : [];
+  const carouselIssue = carousel ? carouselMediaIssue(carouselSlides.length) : null;
+  const carouselValidation = { valid: carousel && !carouselIssue, reason: carousel && carouselIssue ? carouselIssue : '' };
+  const setCarouselSlideCount = (n: number) => setCarouselSlideCountState(Math.max(1, Math.min(9, n)));
+  const toggleCarouselSlide = (id: string) => {
+    const item = gallery.find(g => g.id === id);
+    if (!item || item.type !== 'image') return;
+    setCarouselIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id].slice(0, 9));
+  };
+  const moveCarouselSlide = (id: string, dir: -1 | 1) => {
+    setCarouselIds(prev => {
+      const i = prev.indexOf(id); const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev]; [next[i], next[j]] = [next[j], next[i]]; return next;
+    });
+  };
+  const removeCarouselSlide = (id: string) => setCarouselIds(prev => prev.filter(x => x !== id));
+  const reorderCarouselSlide = (activeId: string, overId: string) => {
+    if (activeId === overId) return;
+    setCarouselIds(prev => {
+      const from = prev.indexOf(activeId); const to = prev.indexOf(overId);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev]; const [m] = next.splice(from, 1); next.splice(to, 0, m); return next;
+    });
+  };
+  // Mock "Generate N slides": appends N gallery visuals and selects them, so
+  // the AI-slides stepper (1–9) and multi-slide strip are reviewable.
+  const generateCarouselSlides = (count: number) => {
+    const n = Math.max(1, Math.min(9, count));
+    const start = gallery.length;
+    const add = Array.from({ length: n }, (_, i) => ({
+      id: `mock-gen-${start + i}`, url: mockVisual(`Slide ${start + i + 1}`), type: 'image' as const,
+      name: `mock-slide-${start + i + 1}`, altText: `Mock slide ${start + i + 1} over a purple gradient.`,
+    }));
+    setGallery(prev => [...prev, ...add].slice(0, 9));
+    setCarouselIds(prev => [...prev, ...add.map(a => a.id)].slice(0, 9));
+    setCarousel(true);
+  };
 
   const p: Record<string, unknown> = useMemo(() => ({
     wizardState,
@@ -165,7 +221,11 @@ export default function PreviewClient() {
     mediaItems: gallery, removeMediaItem: (id: string) => setGallery(prev => prev.filter(m => m.id !== id)),
     generatedImage: genImg, generatedVideo: '', mediaType: null,
     clearGeneratedImage: () => setGenImg(''),
-    isCarousel: carousel, setIsCarousel: (v: boolean) => setCarousel(v), carouselSlides: [] as unknown[], carouselValidation: { valid: true, reason: '' },
+    isCarousel: carousel, setIsCarousel: (v: boolean) => setCarousel(v),
+    carouselSlides: carouselSlides as unknown[], carouselValidation,
+    toggleCarouselSlide, moveCarouselSlide, removeCarouselSlide, reorderCarouselSlide,
+    carouselSlideCount, setCarouselSlideCount,
+    generateCarouselSlides, isGeneratingCarousel: false,
     isGeneratingContent: generating,
     generateContent: () => {
       setGenErr(''); setGenerating(true); setContentState('');
@@ -250,13 +310,14 @@ export default function PreviewClient() {
     applyLogoToAllMedia: noop, isApplyingLogo: false,
     generationError: genErr, setGenerationError: (v: string) => setGenErr(v),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel, logoImg, logoPos, gallery, altBusyMock, connPlats, whapiOn, failParam, collab, imgBlock, schedDate, schedTime, pubStatuses, pubBusy, schedBusy, draftSaved]);
+  }), [wizardState, prompt, content, imgPrompt, tone, style, ratio, plats, active, platContent, generating, genErr, genImg, busyImg, words, carousel, carouselIds, carouselSlideCount, carouselSlides, carouselValidation, logoImg, logoPos, gallery, altBusyMock, connPlats, whapiOn, failParam, collab, imgBlock, schedDate, schedTime, pubStatuses, pubBusy, schedBusy, draftSaved]);
 
   return (
     <div style={{ background: '#F4F5FA', minHeight: '100vh' }}>
       <div style={{ maxWidth: 1180, margin: '0 auto', padding: '10px 20px 0', fontSize: 11, color: '#94A3B8', fontFamily: 'system-ui' }}>
         LOCAL PREVIEW ONLY — mock state, nothing here touches production. Step from <code>?step=1–8</code>
         {stepParam === 3 ? <> · <code>?gen=1</code> starts mock generation</> : null}
+        {stepParam === 5 ? <> · <code>?format=carousel</code> opens Post Format on Multiple Images (1 mock image; add <code>?multi=1</code> for 2)</> : null}
       </div>
       <WizardAny {...p} />
     </div>

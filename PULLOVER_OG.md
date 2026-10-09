@@ -213,7 +213,7 @@ Earlier request: **leave everything and update this handover**. That pause was s
 - Files are staged in gitignored `.instagram-media/`, served through random 48-hex-character URLs with byte-range support. Access expires after 24 hours; expired files are cleaned on subsequent uploads/access, not by a timer.
 - Requires the local server and public HTTPS tunnel (`NEXT_PUBLIC_APP_URL`) to remain running. External HTTPS media URLs pass through and must already satisfy Instagram's format requirements. Shared object storage is future work for serverless/multiple instances.
 - Added container-readiness checks before single-image/Reel publishing and before carousel parent/publish steps. Polling is bounded: 12 checks, 3-second gaps, 10-second timeout per status request. No durable background publishing job or automatic publish retry.
-- Image-only carousels are an **app limitation**, not a universal Instagram API rule. UI supports 2–9 slides; backend rejects more than 10.
+- Image-only carousels are an **app limitation**, not a universal Instagram API rule. UI supports 1–9 slides; backend rejects more than 9 (a 1-image Multiple Images post publishes through the single-media path, since Instagram's CAROUSEL container needs 2+ children).
 - Duplicate-attempt protection is process-memory only (15-minute TTL). Instagram Deselect clears frontend state; its no-op disconnect route does not revoke the Facebook-derived connection, which can reappear on refresh.
 - Validation: TypeScript passed; targeted ESLint passed for the helper/media route/publish route. Mocked checks passed for JPEG conversion, path rejection, byte ranges, single/carousel readiness ordering and duplicate suppression. No external publishing calls were made by those tests.
 - **OAuth connection is demonstrated. Actual Instagram delivery and Meta fetching staged media have not been tested.** User said to leave that test for later.
@@ -389,13 +389,13 @@ Confirmed on this new app (up to 2026-09-13):
 
 ## Carousel feature (added 2026-09-13, uncommitted working tree)
 
-Swipeable multi-image posts (2–9 slides, image-only, numbered swipe order) for all three platforms, two build modes:
+Swipeable multi-image posts (1–9 slides, image-only, numbered swipe order) for all three platforms, two build modes:
 
 - **Manual:** Step 4 "🎠 Carousel" section — toggle Single/Carousel, tap gallery images to add slides, ‹ › reorder, × remove.
-- **Generate N slides:** count stepper (2–9) + button; runs the normal single-image background-job N times with per-slide prompt variations, slides append to the gallery AND auto-select in swipe order. Stops on first failure, keeps successes.
+- **Generate N slides:** count stepper (1–9, default 4) + button; runs the normal single-image background-job N times with per-slide prompt variations, slides append to the gallery AND auto-select in swipe order. Stops on first failure, keeps successes.
 - **Step 5:** swipe preview (one slide at a time, arrows + dots + `n/N` counter) when carousel mode is on; grid otherwise.
-- **Step 6:** carousel readiness banner; publish/schedule blocked until 2+ image slides.
-- **Publish:** LinkedIn (≤9 images) and Facebook (multi-photo `attached_media`) needed no backend change — carousel order flows through the existing `mediaList`/`mediaUrls`. Instagram got a new CAROUSEL path in `instagram/publish/route.ts` (child containers with `is_carousel_item:true` → `CAROUSEL` parent → publish); rejects video carousels and `data:` URLs with clear codes (`INSTAGRAM_CAROUSEL_VIDEO`, `INSTAGRAM_MEDIA_UPLOAD_FAILED`).
+- **Step 6:** carousel readiness banner; publish/schedule blocked until at least 1 image slide (shared 1–9 rule in `packages/validation/carousel.mjs` + `apps/web/src/lib/carousel-rules.ts`; drafts may be saved with 0 slides, schedule/publish may not).
+- **Publish:** LinkedIn (≤9 images) and Facebook (multi-photo `attached_media`) needed no backend change — carousel order flows through the existing `mediaList`/`mediaUrls`; both publish a 1-image post through their normal single-photo path. Instagram got a new CAROUSEL path in `instagram/publish/route.ts` (child containers with `is_carousel_item:true` → `CAROUSEL` parent → publish); a 1-image Multiple Images post falls back to the single-media path; rejects video carousels and `data:` URLs with clear codes (`INSTAGRAM_CAROUSEL_VIDEO`, `INSTAGRAM_MEDIA_UPLOAD_FAILED`).
 - **Scheduler:** `isCarousel` persisted + forwarded by `scheduler/check` (verified live: POST round-trip stores `isCarousel:true` with ordered `mediaList`).
 - Removing/clearing gallery media auto-prunes the slide selection. `tsc` clean; lint shows only the pre-existing `react-hooks/refs` + `no-img-element` noise classes (counts grew because the new UI follows the same `p.*`/`img` patterns, no new error classes).
 

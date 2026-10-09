@@ -414,6 +414,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [dragSlideId, setDragSlideId] = useState<string | null>(null);
   const [dragOverSlideId, setDragOverSlideId] = useState<string | null>(null);
+  // Click-to-toggle/add fires on card click, but a completed drag can also
+  // emit a click on the same element — swallow clicks right after a drag so
+  // reordering never removes/adds a slide by accident. Compares event
+  // timeStamps (same time origin) instead of Date.now() to stay render-pure.
+  const lastDragEndAtRef = useRef(0);
+  const dragJustEnded = (e: { timeStamp: number }) => e.timeStamp - lastDragEndAtRef.current < 300;
   const [showSlidePicker, setShowSlidePicker] = useState(false);
   const [showRegenPicker, setShowRegenPicker] = useState(false);
   // Synchronized generation progress (Step 3). The REAL request flag is the
@@ -669,7 +675,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   // Correct brand casing — "LinkedIn", not "Linkedin".
   const platformLabel = (pl: string) => (pl === 'linkedin' ? 'LinkedIn' : pl === 'whatsapp' ? 'WhatsApp' : pl.charAt(0).toUpperCase() + pl.slice(1));
   const disconnectedNames = disconnectedSelected.map(platformLabel).join(', ');
-  // Carousel posts additionally need 2+ image slides before publishing.
+  // Carousel posts additionally need at least 1 image slide before publishing.
   const canPublish = hasContent
     && p.selectedPlatforms.length > 0
     && disconnectedSelected.length === 0
@@ -1910,7 +1916,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>Recent Media</div>
-                  <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>Click a card to select it for Canva editing • drag cards to reorder • ★ marks the cover.</div>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{p.isCarousel ? 'Click a card to add or remove it as a carousel slide • drag cards to reorder • ★ marks the cover.' : 'Click a card to select it for Canva editing • drag cards to reorder • ★ marks the cover.'}</div>
                 </div>
               </div>
               {(() => {
@@ -1951,12 +1957,12 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                           const inCarousel = p.carouselSlides.some(s => s.id === m.id);
                           return (
                             <div key={m.id} draggable
-                              onClick={() => { setSelectedMediaId(m.id); setOpenMenuId(null); }}
+                              onClick={e => { if (dragJustEnded(e)) return; setSelectedMediaId(m.id); if (p.isCarousel && m.type === 'image') p.toggleCarouselSlide(m.id); setOpenMenuId(null); }}
                               onDragStart={() => p.handleMediaDragStart(m.id)}
                               onDragOver={e => p.handleMediaDragOver(e, m.id)}
                               onDrop={e => p.handleMediaDrop(e, m.id)}
-                              onDragEnd={p.handleMediaDragEnd}
-                              title="Select • drag to reorder"
+                              onDragEnd={e => { lastDragEndAtRef.current = e.timeStamp; p.handleMediaDragEnd(); }}
+                              title={p.isCarousel && m.type === 'image' ? (inCarousel ? 'Click to remove from carousel • drag to reorder' : 'Click to add to carousel • drag to reorder') : 'Select • drag to reorder'}
                               style={{ position: 'relative', borderRadius: 14, overflow: 'visible', border: selected ? `2px solid ${C.primary}` : p.dragOverMediaId === m.id ? `2px solid ${C.primary}` : `1px solid ${C.border}`, backgroundColor: '#fff', cursor: 'grab', opacity: p.draggedMediaId === m.id ? 0.5 : 1, boxShadow: selected ? '0 3px 12px rgba(124,58,237,0.18)' : '0 1px 3px rgba(15,23,42,0.05)' }}>
                               <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden', backgroundColor: '#000', borderRadius: '12px 12px 0 0' }}>
                                 {m.type === 'video' ? <video src={m.url} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} muted /> : <img src={m.url} alt={m.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />}
@@ -1964,9 +1970,11 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                                   <span style={{ fontSize: 9, fontWeight: 800, backgroundColor: src.bg, color: src.color, border: `1px solid ${src.border}`, padding: '2px 7px', borderRadius: 999 }}>{src.label}</span>
                                   {idx === 0 && <span style={{ fontSize: 9, fontWeight: 800, backgroundColor: 'rgba(15,23,42,0.78)', color: '#fff', padding: '2px 7px', borderRadius: 999 }}>★ Cover</span>}
                                 </span>
-                                {selected && (
+                                {inCarousel ? (
+                                  <button onClick={e => { e.stopPropagation(); p.removeCarouselSlide(m.id); }} title="Remove from carousel" style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#DC2626,#EF4444)', color: '#fff', border: 'none', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, cursor: 'pointer', boxShadow: '0 2px 8px rgba(220,38,38,0.4)', lineHeight: 1 }}>✕</button>
+                                ) : selected ? (
                                   <span style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, boxShadow: '0 2px 8px rgba(124,58,237,0.4)' }}>✓</span>
-                                )}
+                                ) : null}
                                 {branded && <span style={{ position: 'absolute', bottom: 6, left: 6, fontSize: 9, fontWeight: 800, backgroundColor: 'rgba(245,158,11,0.92)', color: '#fff', padding: '2px 7px', borderRadius: 999 }}>🏷️ Branded</span>}
                                 {inCarousel && <span style={{ position: 'absolute', bottom: 6, left: branded ? 78 : 6, fontSize: 9, fontWeight: 800, backgroundColor: 'rgba(124,58,237,0.92)', color: '#fff', padding: '2px 7px', borderRadius: 999 }}>🎠 Slide {p.carouselSlides.findIndex(s => s.id === m.id) + 1}</span>}
                                 <button onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === m.id ? null : m.id); }} title="More actions" style={{ position: 'absolute', bottom: 6, right: 6, width: 26, height: 26, borderRadius: 8, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(15,23,42,0.65)', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 800, lineHeight: 1 }}>⋯</button>
@@ -1977,7 +1985,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                                   {m.type === 'image' && <button onClick={() => { p.openInCanva(m.url); setOpenMenuId(null); }} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>🎨 Edit in Canva</button>}
                                   <button onClick={() => { p.setLogoTargetId(m.id); p.setLogoModalOpen(true); setOpenMenuId(null); }} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>🏷️ Apply logo here</button>
                                   {m.type === 'image' && <button onClick={() => { p.varyImageFromUrl(m.url); setOpenMenuId(null); }} disabled={!!p.varyingImageUrl || p.isGeneratingImage} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', opacity: (!!p.varyingImageUrl || p.isGeneratingImage) ? 0.5 : 1 }}>✨ Vary image</button>}
-                                  {m.type === 'image' && p.isCarousel && !inCarousel && <button onClick={() => { p.toggleCarouselSlide(m.id); setOpenMenuId(null); }} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>🎠 Add to carousel</button>}
+                                  {m.type === 'image' && p.isCarousel && <button onClick={() => { p.toggleCarouselSlide(m.id); setOpenMenuId(null); }} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>{inCarousel ? '🎠 Remove from carousel' : '🎠 Add to carousel'}</button>}
                                   <button onClick={() => { p.removeMediaItem(m.id); if (selectedMediaId === m.id) setSelectedMediaId(null); setOpenMenuId(null); }} style={{ textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#DC2626', background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>🗑️ Remove</button>
                                 </span>
                               )}
@@ -2156,25 +2164,15 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     <span style={checkBadge(p.isCarousel)}>{p.isCarousel ? '✓' : ''}</span>
                     <span style={{ fontSize: 24 }}>🎠</span>
                     <span style={{ fontSize: 13, fontWeight: 800, color: p.isCarousel ? C.primaryDark : C.ink }}>Multiple Images{p.isCarousel ? ` · ${p.carouselSlides.length}` : ''}</span>
-                    <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Combine 2–9 images into one swipeable post</span>
+                    <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Use up to 9 images in one post.</span>
                     <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Best for tutorials, step-by-step guides, product showcases, or visual stories.</span>
                   </button>
-                </div>
-                {p.isCarousel && <div style={{ fontSize: 12, color: C.primaryDark, fontWeight: 700, marginTop: 10 }}>Multiple Images supports 2–9 images.</div>}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>Supported on:</span>
-                  {(['LinkedIn', 'Facebook', 'Instagram'] as const).map(pl => (
-                    <span key={pl} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: C.ink, backgroundColor: '#F8FAFC', border: `1px solid ${C.borderSoft}`, padding: '4px 11px', borderRadius: 999 }}>
-                      <span style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: p.platformColors[pl.toLowerCase()] || C.primary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 8 }}>●</span>
-                      {pl}
-                    </span>
-                  ))}
                 </div>
                 {!p.isCarousel ? (
                   <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginTop: 12 }}>One post, one hero visual — switch to Multiple Images to bundle slides into a swipeable album.</div>
                 ) : (
                   <div style={{ marginTop: 14 }}>
-                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 10 }}>Swipe order = numbered order. Image-only (videos can&apos;t join a carousel). Drag slides to reorder.</div>
+                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 10 }}>Swipe order = numbered order. Image-only (videos can&apos;t join a carousel). Drag slides to reorder, click a slide to remove it.</div>
                     {p.carouselSlides.length > 0 ? (
                       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '4px 2px 8px' }}>
                         {p.carouselSlides.map((m, i) => (
@@ -2182,8 +2180,9 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                             onDragStart={() => setDragSlideId(m.id)}
                             onDragOver={e => { e.preventDefault(); if (dragSlideId && dragSlideId !== m.id) setDragOverSlideId(m.id); }}
                             onDrop={() => { if (dragSlideId) p.reorderCarouselSlide(dragSlideId, m.id); setDragSlideId(null); setDragOverSlideId(null); }}
-                            onDragEnd={() => { setDragSlideId(null); setDragOverSlideId(null); }}
-                            title="Drag to reorder"
+                            onDragEnd={e => { lastDragEndAtRef.current = e.timeStamp; setDragSlideId(null); setDragOverSlideId(null); }}
+                            onClick={e => { if (dragJustEnded(e)) return; p.removeCarouselSlide(m.id); }}
+                            title="Click to remove • drag to reorder"
                             style={{ flex: '0 0 112px', position: 'relative', opacity: dragSlideId === m.id ? 0.5 : 1 }}>
                             <div style={{ position: 'relative', aspectRatio: '1', overflow: 'hidden', backgroundColor: '#000', borderRadius: 12, border: dragOverSlideId === m.id ? `2px solid ${C.primary}` : `1px solid ${C.primaryBorder}`, cursor: 'grab' }}>
                               <img src={m.url} alt={m.altText || `Slide ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
@@ -2231,25 +2230,36 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         </div>
                       );
                     })()}
-                    <div style={{ marginTop: 10, borderTop: `1px solid ${C.borderSoft}`, paddingTop: 10 }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: C.ink }}>✨ AI slides</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, backgroundColor: '#fff', border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 6px' }}>
-                          <button onClick={() => p.setCarouselSlideCount(Math.max(2, p.carouselSlideCount - 1))} disabled={p.isGeneratingCarousel || p.isGeneratingImage} style={{ width: 24, height: 24, border: 'none', background: 'none', fontSize: 14, fontWeight: 800, color: C.primaryDark, cursor: 'pointer' }}>−</button>
-                          <span style={{ fontSize: 12, fontWeight: 800, color: C.ink, minWidth: 20, textAlign: 'center' }}>{p.carouselSlideCount}</span>
-                          <button onClick={() => p.setCarouselSlideCount(Math.min(9, p.carouselSlideCount + 1))} disabled={p.isGeneratingCarousel || p.isGeneratingImage} style={{ width: 24, height: 24, border: 'none', background: 'none', fontSize: 14, fontWeight: 800, color: C.primaryDark, cursor: 'pointer' }}>+</button>
-                        </span>
-                        <button
-                          onClick={() => p.generateCarouselSlides(p.carouselSlideCount)}
-                          disabled={p.isGeneratingCarousel || p.isGeneratingImage || !p.aspectRatio || p.mediaItems.length >= 9}
-                          title={!p.aspectRatio ? 'Select an aspect ratio in the AI panel first' : p.mediaItems.length >= 9 ? 'Gallery is full (max 9)' : 'Generate a full set of carousel slides from your topic'}
-                          style={{ padding: '8px 16px', borderRadius: 999, fontSize: 11, fontWeight: 700, border: 'none', background: (p.isGeneratingCarousel || p.isGeneratingImage || !p.aspectRatio || p.mediaItems.length >= 9) ? '#DDD6FE' : 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', cursor: (p.isGeneratingCarousel || p.isGeneratingImage || !p.aspectRatio || p.mediaItems.length >= 9) ? 'not-allowed' : 'pointer' }}
-                        >
-                          {p.isGeneratingCarousel ? 'Generating slides…' : p.isGeneratingImage ? 'Generating…' : `Generate ${p.carouselSlideCount} slides`}
-                        </button>
-                      </div>
-                      {!p.aspectRatio && <div style={{ fontSize: 11, color: '#92400E', marginTop: 6 }}>Select an aspect ratio in the AI panel first — slides generate at that size.</div>}
-                    </div>
+                    {(() => {
+                      // Locals keep the stepper/generate row readable and
+                      // limit repeated prop reads (min 1, max 9).
+                      const busy = p.isGeneratingCarousel || p.isGeneratingImage;
+                      const count = p.carouselSlideCount;
+                      const atMin = count <= 1;
+                      const atMax = count >= 9;
+                      const genDisabled = busy || !p.aspectRatio || p.mediaItems.length >= 9;
+                      return (
+                        <div style={{ marginTop: 10, borderTop: `1px solid ${C.borderSoft}`, paddingTop: 10 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: C.ink }}>✨ AI slides</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 6, backgroundColor: '#fff', border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 6px' }}>
+                              <button onClick={() => p.setCarouselSlideCount(Math.max(1, count - 1))} disabled={busy || atMin} aria-label="Fewer AI slides" style={{ width: 24, height: 24, border: 'none', background: 'none', fontSize: 14, fontWeight: 800, color: C.primaryDark, cursor: busy || atMin ? 'not-allowed' : 'pointer', opacity: atMin ? 0.35 : 1 }}>−</button>
+                              <span style={{ fontSize: 12, fontWeight: 800, color: C.ink, minWidth: 20, textAlign: 'center' }}>{count}</span>
+                              <button onClick={() => p.setCarouselSlideCount(Math.min(9, count + 1))} disabled={busy || atMax} aria-label="More AI slides" style={{ width: 24, height: 24, border: 'none', background: 'none', fontSize: 14, fontWeight: 800, color: C.primaryDark, cursor: busy || atMax ? 'not-allowed' : 'pointer', opacity: atMax ? 0.35 : 1 }}>+</button>
+                            </span>
+                            <button
+                              onClick={() => p.generateCarouselSlides(count)}
+                              disabled={genDisabled}
+                              title={!p.aspectRatio ? 'Select an aspect ratio in the AI panel first' : p.mediaItems.length >= 9 ? 'Gallery is full (max 9)' : 'Generate a full set of carousel slides from your topic'}
+                              style={{ padding: '8px 16px', borderRadius: 999, fontSize: 11, fontWeight: 700, border: 'none', background: genDisabled ? '#DDD6FE' : 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', cursor: genDisabled ? 'not-allowed' : 'pointer' }}
+                            >
+                              {p.isGeneratingCarousel ? 'Generating slides…' : p.isGeneratingImage ? 'Generating…' : `Generate ${count} slides`}
+                            </button>
+                          </div>
+                          {!p.aspectRatio && <div style={{ fontSize: 11, color: '#92400E', marginTop: 6 }}>Select an aspect ratio in the AI panel first — slides generate at that size.</div>}
+                        </div>
+                      );
+                    })()}
                     {!p.carouselValidation.valid && (
                       <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', padding: '7px 10px', borderRadius: 8 }}>⚠️ {p.carouselValidation.reason} Instagram carousels additionally need publicly hosted image URLs.</div>
                     )}
@@ -2871,7 +2881,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     ['🖼️', 'Media Count', `${previewMediaCount} file${previewMediaCount === 1 ? '' : 's'}`],
                     ['🏷️', 'Branding', p.logoImage ? `Logo • ${p.logoPosition}` : 'No logo'],
                     ['📣', 'Platform', previewPlatform.charAt(0).toUpperCase() + previewPlatform.slice(1)],
-                    ['🎠', 'Post Type', p.isCarousel ? `Carousel • ${p.carouselSlides.length} slides` : 'Single Post'],
+                    ['🎠', 'Post Type', p.isCarousel ? `Multiple Images • ${p.carouselSlides.length} image${p.carouselSlides.length === 1 ? '' : 's'}` : 'Single Image'],
                   ].map(([icon, k, v]) => (
                     <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '5px 0', borderBottom: `1px solid ${C.borderSoft}`, fontSize: 12 }}>
                       <span style={{ color: C.muted, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 7 }}><span style={{ fontSize: 13 }}>{icon}</span>{k}</span>
@@ -3163,7 +3173,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
                     {p.isCarousel && (
                       <div style={{ fontSize: 13, fontWeight: 700, padding: '8px 11px', borderRadius: 10, background: p.carouselValidation.valid ? '#e3f8ef' : '#fef2f2', color: p.carouselValidation.valid ? '#0b7a53' : '#b91c1c', border: `1px solid ${p.carouselValidation.valid ? '#a7ecd0' : '#fecaca'}` }}>
-                        {p.carouselValidation.valid ? `✓ Multiple Images: ${p.carouselSlides.length} slides ready` : `⚠ ${p.carouselValidation.reason}`}
+                        {p.carouselValidation.valid ? `✓ Multiple Images: ${p.carouselSlides.length} slide${p.carouselSlides.length === 1 ? '' : 's'} ready` : `⚠ ${p.carouselValidation.reason}`}
                       </div>
                     )}
 
