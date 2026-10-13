@@ -9,6 +9,18 @@ import { useSearchParams } from 'next/navigation';
 // for the user to close manually - this tab is never auto-closed and never
 // navigates the SocialPulse tab. Canva autosaves the design on its side -
 // nothing is exported until the user presses "Import from Canva" over there.
+//
+// WHERE TO SEND THE USER BACK TO: the app shell (SocialMediaManager), which is
+// the only thing that reads ?canva_ready / ?editor_return, is served by the
+// thin route pages under /dashboard, /content-studio, /scheduler, /analytics,
+// /connect-platforms and /asset-gallery. The bare root "/" is the MARKETING
+// landing page since the shell was moved out of it - it never reads either
+// param, so a fallback aimed at "/" dropped the ready id on the floor and the
+// user saw the homepage with no editor and no Import button, i.e. the return
+// looked like it had silently done nothing. /dashboard is the same landing
+// spot /oauth-return already uses for the OAuth half of this flow.
+const SHELL_HOME = '/dashboard';
+
 function ReturnHandshake() {
   const params = useSearchParams();
   const readyId = params.get('canva_ready');
@@ -22,7 +34,7 @@ function ReturnHandshake() {
       if (readyId) query.set('canva_ready', readyId);
       if (error) query.set('error', error);
       sessionStorage.removeItem('canva-editor-return');
-      location.replace('/?' + query.toString()); return;
+      location.replace(`${SHELL_HOME}?${query.toString()}`); return;
     }
     try {
       if ((readyId || error) && window.opener && !window.opener.closed) {
@@ -38,8 +50,8 @@ function ReturnHandshake() {
   }, [readyId, error]);
 
   const manualHref = readyId
-    ? `/?canva_ready=${encodeURIComponent(readyId)}`
-    : `/?error=${encodeURIComponent(error || 'CANVA_IMPORT_FAILED')}`;
+    ? `${SHELL_HOME}?canva_ready=${encodeURIComponent(readyId)}`
+    : `${SHELL_HOME}?error=${encodeURIComponent(error || 'CANVA_IMPORT_FAILED')}`;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC', fontFamily: 'inherit', padding: 20 }}>

@@ -10,6 +10,26 @@ import { carouselMediaIssue } from '@/lib/carousel-rules';
 import { returnStore } from '@/lib/editor-return';
 import { clearAllUserState, identityChanged, purgeForeignUserState, userScopedKey } from '@/lib/client-identity';
 import { SP_LOGO, STUDIO_MARK } from './brand-assets';
+import { SpIcon } from './sp-icons';
+import { DashboardHeroCoin } from './dashboard-hero-coin';
+
+// One copy of Canva's error-code -> human sentence map, shared by both places a
+// Canva failure can arrive (the ?error= query on a returned tab, and the
+// postMessage handshake from the editor tab). They were duplicated inline and
+// had already drifted; an unmapped code still falls back to the raw code so a
+// new server-side code is never silently swallowed.
+//
+// CANVA_SESSION_EXPIRED is raised by /api/canva/return when the gateway
+// session-gates Canva's return-navigation leg but the session died while the
+// user was off in the Canva editor — without it that path showed raw JSON.
+const CANVA_ERROR_MESSAGES: Record<string, string> = {
+  CANVA_AUTH_FAILED: 'Canva authorization failed. Please try connecting again.',
+  CANVA_STATE_MISMATCH: 'Canva connection could not be verified. Please try again.',
+  CANVA_AUTH_EXPIRED: 'Connecting to Canva took too long. Please try again and finish the Canva sign-in without leaving it open.',
+  CANVA_TOKEN_EXPIRED: 'Your Canva session expired. Please reconnect.',
+  CANVA_IMPORT_FAILED: 'Could not prepare the Canva design for import. Please try again.',
+  CANVA_SESSION_EXPIRED: 'Your SocialPulse session expired while you were in the Canva editor. Sign in again, then press “Edit in Canva” once more.',
+};
 
 interface SocialAccount {
   platform: string;
@@ -266,7 +286,31 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
     }
   };
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
+  // React #418 (hydration text mismatch) on /dashboard. Both values below were
+  // computed during render from state the SERVER cannot have:
+  //   currentUser — arrives from /api/auth/me in an effect, so the server always
+  //     rendered the '?' / 'Loading…' fallback while the client already had the
+  //     real name by first paint.
+  //   new Date().getHours() — the container runs in a different timezone to the
+  //     viewer's browser, so "Good morning" and "Good afternoon" can disagree.
+  // Until mounted we render the same fallback the server produced, which makes
+  // the first client render byte-identical to the SSR HTML. After mount the
+  // real values replace them. This is a value-source fix, not a suppression.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  useEffect(() => {
+    const saved = localStorage.getItem('sp-theme');
+    if (saved === 'light' || saved === 'dark') setTheme(saved);
+  }, []);
+  const toggleTheme = () => {
+    setTheme(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('sp-theme', next);
+      return next;
+    });
+  };
   const [loggingOut, setLoggingOut] = useState(false);
   // The signed-in account id, resolved before ANY user-owned browser state is
   // read. Every localStorage key below is namespaced by it, so a key read can
@@ -1310,13 +1354,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       setCanvaReadyId(canvaReadyParam);
       window.history.replaceState({}, '', window.location.pathname);
     } else if (error?.startsWith('CANVA_')) {
-      const messages: Record<string, string> = {
-        CANVA_AUTH_FAILED: 'Canva authorization failed. Please try connecting again.',
-        CANVA_STATE_MISMATCH: 'Canva connection could not be verified. Please try again.',
-        CANVA_TOKEN_EXPIRED: 'Your Canva session expired. Please reconnect.',
-        CANVA_IMPORT_FAILED: 'Could not prepare the Canva design for import. Please try again.',
-      };
-      setGenerationError(messages[error] || `Canva error: ${error}`);
+      setGenerationError(CANVA_ERROR_MESSAGES[error] || `Canva error: ${error}`);
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
@@ -1338,13 +1376,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         setShowToast(true);
         setTimeout(() => setShowToast(false), 5000);
       } else if (d.type === 'canva-error' && d.code) {
-        const messages: Record<string, string> = {
-          CANVA_AUTH_FAILED: 'Canva authorization failed. Please try connecting again.',
-          CANVA_STATE_MISMATCH: 'Canva connection could not be verified. Please try again.',
-          CANVA_TOKEN_EXPIRED: 'Your Canva session expired. Please reconnect.',
-          CANVA_IMPORT_FAILED: 'Could not prepare the Canva design for import. Please try again.',
-        };
-        setGenerationError(messages[d.code] || `Canva error: ${d.code}`);
+        setGenerationError(CANVA_ERROR_MESSAGES[d.code] || `Canva error: ${d.code}`);
       }
     };
     window.addEventListener('message', onCanvaMessage);
@@ -3344,7 +3376,13 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   const weekRangeLabel = `${weekStartLabel} - ${weekEndLabel}`;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif', backgroundColor: '#F7F8FC' }}>
+    <div className="sp-root" data-theme={theme} style={{ position: 'relative', display: 'flex', minHeight: '100vh', overflow: 'hidden' }}>
+      <div className="sp-atmos" aria-hidden="true">
+        <span className="sp-stars" />
+        <span className="sp-aurora" style={{ width: 680, height: 680, right: '2%', top: -320, background: 'radial-gradient(circle, rgba(124,92,255,.24) 0%, transparent 68%)' }} />
+        <span className="sp-aurora" style={{ width: 620, height: 620, left: '10%', top: 380, background: 'radial-gradient(circle, rgba(72,112,255,.14) 0%, transparent 68%)', animationDelay: '-8s' }} />
+        <span className="sp-aurora" style={{ width: 560, height: 560, right: '12%', bottom: -260, background: 'radial-gradient(circle, rgba(168,93,245,.13) 0%, transparent 68%)', animationDelay: '-14s' }} />
+      </div>
       <style>{`
         /* --- App shell responsiveness ------------------------------------------------
            The header's right cluster (tagline, platform-count pill, date, bell, avatar)
@@ -3395,95 +3433,108 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         <div
           onClick={() => setMobileNavOpen(false)}
           aria-hidden="true"
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.5)', zIndex: 9 }}
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(5,7,18,0.6)', zIndex: 9 }}
         />
       )}
-      <aside style={{
-        width: drawerOpen ? '248px' : (isMobile ? '248px' : (railMode ? '72px' : '248px')),
+      <aside className="sp-glass" style={{
+        width: drawerOpen ? '264px' : (isMobile ? '264px' : (railMode ? '72px' : '264px')),
         transform: isMobile && !mobileNavOpen ? 'translateX(-100%)' : 'translateX(0)',
         transition: 'transform 0.25s cubic-bezier(0.4,0,0.2,1), width 0.3s cubic-bezier(0.4,0,0.2,1)',
-        backgroundColor: '#0f172a', color: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, position: 'fixed', height: '100vh', zIndex: 10, boxShadow: '4px 0 24px rgba(0,0,0,0.15)', overflow: 'hidden', overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: '#334155 transparent' }}>
-        <div style={{ padding: railMode ? '20px 12px' : '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: '12px', justifyContent: railMode ? 'center' : 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-            <img src={SP_LOGO} alt="SocialPulse" width={36} height={36} style={{ width: '36px', height: '36px', borderRadius: '10px', objectFit: 'cover', flexShrink: 0, boxShadow: '0 4px 14px rgba(139,92,246,0.5)' }} />
-            {!railMode && (
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '18px', fontWeight: 700, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>SocialPulse</div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap' }}>Content Manager</div>
-              </div>
-            )}
-          </div>
+        position: 'fixed', zIndex: 10, height: '100vh',
+        display: 'flex', flexDirection: 'column', gap: '22px', flexShrink: 0,
+        padding: railMode ? '20px 10px 16px' : '22px 16px 18px',
+        background: 'var(--sp-sidebar-bg)',
+        borderRight: '1px solid var(--sp-divider)',
+        overflow: 'hidden', overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: '#3a3d6f transparent',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '2px 4px 0', justifyContent: railMode ? 'center' : 'flex-start' }}>
+          <img src={SP_LOGO} alt="SocialPulse" width={38} height={38} style={{ width: '38px', height: '38px', borderRadius: '11px', objectFit: 'cover', flexShrink: 0, boxShadow: '0 6px 18px -6px rgba(98,224,255,.9)' }} />
+          {!railMode && (
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <span className="sp-display" style={{ fontSize: '21px', fontWeight: 700, letterSpacing: '-0.01em', lineHeight: 1.1, color: 'var(--sp-heading)' }}>SocialPulse</span>
+              <span className="sp-mono" style={{ fontSize: '10.5px', letterSpacing: '0.16em', textTransform: 'uppercase' as const, color: 'var(--sp-muted)' }}>Content Manager</span>
+            </div>
+          )}
           <button
+            type="button"
+            className="sp-btn sp-btn-ghost"
+            aria-label={isNarrow ? (drawerOpen ? 'Close navigation menu' : 'Open navigation menu') : (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
             onClick={() => (isNarrow ? setMobileNavOpen(v => !v) : setSidebarCollapsed(v => !v))}
-            title={isNarrow ? (drawerOpen ? 'Close navigation menu' : 'Open navigation menu') : (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
-            style={{ width: '28px', height: '28px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.06)', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', flexShrink: 0, transition: 'all 0.2s' }}
-            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#94a3b8'; }}
+            style={{ width: '36px', height: '36px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '11px', border: '1px solid rgba(150,242,255,.18)', color: '#B9BEE0' }}
           >
-            {sidebarCollapsed ? '›' : '‹'}
+            <SpIcon name={sidebarCollapsed || railMode ? 'chevronRight' : 'chevronLeft'} size={16} />
           </button>
         </div>
 
-        <nav style={{ flex: 1, padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '2px', overflowY: 'auto' }}>
-          {!railMode && <div style={{ padding: '0 16px', marginBottom: '10px', fontSize: '10px', fontWeight: 600, color: '#475569', textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>Main</div>}
-          {[
-            { icon: '📊', label: 'Dashboard', tab: 'dashboard' as const },
-            { icon: '✏️', label: 'Content Studio', tab: 'studio' as const },
-            { icon: '📅', label: 'Scheduler', tab: 'scheduler' as const },
-            { icon: '📈', label: 'Analytics', tab: 'analytics' as const },
-            { icon: '🖼️', label: 'Asset Gallery', tab: 'media' as const },
-            { icon: '🔗', label: 'Connect Platforms', tab: 'connect' as const },
-          ].map(item => {
-            const active = activeTab === item.tab;
-            const isStudio = item.tab === 'studio';
-            return (
-              <button
-                key={item.label}
-                onClick={() => goToTab(item.tab)}
-                title={railMode ? item.label : undefined}
-                style={{
-                  padding: railMode ? '12px' : '10px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: active ? 700 : 500,
-                  color: active ? '#fff' : '#94a3b8',
-                  cursor: 'pointer', border: 'none',
-                  background: active && isStudio ? 'linear-gradient(135deg, #7C3AED, #8B5CF6)' : active ? 'rgba(124,58,237,0.18)' : 'transparent',
-                  boxShadow: active && isStudio ? '0 3px 12px rgba(124,58,237,0.35)' : 'none',
-                  display: 'flex', alignItems: 'center', gap: railMode ? '0' : '12px', width: '100%', textAlign: 'left', justifyContent: railMode ? 'center' : 'flex-start',
-                  fontFamily: 'inherit', transition: 'all 0.2s',
-                }}
-                onMouseEnter={e => { if (!active) { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#e2e8f0'; } }}
-                onMouseLeave={e => { if (!active) { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#94a3b8'; } }}
-              >
-                <span style={{ fontSize: '16px' }}>{item.icon}</span> {!railMode && item.label}
-              </button>
-            );
-          })}
+        <nav aria-label="Main" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto' }}>
+          {!railMode && <span className="sp-mono" style={{ padding: '0 12px', fontSize: '10.5px', letterSpacing: '0.22em', textTransform: 'uppercase' as const, color: 'var(--sp-muted)' }}>Main</span>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {([
+              { icon: 'dashboard', label: 'Dashboard', tab: 'dashboard' as const },
+              { icon: 'studio', label: 'Content Studio', tab: 'studio' as const },
+              { icon: 'scheduler', label: 'Scheduler', tab: 'scheduler' as const },
+              { icon: 'analytics', label: 'Analytics', tab: 'analytics' as const },
+              { icon: 'gallery', label: 'Asset Gallery', tab: 'media' as const },
+              { icon: 'connect', label: 'Connect Platforms', tab: 'connect' as const },
+            ] as const).map(item => {
+              const active = activeTab === item.tab;
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => goToTab(item.tab)}
+                  title={railMode ? item.label : undefined}
+                  className={`sp-nav${active ? ' sp-nav-active' : ''}`}
+                  style={{
+                    minHeight: '48px', padding: railMode ? 0 : '0 14px 0 9px', borderRadius: '15px',
+                    color: active ? '#FFFFFF' : 'var(--sp-muted)', fontSize: '14.5px', fontWeight: active ? 700 : 600,
+                    display: 'flex', alignItems: 'center', gap: railMode ? 0 : '12px', width: '100%',
+                    justifyContent: railMode ? 'center' : 'flex-start', textAlign: 'left', border: 'none', background: active ? undefined : 'transparent', fontFamily: 'inherit',
+                  }}
+                >
+                  <span className={active ? undefined : 'sp-soft-icon'} style={{
+                    width: '32px', height: '32px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '10px', color: active ? '#FFFFFF' : 'var(--sp-muted)',
+                    background: active ? 'linear-gradient(135deg, #6483FD, #5DAAF5)' : undefined,
+                    border: active ? 'none' : '1px solid transparent',
+                    boxShadow: active ? '0 6px 18px -6px rgba(98,224,255,.9)' : 'none',
+                  }}>
+                    <SpIcon name={item.icon} size={17} />
+                  </span>
+                  {!railMode && <span style={{ flex: 1 }}>{item.label}</span>}
+                  {!railMode && active && <span className="sp-led" style={{ width: '6px', height: '6px', background: '#B8F1FF', color: '#B8F1FF', boxShadow: '0 0 10px #9DF0FF' }} />}
+                </button>
+              );
+            })}
+          </div>
         </nav>
 
-        <div style={{ padding: railMode ? '12px 8px' : '16px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', position: 'relative' }}>
+        <div style={{ marginTop: 'auto', position: 'relative' }}>
           <button
+            type="button"
+            className="sp-soft-icon"
             onClick={() => setProfileMenuOpen(v => !v)}
-            style={{ display: 'flex', alignItems: 'center', gap: '10px', justifyContent: railMode ? 'center' : 'flex-start', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: railMode ? 'center' : 'flex-start', width: '100%', padding: '12px', borderRadius: '16px', cursor: 'pointer', fontFamily: 'inherit' }}
           >
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 600, flexShrink: 0, color: '#fff' }}>
+            <span className="sp-display" style={{ width: '38px', height: '38px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '50%', fontSize: '15px', fontWeight: 700, color: '#FFFFFF', background: 'linear-gradient(#141A3C, #141A3C) padding-box, linear-gradient(135deg, #6483FD, #5DAAF5) border-box', border: '2px solid transparent' }}>
               {(currentUser?.name || '?').charAt(0).toUpperCase()}
-            </div>
+            </span>
             {!railMode && (
-              <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                <div style={{ fontSize: '13px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.name || 'Loading…'}</div>
-                <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.email || ''}</div>
+              <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+                <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--sp-heading)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.name || 'Loading…'}</span>
+                <span style={{ fontSize: '11.5px', color: 'var(--sp-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.email || ''}</span>
               </div>
             )}
           </button>
           {profileMenuOpen && (
             <>
               <div onClick={() => setProfileMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />
-              <div style={{ position: 'absolute', bottom: '100%', left: railMode ? '8px' : '20px', right: railMode ? '8px' : '20px', marginBottom: '8px', backgroundColor: '#fff', borderRadius: '10px', boxShadow: '0 12px 32px rgba(0,0,0,0.18)', border: '1px solid #e2e8f0', overflow: 'hidden', zIndex: 20 }}>
-                <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.name}</div>
-                  <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.email}</div>
+              <div style={{ position: 'absolute', bottom: '100%', left: railMode ? '4px' : '0', right: railMode ? '4px' : '0', marginBottom: '8px', background: 'var(--sp-panel-bg)', borderRadius: '14px', boxShadow: '0 20px 48px -16px rgba(0,0,0,.6)', border: '1px solid rgba(140,241,255,.2)', overflow: 'hidden', zIndex: 20 }}>
+                <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--sp-divider)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--sp-heading)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.name}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--sp-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.email}</div>
                 </div>
-                <button onClick={() => setProfileMenuOpen(false)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', fontSize: '13px', fontWeight: 500, color: '#334155', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Account</button>
-                <button onClick={handleLogout} disabled={loggingOut} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', fontSize: '13px', fontWeight: 600, color: '#dc2626', background: 'none', border: 'none', cursor: loggingOut ? 'default' : 'pointer', fontFamily: 'inherit', borderTop: '1px solid #f1f5f9' }}>
+                <button onClick={() => setProfileMenuOpen(false)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', fontSize: '13px', fontWeight: 500, color: '#D9DCFA', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Account</button>
+                <button onClick={handleLogout} disabled={loggingOut} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', fontSize: '13px', fontWeight: 600, color: '#FDA8B8', background: 'none', border: 'none', cursor: loggingOut ? 'default' : 'pointer', fontFamily: 'inherit', borderTop: '1px solid var(--sp-divider)' }}>
                   {loggingOut ? 'Logging out…' : 'Logout'}
                 </button>
               </div>
@@ -3506,60 +3557,69 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         // viewport the available column is only 776px after the sidebar offset —
         // and the item stayed 1104px, pushing the document to 1352px and giving
         // the entire app a horizontal scrollbar on desktop AND mobile.
+        position: 'relative',
+        zIndex: 1,
         flex: 1,
         minWidth: 0,
         width: 'auto',
         maxWidth: '100%',
-        marginLeft: isMobile ? '0' : (railMode ? '72px' : '248px'),
+        marginLeft: isMobile ? '0' : (railMode ? '72px' : '264px'),
         display: 'flex',
         flexDirection: 'column',
         minHeight: '100vh',
         transition: 'margin-left 0.3s cubic-bezier(0.4,0,0.2,1)',
-        backgroundColor: '#f8fafc',
       }}>
-        {/* Top Bar — professional white header */}
-        <header className="sp-hdr" style={{
-          height: '64px', backgroundColor: '#ffffff',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px 0 28px',
-          borderBottom: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(15,23,42,0.06)', position: 'sticky', top: 0, zIndex: 5,
+        {/* Top Bar — dark glass header */}
+        <header className="sp-hdr sp-topbar sp-glass" style={{
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '14px 20px', padding: '14px 32px',
+          background: 'var(--sp-topbar-bg)', borderBottom: '1px solid var(--sp-divider)', position: 'sticky', top: 0, zIndex: 5,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button onClick={() => (isNarrow ? setMobileNavOpen(v => !v) : setSidebarCollapsed(v => !v))} aria-label={isNarrow ? 'Open navigation menu' : 'Toggle sidebar'} style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', transition: 'all 0.2s' }} title="Toggle sidebar">
-              ☰
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
+            <button type="button" className="sp-btn sp-btn-ghost" aria-label={isNarrow ? 'Open navigation menu' : 'Toggle sidebar'} onClick={() => (isNarrow ? setMobileNavOpen(v => !v) : setSidebarCollapsed(v => !v))} title="Toggle sidebar" style={{ width: '44px', height: '44px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '13px', border: '1px solid rgba(150,242,255,.18)', color: '#C9CDEB' }}>
+              <SpIcon name="hamburger" size={19} />
             </button>
-            <div className="sp-hdr-divider" style={{ width: '1px', height: '24px', backgroundColor: '#e2e8f0' }} />
-            <div>
-              <div style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.015em', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block', boxShadow: '0 0 0 3px rgba(16,185,129,0.15)' }} />
-                {topBarInfo[activeTab].title}
+            <span aria-hidden="true" className="sp-hdr-divider" style={{ width: '1px', height: '32px', background: 'rgba(140,241,255,.18)' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span className="sp-led" style={{ width: '8px', height: '8px', background: '#34D399', color: '#34D399', boxShadow: '0 0 10px rgba(52,211,153,.8)' }} />
+                <h1 className="sp-display" style={{ margin: 0, fontSize: '21px', fontWeight: 600, letterSpacing: '-0.01em', lineHeight: 1.2, color: 'var(--sp-heading)' }}>{topBarInfo[activeTab].title}</h1>
               </div>
-              <div className="sp-hdr-sub" style={{ fontSize: '12px', color: '#64748b', marginTop: '1px', fontWeight: 400 }}>{topBarInfo[activeTab].subtitle}</div>
+              <p className="sp-hdr-sub" style={{ margin: 0, fontSize: '13px', color: 'var(--sp-muted)' }}>{topBarInfo[activeTab].subtitle}</p>
             </div>
           </div>
-          <div className="sp-hdr-right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="sp-hdr-right" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
             {activeTab === 'studio' && (
-              <span className="sp-hdr-tagline" style={{ fontSize: 11, fontWeight: 700, color: '#6D28D9', backgroundColor: '#F1EBFF', border: '1px solid #C4B5FD', padding: '6px 12px', borderRadius: 999, whiteSpace: 'nowrap' }}>Create. Brand. Schedule. Grow.</span>
+              <span className="sp-hdr-tagline sp-mono" style={{ fontSize: 11, fontWeight: 700, color: '#BEF2FF', backgroundColor: 'rgba(108,234,255,.14)', border: '1px solid rgba(108,234,255,.3)', padding: '6px 12px', borderRadius: 999, whiteSpace: 'nowrap' }}>Create. Brand. Schedule. Grow.</span>
             )}
-            <div className="sp-hdr-status" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '999px', padding: '6px 14px' }}>
-              <span style={{ fontSize: '12px', color: '#64748b' }}>●</span>
-              <span className="sp-hdr-status-text" style={{ fontSize: '12px', color: '#334155', fontWeight: 500 }}>{accounts.length ? `${accounts.length} platform${accounts.length!==1?'s':''} connected` : 'No platform connected'}</span>
+            <button
+              type="button"
+              className="sp-btn sp-btn-ghost"
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              onClick={toggleTheme}
+              style={{ width: '44px', height: '44px', display: 'grid', placeItems: 'center', borderRadius: '13px', border: '1px solid var(--sp-divider)', color: '#C9CDEB' }}
+            >
+              <SpIcon name={theme === 'dark' ? 'sun' : 'moon'} size={19} />
+            </button>
+            <div className="sp-mono sp-hdr-date sp-chip" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', height: '40px', padding: '0 14px', borderRadius: '999px', border: '1px solid transparent', fontSize: '12.5px' }}>
+              <SpIcon name="calendar" size={15} />
+              <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
             </div>
-            <div style={{ width: '1px', height: '24px', backgroundColor: '#e2e8f0' }} />
-            <div className="sp-hdr-date" style={{ fontSize: '12px', color: '#64748b', fontWeight: 500, whiteSpace: 'nowrap' }}>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
             <div style={{ position: 'relative' }}>
-              <button style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#fff', border: '1px solid #e2e8f0', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>🔔</button>
-              {pendingPosts.length > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #fff' }}>{pendingPosts.length}</span>}
+              <button type="button" className="sp-btn sp-btn-ghost" aria-label="Notifications" style={{ width: '44px', height: '44px', display: 'grid', placeItems: 'center', borderRadius: '13px', border: '1px solid rgba(150,242,255,.18)', color: '#C9CDEB' }}>
+                <SpIcon name="bell" size={19} />
+              </button>
+              {pendingPosts.length > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '18px', height: '18px', borderRadius: '50%', background: 'linear-gradient(135deg, #6483FD, #5DAAF5)', color: '#fff', fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 10px rgba(110,220,255,.8)' }}>{pendingPosts.length}</span>}
             </div>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', border: '1px solid #e2e8f0',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px',
-              fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 1px 3px rgba(99,102,241,0.2)',
-            }}>A</div>
+            <button type="button" className="sp-btn sp-display" aria-label="Account" onClick={() => setProfileMenuOpen(v => !v)} style={{ width: '44px', height: '44px', display: 'grid', placeItems: 'center', borderRadius: '50%', fontSize: '16px', fontWeight: 700, color: '#FFFFFF', background: 'linear-gradient(#141A3C, #141A3C) padding-box, linear-gradient(135deg, #6483FD, #5DAAF5) border-box', border: '2px solid transparent', boxShadow: '0 0 22px rgba(98,224,255,.35)' }}>
+              {(currentUser?.name || '?').charAt(0).toUpperCase()}
+            </button>
           </div>
         </header>
 
         {/* Content Studio — SaaS redesign (UI-only, logic preserved) */}
         {activeTab === 'studio' && (
+          <div style={{ flex: 1, minHeight: 0, backgroundColor: '#f8fafc' }}>
           <StudioWorkspace
             wizardState={wizardState} setWizardState={setWizardState} saveFullDraft={saveFullDraft} cancelPreview={cancelPreview}
             updateAltText={updateAltText} generateAltText={generateAltText} altBusy={altBusy}
@@ -3635,9 +3695,11 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             disconnectWhatsApp={disconnectWhatsApp} whatsappDisconnecting={whatsappDisconnecting} whapiCanConnect={whapiCanConnect}
             publishToWhapi={publishToWhapi} whapiPublishing={whapiPublishing} refreshWhapiStatus={refreshWhapiStatus} whapiLoading={whapiLoading}
           />
+          </div>
         )}
 
         {activeTab === 'connect' && (
+          <div style={{ flex: 1, minHeight: 0, backgroundColor: '#f8fafc' }}>
           <ConnectPlatforms
             accounts={accounts} connectPlatform={connectPlatform} disconnectPlatform={disconnectPlatform}
             whapiConnected={whapiConnected} whapiChannelStatus={whapiChannelStatus} whapiAccountName={whapiAccountName} whapiPhoneMasked={whapiPhoneMasked}
@@ -3646,6 +3708,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             canvaConnected={canvaConnected} canvaName={canvaName} disconnectCanva={disconnectCanva} refreshWhapiStatus={refreshWhapiStatus} refreshCanvaStatus={refreshCanvaStatus}
             platformColors={platformColors} PlatformIcon={PlatformIcon}
           />
+          </div>
         )}
 
         {/* Asset Gallery (persistent uploads via AssetLibrary + legacy session view) */}
@@ -3674,211 +3737,281 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         )}
 
         {/* Dashboard — PROFESSIONAL */}
-        {activeTab === 'dashboard' && (
-          <div style={{ padding: '24px 32px', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px', backgroundColor: '#f8fafc' }}>
-            {/* Welcome banner */}
-            <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%)', borderRadius: '16px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff', position: 'relative', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 24px rgba(15,23,42,0.15)' }}>
-              <div style={{ position: 'absolute', right: '-20px', top: '-30px', width: '220px', height: '220px', background: 'radial-gradient(circle at center, rgba(99,102,241,0.25), transparent 70%)', pointerEvents: 'none' }} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', position: 'relative' }}>
-                <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', boxShadow: '0 4px 12px rgba(99,102,241,0.3)', flexShrink: 0 }}>👋</div>
-                <div>
-                  <div style={{ fontSize: '16px', fontWeight: 700, letterSpacing: '-0.015em' }}>Welcome back, Admin</div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Here’s what’s happening with your content today • {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '10px', position: 'relative' }}>
-                <button onClick={() => goToTab('studio')} style={{ padding: '10px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, border: 'none', backgroundColor: '#fff', color: '#0f172a', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '8px' }}>✏️ Create Post</button>
-                <button onClick={() => goToTab('scheduler')} style={{ padding: '10px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: 600, border: '1px solid rgba(255,255,255,0.2)', backgroundColor: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer', backdropFilter: 'blur(6px)' }}>View Schedule →</button>
-              </div>
-            </div>
+        {activeTab === 'dashboard' && (() => {
+          const connectedCount = accounts.filter(a => a.connected).length + (whapiConnected ? 1 : 0);
+          // Both gated on `mounted` so the SSR HTML and the first client render
+          // agree (see the `mounted` declaration for the full explanation).
+          const firstName = ((mounted ? currentUser?.name : '') || '').split(' ')[0] || 'there';
+          const greetHour = mounted ? new Date().getHours() : 12;
+          const greeting = greetHour < 12 ? 'Good morning,' : greetHour < 18 ? 'Good afternoon,' : 'Good evening,';
+          const platformMeta = {
+            linkedin: { label: 'LinkedIn', color: '#8DBBFF', bg: 'rgba(91,155,255,.13)', border: 'rgba(91,155,255,.3)' },
+            instagram: { label: 'Instagram', color: '#F9A8D4', bg: 'rgba(244,114,182,.12)', border: 'rgba(244,114,182,.3)' },
+            facebook: { label: 'Facebook', color: '#A5B4FF', bg: 'rgba(110,139,255,.13)', border: 'rgba(110,139,255,.3)' },
+            whatsapp: { label: 'WhatsApp', color: '#6EE7B7', bg: 'rgba(52,211,153,.12)', border: 'rgba(52,211,153,.3)' },
+          } as const;
+          const kpiTiles = [
+            { label: 'Connected Accounts', value: accounts.length, sub: accounts.length ? 'Active' : 'No connections', icon: 'users' as const, color: '#A9BBFF', bg: 'rgba(100,131,253,.14)', border: 'rgba(100,131,253,.38)', glow: 'rgba(100,131,253,.32)' },
+            { label: 'Pending Queue', value: pendingPosts.length, sub: pendingPosts.length ? 'Awaiting publish' : 'Queue empty', icon: 'hourglass' as const, color: '#FFCD85', bg: 'rgba(255,181,71,.12)', border: 'rgba(255,181,71,.36)', glow: 'rgba(255,181,71,.24)' },
+            { label: 'Published', value: publishedPosts.length, sub: successRate !== null ? `${successRate}% success rate` : 'No attempts yet', icon: 'checkCircle' as const, color: '#7EEAC3', bg: 'rgba(52,211,153,.12)', border: 'rgba(52,211,153,.36)', glow: 'rgba(52,211,153,.22)' },
+            { label: 'Failed / Cancelled', value: failedPosts.length + cancelledPosts.length, sub: failedPosts.length ? 'Needs attention' : 'All clear', icon: 'xCircle' as const, color: '#FDA8B8', bg: 'rgba(251,113,133,.12)', border: 'rgba(251,113,133,.36)', glow: 'rgba(251,113,133,.22)' },
+          ];
+          // addDaysLocal/localDateKey are local-time based, so these day labels
+          // also differ between the server's timezone and the viewer's. Until
+          // mounted we render no chart at all (see `mounted`), so the first
+          // client render contains no date-derived text and matches the SSR HTML.
+          const days = Array.from({ length: 7 }, (_, i) => {
+            const d = addDaysLocal(new Date(), -6 + i);
+            const key = localDateKey(d);
+            const count = allPosts.filter(p => localDateKey(new Date(p.createdAt || p.scheduledAt)) === key).length;
+            return { label: d.toLocaleDateString('en-US', { weekday: 'short' }), key, count, isToday: key === todayKey };
+          });
+          const maxDay = Math.max(1, ...days.map(d => d.count));
+          return (
+            <div className="sp-main" style={{ width: '100%', maxWidth: '1400px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px', padding: '28px 32px 44px' }}>
 
-            {/* KPI cards — professional */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-              {[
-                { label: 'Connected Accounts', value: accounts.length, sub: `${accounts.length ? 'Active' : 'No connections'}`, icon: '👥', grad: 'linear-gradient(135deg, #6366f1, #818cf8)', bg: '#eef2ff', color: '#4338ca', trend: accounts.length ? '+ linked' : '—' },
-                { label: 'Pending Queue', value: pendingPosts.length, sub: pendingPosts.length ? 'Awaiting publish' : 'Queue empty', icon: '⏳', grad: 'linear-gradient(135deg, #f59e0b, #fbbf24)', bg: '#fffbeb', color: '#92400e', trend: pendingPosts.length ? '• due soon' : '—' },
-                { label: 'Published', value: publishedPosts.length, sub: successRate !== null ? `${successRate}% success rate` : 'No attempts yet', icon: '✓', grad: 'linear-gradient(135deg, #10b981, #34d399)', bg: '#ecfdf5', color: '#065f46', trend: publishedPosts.length ? '↗ live' : '—' },
-                { label: 'Failed / Cancelled', value: failedPosts.length + cancelledPosts.length, sub: failedPosts.length ? 'Needs attention' : 'All clear', icon: '⚡', grad: failedPosts.length ? 'linear-gradient(135deg, #ef4444, #f87171)' : 'linear-gradient(135deg, #64748b, #94a3b8)', bg: failedPosts.length ? '#fef2f2' : '#f1f5f9', color: failedPosts.length ? '#991b1b' : '#475569', trend: failedPosts.length ? '• review' : '—' },
-              ].map(tile => (
-                <div key={tile.label} style={{ backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04)', position: 'relative', overflow: 'hidden' }}>
-                  <div style={{ position: 'absolute', top: 0, right: 0, width: '80px', height: '80px', background: `radial-gradient(circle at 30% 30%, ${tile.color}0D, transparent 70%)`, pointerEvents: 'none' }} />
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
-                    <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: tile.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '16px', fontWeight: 700, boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}>{tile.icon}</div>
-                    <span style={{ fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '999px', backgroundColor: tile.bg, color: tile.color, border: `1px solid ${tile.color}18` }}>{tile.trend}</span>
+              {/* Hero */}
+              <section className="sp-panel sp-hero" aria-label="Welcome" style={{ position: 'relative', overflow: 'hidden', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 24px', padding: '30px 24px 10px 48px', borderRadius: '30px', border: '1px solid rgba(140,241,255,.2)', background: 'linear-gradient(115deg, rgba(23,29,66,.94) 0%, rgba(14,18,43,.94) 55%, rgba(17,49,55,.94) 100%)', boxShadow: '0 40px 90px -40px rgba(60,185,200,.55)' }}>
+                <span aria-hidden="true" style={{ position: 'absolute', right: '-60px', top: '-170px', width: '560px', height: '560px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(92,218,255,.32) 0%, transparent 64%)', pointerEvents: 'none' }} />
+                <span aria-hidden="true" style={{ position: 'absolute', left: '-140px', bottom: '-230px', width: '480px', height: '480px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(80,120,255,.2) 0%, transparent 64%)', pointerEvents: 'none' }} />
+                <span className="sp-hero-grid" aria-hidden="true" />
+
+                <div style={{ position: 'relative', zIndex: 2, flex: '1 1 380px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '20px', padding: '6px 0 22px' }}>
+                  <h2 className="sp-display sp-hero-title" style={{ margin: 0, fontSize: '56px', fontWeight: 600, lineHeight: 1.02, letterSpacing: '-0.03em', color: '#FFFFFF' }}>
+                    {greeting}<span className="sp-grad-text" style={{ display: 'block' }}>{firstName}</span>
+                  </h2>
+                  <p style={{ margin: 0, maxWidth: '470px', fontSize: '16px', lineHeight: 1.6, color: '#B3B8DA' }}>
+                    Here&rsquo;s what&rsquo;s happening with your content today · <span style={{ whiteSpace: 'nowrap' }}>{mounted ? new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : ''}</span>
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', paddingTop: '6px' }}>
+                    <button type="button" className="sp-btn sp-btn-primary" onClick={() => goToTab('studio')} style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', height: '52px', padding: '0 24px 0 20px', borderRadius: '15px', border: 0, color: '#FFFFFF', fontSize: '15px', fontWeight: 700 }}>
+                      <SpIcon name="sparkle" size={19} />
+                      <span>Create Post</span>
+                    </button>
+                    <button type="button" className="sp-btn sp-btn-ghost" onClick={() => goToTab('scheduler')} style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', height: '52px', padding: '0 20px 0 22px', borderRadius: '15px', border: '1px solid rgba(150,242,255,.3)', color: '#E6E8FF', fontSize: '15px', fontWeight: 700 }}>
+                      <span>View Schedule</span>
+                      <SpIcon name="arrowRight" size={18} />
+                    </button>
                   </div>
-                  <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', letterSpacing: '0.04em', textTransform: 'uppercase' as const }}>{tile.label}</div>
-                  <div style={{ fontSize: '30px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.03em', lineHeight: 1, marginTop: '6px' }}>{tile.value}</div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', fontWeight: 500 }}>{tile.sub}</div>
                 </div>
-              ))}
-            </div>
 
-            {/* Middle: chart + side stack */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.9fr 360px', gap: '24px', alignItems: 'start' }}>
-              {/* Performance chart */}
-              <div style={{ backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
-                <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#eef2ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>📊</div>
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>Publishing Activity</div>
-                      <div style={{ fontSize: '11px', color: '#64748b' }}>Last 7 days • {allPosts.length} total posts</div>
+                <DashboardHeroCoin connectedCount={connectedCount} />
+              </section>
+
+              {/* KPI cards */}
+              <section aria-label="Content overview" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))', gap: '20px' }}>
+                {kpiTiles.map(tile => (
+                  <article key={tile.label} className="sp-card sp-panel" style={{ position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: '18px', padding: '20px 20px 22px', borderRadius: '22px', border: '1px solid var(--sp-panel-border)', background: 'var(--sp-card-bg)' }}>
+                    <span className="sp-card-glow" style={{ background: `radial-gradient(circle, ${tile.glow} 0%, transparent 68%)` }} />
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ width: '44px', height: '44px', display: 'grid', placeItems: 'center', borderRadius: '14px', color: tile.color, background: tile.bg, border: `1px solid ${tile.border}`, boxShadow: `0 0 22px ${tile.glow}` }}>
+                        <SpIcon name={tile.icon} size={20} />
+                      </span>
+                      <span role="img" aria-label="No change" style={{ width: '28px', height: '28px', display: 'grid', placeItems: 'center', borderRadius: '50%', color: tile.color, background: tile.bg, border: `1px solid ${tile.border}` }}>
+                        <SpIcon name="minus" size={14} />
+                      </span>
                     </div>
-                  </div>
-                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '6px 10px', borderRadius: '999px', backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' }}>{successRate !== null ? `${successRate}% delivered` : 'No data'}</span>
-                </div>
-                <div style={{ padding: '22px 22px 18px' }}>
-                  {(() => {
-                    const days = Array.from({ length: 7 }, (_, i) => {
-                      const d = addDaysLocal(new Date(), -6 + i);
-                      const key = localDateKey(d);
-                      const count = allPosts.filter(p => localDateKey(new Date(p.createdAt || p.scheduledAt)) === key).length;
-                      return { label: d.toLocaleDateString('en-US', { weekday: 'short' }), key, count, isToday: key === todayKey };
-                    });
-                    const max = Math.max(1, ...days.map(d => d.count));
-                    return (
-                      <div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '10px', alignItems: 'end', height: '110px' }}>
-                          {days.map(d => (
-                            <div key={d.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                                {d.count > 0 && <span style={{ fontSize: '10px', fontWeight: 700, color: '#4338ca' }}>{d.count}</span>}
-                                <div style={{ width: '100%', height: `${12 + (d.count / max) * 72}px`, borderRadius: '8px', background: d.isToday ? 'linear-gradient(180deg, #6366f1, #818cf8)' : d.count ? 'linear-gradient(180deg, #e0e7ff, #c7d2fe)' : '#f1f5f9', border: d.isToday ? '1px solid #6366f1' : d.count ? '1px solid #c7d2fe' : '1px solid #e2e8f0', boxShadow: d.isToday ? '0 2px 8px rgba(99,102,241,0.25)' : 'none', transition: 'height 0.3s' }} />
-                              </div>
-                              <span style={{ fontSize: '11px', fontWeight: d.isToday ? 700 : 500, color: d.isToday ? '#4338ca' : '#64748b' }}>{d.label}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{ marginTop: '16px', padding: '12px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>Today • {days[6].count} posts • {pendingPosts.length} in queue</span>
-                          <span style={{ fontSize: '11px', color: '#4338ca', fontWeight: 600, cursor: 'pointer' }} onClick={() => goToTab('scheduler')}>Open scheduler →</span>
+                    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '7px' }}>
+                      <span className="sp-mono" style={{ fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase' as const, color: 'var(--sp-muted)' }}>{tile.label}</span>
+                      <span className="sp-display" style={{ fontSize: '48px', fontWeight: 600, lineHeight: 1, letterSpacing: '-0.02em', color: 'var(--sp-heading)' }}>{tile.value}</span>
+                      <span style={{ fontSize: '13px', color: 'var(--sp-muted)' }}>{tile.sub}</span>
+                    </div>
+                  </article>
+                ))}
+              </section>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '24px' }}>
+                <div style={{ flex: '999 1 520px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+                  {/* Publishing activity */}
+                  <section className="sp-panel" aria-label="Publishing activity" style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '18px', padding: '22px 24px 20px', borderRadius: '24px', border: '1px solid var(--sp-panel-border)', background: 'var(--sp-panel-bg)' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <span style={{ width: '42px', height: '42px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '13px', color: '#AEF1FF', background: 'rgba(108,234,255,.13)', border: '1px solid rgba(108,234,255,.32)' }}>
+                          <SpIcon name="barsChart" size={19} />
+                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <h2 className="sp-display" style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--sp-heading)' }}>Publishing Activity</h2>
+                          <p style={{ margin: 0, fontSize: '13px', color: 'var(--sp-muted)' }}>Last 7 days · {allPosts.length} total posts</p>
                         </div>
                       </div>
-                    );
-                  })()}
-                </div>
-              </div>
+                      <span className="sp-mono sp-chip" style={{ display: 'inline-flex', alignItems: 'center', height: '30px', padding: '0 12px', borderRadius: '999px', border: '1px solid transparent', fontSize: '10.5px', letterSpacing: '0.14em', textTransform: 'uppercase' as const }}>{successRate !== null ? `${successRate}% delivered` : 'No data'}</span>
+                    </div>
 
-              {/* Side: quick actions + platforms */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
-                  <div style={{ padding: '16px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#fffbeb', color: '#92400e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', border: '1px solid #fde68a' }}>⚡</div>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>Quick Actions</span>
-                    </div>
-                    <span style={{ fontSize: '10px', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', backgroundColor: '#f1f5f9', color: '#64748b' }}>{accounts.length ? 'Ready' : 'Setup'}</span>
-                  </div>
-                  <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <button onClick={() => goToTab('studio')} style={{ padding: '12px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, border: 'none', background: 'linear-gradient(135deg, #0f172a, #1e293b)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 10px rgba(15,23,42,0.15)' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><span style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✏️</span> New Post</span>
-                      <span>→</span>
-                    </button>
-                    <button onClick={() => goToTab('scheduler')} style={{ padding: '11px 14px', borderRadius: '10px', fontSize: '12px', fontWeight: 600, border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left' as const }}>
-                      <span style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>📅</span> View Scheduler <span style={{ marginLeft: 'auto', fontSize: '10px', backgroundColor: '#eef2ff', color: '#4338ca', padding: '2px 7px', borderRadius: '999px', fontWeight: 700 }}>{pendingPosts.length} pending</span>
-                    </button>
-                    <button onClick={() => goToTab('analytics')} style={{ padding: '11px 14px', borderRadius: '10px', fontSize: '12px', fontWeight: 600, border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left' as const }}>
-                      <span style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>📈</span> View Analytics
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
-                  <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>🌐</span> Platform Health</span>
-                    <span style={{ fontSize: '11px', color: (accounts.length + (whapiConnected ? 1 : 0)) ? '#10b981' : '#94a3b8', fontWeight: 700 }}>{(() => { const c = accounts.filter(a => a.connected).length + (whapiConnected ? 1 : 0); return `${c}/4 connected`; })()}</span>
-                  </div>
-                  <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {(['linkedin', 'instagram', 'facebook', 'whatsapp'] as const).map(platform => {
-                      const isWhapi = platform === 'whatsapp';
-                      const isConnected = isWhapi ? whapiConnected : accounts.some(a => a.platform === platform && a.connected);
-                      const justConnected = justConnectedPlatform === platform || (isWhapi && whapiConnected && justConnectedPlatform === 'whatsapp');
-                      return (
-                        <div key={platform} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 10px', borderRadius: '10px', backgroundColor: isConnected ? '#f8fafc' : 'transparent', border: `1px solid ${isConnected ? '#e2e8f0' : 'transparent'}`, animation: justConnected ? 'connectRowFlash 1.8s ease-out' : 'none' }}>
-                          <div style={{ width: '32px', height: '32px', borderRadius: '10px', backgroundColor: platformColors[platform], color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, boxShadow: isConnected ? '0 2px 8px rgba(0,0,0,0.12)' : 'none', opacity: isConnected ? 1 : 0.45 }}>
-                            <PlatformIcon platform={platform} size={14} />
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a', textTransform: 'capitalize' as const }}>{platform}</div>
-                            <div style={{ fontSize: '11px', color: isConnected ? '#059669' : '#94a3b8', fontWeight: 500 }}>{isConnected ? (isWhapi ? `Connected${whapiPhoneMasked ? ` • ${whapiPhoneMasked}` : ' • ready to publish'}` : 'Connected • ready to publish') : 'Not connected'}</div>
-                          </div>
-                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isConnected ? '#10b981' : '#cbd5e1', boxShadow: isConnected ? '0 0 0 3px rgba(16,185,129,0.15)' : 'none', flexShrink: 0 }} />
-                        </div>
-                      );
-                    })}
-                    <div style={{ marginTop: '6px', padding: '10px 12px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px dashed #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>{(accounts.filter(a => a.connected).length + (whapiConnected ? 1 : 0)) ? 'All set for publishing' : 'Connect a platform to start'}</span>
-                      {!(accounts.filter(a => a.connected).length + (whapiConnected ? 1 : 0)) && <button onClick={() => goToTab('studio')} style={{ fontSize: '11px', fontWeight: 700, color: '#4338ca', background: 'none', border: 'none', cursor: 'pointer' }}>Connect →</button>}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Recent activity — table style */}
-            <div style={{ backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', border: '1px solid #e2e8f0' }}>🕓</div>
-                  <div>
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>Recent Activity</div>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>{allPosts.length} total • {publishedPosts.length} delivered</div>
-                  </div>
-                </div>
-                <button onClick={() => goToTab('scheduler')} style={{ fontSize: '12px', fontWeight: 600, color: '#4338ca', backgroundColor: '#eef2ff', border: '1px solid #c7d2fe', padding: '7px 12px', borderRadius: '8px', cursor: 'pointer' }}>View all →</button>
-              </div>
-              <div style={{ overflowX: 'auto' as const }}>
-                {allPosts.length === 0 ? (
-                  <div style={{ padding: '48px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '56px', height: '56px', borderRadius: '16px', backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>📄</div>
-                    <div style={{ textAlign: 'center' as const }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>No posts yet</div>
-                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>Create your first AI-powered post in Studio</div>
-                    </div>
-                    <button onClick={() => goToTab('studio')} style={{ marginTop: '4px', padding: '10px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, border: 'none', background: 'linear-gradient(135deg, #0f172a, #1e293b)', color: '#fff', cursor: 'pointer', boxShadow: '0 2px 10px rgba(15,23,42,0.15)' }}>Create your first post →</button>
-                  </div>
-                ) : (
-                  <div style={{ minWidth: '640px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 110px', gap: '12px', padding: '10px 22px', backgroundColor: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' as const }}>Post</span>
-                      <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' as const }}>Schedule</span>
-                      <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' as const, textAlign: 'right' as const }}>Status</span>
-                    </div>
-                    {allPosts.slice().sort((a, b) => (b.createdAt || b.scheduledAt).localeCompare(a.createdAt || a.scheduledAt)).slice(0, 5).map(post => {
-                      const meta = statusMeta[post.status] || statusMeta.pending;
-                      const m = getPostMedia(post as unknown as never);
-                      return (
-                        <div key={post.id} style={{ display: 'grid', gridTemplateColumns: '1fr 140px 110px', gap: '12px', padding: '14px 22px', borderBottom: '1px solid #f8fafc', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', gap: '12px', minWidth: 0, alignItems: 'center' }}>
-                            <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              {m.url ? (m.isVideo ? <video src={m.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted /> : <img src={m.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />) : <span style={{ fontSize: '14px' }}>📄</span>}
+                    <div className="sp-chart" style={{ position: 'relative', height: '236px', padding: '18px 18px 14px', borderRadius: '18px', overflow: 'hidden', border: '1px solid transparent' }}>
+                      <span aria-hidden="true" style={{ position: 'absolute', left: '18px', right: '18px', top: '25%', borderTop: '1px dashed var(--sp-divider)' }} />
+                      <span aria-hidden="true" style={{ position: 'absolute', left: '18px', right: '18px', top: '50%', borderTop: '1px dashed var(--sp-divider)' }} />
+                      <span aria-hidden="true" style={{ position: 'absolute', left: '18px', right: '18px', top: '75%', borderTop: '1px dashed var(--sp-divider)' }} />
+                      <span className="sp-scan" aria-hidden="true" />
+                      <div style={{ position: 'relative', height: '100%', display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '12px' }}>
+                        {mounted && days.map(d => (
+                          <div key={d.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                            <div className={d.isToday ? 'sp-today' : 'sp-chart-track'} style={{ position: 'relative', flex: 1, width: '100%', maxWidth: '48px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '5px', borderRadius: '14px', background: d.isToday ? 'linear-gradient(180deg, rgba(108,234,255,.04), rgba(108,234,255,.22))' : undefined, border: '1px solid transparent' }}>
+                              {d.isToday && <span className="sp-led" style={{ position: 'absolute', left: '50%', top: '12px', width: '7px', height: '7px', marginLeft: '-3.5px', background: '#BEF2FF', color: '#BEF2FF', boxShadow: '0 0 10px #9DF0FF' }} />}
+                              <span className={d.isToday ? undefined : 'sp-chart-fill'} style={{ display: 'block', height: d.isToday ? '5px' : '4px', borderRadius: '4px', background: d.isToday ? 'linear-gradient(90deg, #6483FD, #5DAAF5)' : undefined, boxShadow: d.isToday ? '0 0 14px rgba(110,220,255,.9)' : 'none', ...(d.count > 0 ? { height: `${Math.max(5, (d.count / maxDay) * 100)}%`, minHeight: '5px' } : {}) }} />
                             </div>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{post.content.split('\n')[0].substring(0, 72)}</div>
-                              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                <span>{post.platforms.map(p => p).join(', ')}</span>
-                                <span style={{ width: '3px', height: '3px', borderRadius: '50%', backgroundColor: '#cbd5e1' }} />
-                                <span>{new Date(post.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                                {m.count! >1 && <span style={{ fontSize: '10px', backgroundColor: '#f1f5f9', padding: '1px 6px', borderRadius: '999px', fontWeight: 600 }}>{m.count} media</span>}
+                            <span className="sp-mono" style={{ fontSize: '11.5px', fontWeight: d.isToday ? 600 : 400, color: d.isToday ? 'var(--sp-link)' : 'var(--sp-muted)' }}>{d.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="sp-soft-icon" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '12px 16px', borderRadius: '14px' }}>
+                      <p style={{ margin: 0, fontSize: '13.5px', color: 'var(--sp-muted)' }}>Today · <strong style={{ color: 'var(--sp-heading)', fontWeight: 700 }}>{days[6].count}</strong> posts · <strong style={{ color: 'var(--sp-heading)', fontWeight: 700 }}>{pendingPosts.length}</strong> in queue</p>
+                      <a href="#" onClick={(e) => { e.preventDefault(); goToTab('scheduler'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', minHeight: '32px', fontSize: '13.5px', fontWeight: 700, textDecoration: 'none' }}>
+                        <span>Open scheduler</span>
+                        <SpIcon name="arrowRight" size={16} />
+                      </a>
+                    </div>
+                  </section>
+
+                  {/* Recent activity */}
+                  <section className="sp-panel" aria-label="Recent activity" style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '8px', padding: '22px 24px 30px', borderRadius: '24px', border: '1px solid var(--sp-panel-border)', background: 'var(--sp-panel-bg)' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <span style={{ width: '42px', height: '42px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '13px', color: '#AEF1FF', background: 'rgba(108,234,255,.13)', border: '1px solid rgba(108,234,255,.32)' }}>
+                          <SpIcon name="clock" size={19} />
+                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <h2 className="sp-display" style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--sp-heading)' }}>Recent Activity</h2>
+                          <p style={{ margin: 0, fontSize: '13px', color: 'var(--sp-muted)' }}>{allPosts.length} total · {publishedPosts.length} delivered</p>
+                        </div>
+                      </div>
+                      <button type="button" className="sp-btn sp-btn-ghost" onClick={() => goToTab('scheduler')} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', height: '44px', padding: '0 16px', borderRadius: '13px', border: '1px solid rgba(150,242,255,.24)', color: '#D9DCFA', fontSize: '13.5px', fontWeight: 700 }}>
+                        <span>View all</span>
+                        <SpIcon name="arrowRight" size={16} />
+                      </button>
+                    </div>
+
+                    {allPosts.length === 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' as const, gap: '10px', padding: '26px 16px 6px' }}>
+                        <div className="sp-empty" aria-hidden="true">
+                          <span style={{ position: 'absolute', left: '50%', top: '50%', width: '150px', height: '150px', margin: '-75px 0 0 -75px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(108,234,255,.30) 0%, transparent 66%)' }} />
+                          <span className="sp-empty-orbit" />
+                          <span className="sp-empty-tile" style={{ color: '#BEF2FF', background: 'linear-gradient(160deg, rgba(40,46,96,.95), rgba(18,22,52,.95))', border: '1px solid rgba(168,242,255,.42)', boxShadow: '0 18px 40px -16px rgba(70,229,255,.8), inset 0 1px 0 rgba(255,255,255,.12)' }}>
+                            <SpIcon name="doc" size={30} />
+                            <span style={{ position: 'absolute', right: '-8px', top: '-8px', width: '26px', height: '26px', display: 'grid', placeItems: 'center', borderRadius: '50%', color: '#FFFFFF', background: 'linear-gradient(135deg, #6483FD, #5DAAF5)', boxShadow: '0 0 16px rgba(110,220,255,.8)' }}>
+                              <SpIcon name="plus" size={14} />
+                            </span>
+                          </span>
+                        </div>
+                        <h3 className="sp-display" style={{ margin: '6px 0 0', fontSize: '20px', fontWeight: 600, color: 'var(--sp-heading)' }}>No posts yet</h3>
+                        <p style={{ margin: 0, fontSize: '14px', color: 'var(--sp-muted)' }}>Create your first AI-powered post in Studio</p>
+                        <button type="button" className="sp-btn sp-btn-primary" onClick={() => goToTab('studio')} style={{ marginTop: '12px', display: 'inline-flex', alignItems: 'center', gap: '10px', height: '50px', padding: '0 22px', borderRadius: '15px', border: 0, color: '#FFFFFF', fontSize: '15px', fontWeight: 700 }}>
+                          <span>Create your first post</span>
+                          <SpIcon name="arrowRight" size={18} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ overflowX: 'auto' as const }}>
+                        <div style={{ minWidth: '560px' }}>
+                          {allPosts.slice().sort((a, b) => (b.createdAt || b.scheduledAt).localeCompare(a.createdAt || a.scheduledAt)).slice(0, 5).map(post => {
+                            const meta = statusMeta[post.status] || statusMeta.pending;
+                            const m = getPostMedia(post as unknown as never);
+                            return (
+                              <div key={post.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 10px', borderBottom: '1px solid rgba(140,241,255,.08)' }}>
+                                <div className="sp-soft-icon" style={{ width: '38px', height: '38px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  {m.url ? (m.isVideo ? <video src={m.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted /> : <img src={m.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />) : <SpIcon name="doc" size={16} />}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--sp-heading)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{post.content.split('\n')[0].substring(0, 72)}</div>
+                                  <div style={{ fontSize: '11.5px', color: 'var(--sp-muted)', marginTop: '2px' }}>{post.platforms.join(', ')} · {new Date(post.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                                </div>
+                                <span className="sp-mono" style={{ fontSize: '10px', fontWeight: 700, padding: '5px 10px', borderRadius: '999px', background: `${meta.color}22`, color: meta.color, border: `1px solid ${meta.color}44`, letterSpacing: '0.03em', textTransform: 'uppercase' as const, flexShrink: 0 }}>{meta.label}</span>
                               </div>
-                            </div>
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#334155', fontWeight: 500 }}>{new Date(post.scheduledAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
-                          <div style={{ textAlign: 'right' as const }}>
-                            <span style={{ fontSize: '10px', fontWeight: 700, padding: '5px 10px', borderRadius: '999px', backgroundColor: meta.bg, color: meta.color, border: `1px solid ${meta.color}18`, letterSpacing: '0.03em', textTransform: 'uppercase' as const }}>{meta.label}</span>
-                          </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      </div>
+                    )}
+                  </section>
+                </div>
+
+                <div style={{ flex: '1 1 340px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+                  {/* Quick actions */}
+                  <section className="sp-panel" aria-label="Quick actions" style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '16px', padding: '22px 20px 20px', borderRadius: '24px', border: '1px solid var(--sp-panel-border)', background: 'var(--sp-panel-bg)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ width: '40px', height: '40px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '12px', color: '#FFCD85', background: 'rgba(255,181,71,.12)', border: '1px solid rgba(255,181,71,.32)' }}>
+                          <SpIcon name="bolt" size={18} />
+                        </span>
+                        <h2 className="sp-display" style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--sp-heading)' }}>Quick Actions</h2>
+                      </div>
+                      <span className="sp-mono sp-chip" style={{ display: 'inline-flex', alignItems: 'center', height: '28px', padding: '0 11px', borderRadius: '999px', border: '1px solid transparent', fontSize: '10.5px', letterSpacing: '0.14em', textTransform: 'uppercase' as const }}>{accounts.length ? 'Ready' : 'Setup'}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <button type="button" className="sp-btn sp-btn-primary" onClick={() => goToTab('studio')} style={{ display: 'flex', alignItems: 'center', gap: '14px', width: '100%', minHeight: '64px', padding: '10px 18px 10px 11px', borderRadius: '17px', border: 0, color: '#FFFFFF', textAlign: 'left' }}>
+                        <span style={{ width: '42px', height: '42px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '12px', background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.24)' }}>
+                          <SpIcon name="pencil" size={19} />
+                        </span>
+                        <span style={{ flex: 1, fontSize: '15.5px', fontWeight: 700 }}>New Post</span>
+                        <SpIcon name="arrowRight" size={19} />
+                      </button>
+                      <button type="button" className="sp-btn sp-btn-ghost" onClick={() => goToTab('scheduler')} style={{ display: 'flex', alignItems: 'center', gap: '14px', width: '100%', minHeight: '64px', padding: '10px 16px 10px 11px', borderRadius: '17px', border: '1px solid rgba(150,242,255,.16)', color: '#E6E8FF', textAlign: 'left' }}>
+                        <span style={{ width: '42px', height: '42px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '12px', color: '#AEF1FF', background: 'rgba(108,234,255,.12)', border: '1px solid rgba(108,234,255,.28)' }}>
+                          <SpIcon name="scheduler" size={19} />
+                        </span>
+                        <span style={{ flex: 1, fontSize: '15px', fontWeight: 700 }}>View Scheduler</span>
+                        <span className="sp-mono" style={{ display: 'inline-flex', alignItems: 'center', height: '26px', padding: '0 10px', borderRadius: '999px', color: '#BEF2FF', background: 'rgba(108,234,255,.14)', border: '1px solid rgba(108,234,255,.3)', fontSize: '11px', fontWeight: 600 }}>{pendingPosts.length} pending</span>
+                      </button>
+                      <button type="button" className="sp-btn sp-btn-ghost" onClick={() => goToTab('analytics')} style={{ display: 'flex', alignItems: 'center', gap: '14px', width: '100%', minHeight: '64px', padding: '10px 18px 10px 11px', borderRadius: '17px', border: '1px solid rgba(150,242,255,.16)', color: '#E6E8FF', textAlign: 'left' }}>
+                        <span style={{ width: '42px', height: '42px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '12px', color: '#AEF1FF', background: 'rgba(108,234,255,.12)', border: '1px solid rgba(108,234,255,.28)' }}>
+                          <SpIcon name="analytics" size={19} />
+                        </span>
+                        <span style={{ flex: 1, fontSize: '15px', fontWeight: 700 }}>View Analytics</span>
+                        <span style={{ color: 'var(--sp-muted)' }}><SpIcon name="arrowRight" size={18} /></span>
+                      </button>
+                    </div>
+                  </section>
+
+                  {/* Platform health */}
+                  <section className="sp-panel" aria-label="Platform health" style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '16px', padding: '22px 20px 20px', borderRadius: '24px', border: '1px solid var(--sp-panel-border)', background: 'var(--sp-panel-bg)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ width: '40px', height: '40px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '12px', color: '#A9BBFF', background: 'rgba(100,131,253,.13)', border: '1px solid rgba(100,131,253,.32)' }}>
+                          <SpIcon name="globe" size={18} />
+                        </span>
+                        <h2 className="sp-display" style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--sp-heading)' }}>Platform Health</h2>
+                      </div>
+                      <span className="sp-mono" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--sp-muted)' }}>{connectedCount}/4 connected</span>
+                    </div>
+                    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {(['linkedin', 'instagram', 'facebook', 'whatsapp'] as const).map(platform => {
+                        const isWhapi = platform === 'whatsapp';
+                        const isConnected = isWhapi ? whapiConnected : accounts.some(a => a.platform === platform && a.connected);
+                        const justConnected = justConnectedPlatform === platform || (isWhapi && whapiConnected && justConnectedPlatform === 'whatsapp');
+                        const meta = platformMeta[platform];
+                        return (
+                          <li key={platform} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '11px 16px 11px 11px', borderRadius: '16px', background: 'var(--sp-row-bg)', border: '1px solid rgba(140,241,255,.1)', animation: justConnected ? 'connectRowFlash 1.8s ease-out' : 'none' }}>
+                            <span style={{ width: '42px', height: '42px', flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '12px', color: meta.color, background: meta.bg, border: `1px solid ${meta.border}`, opacity: isConnected ? 1 : 0.5 }}>
+                              <PlatformIcon platform={platform} size={18} />
+                            </span>
+                            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--sp-heading)' }}>{meta.label}</span>
+                              <span style={{ fontSize: '12.5px', color: isConnected ? '#7EEAC3' : 'var(--sp-muted)' }}>{isConnected ? (isWhapi ? `Connected${whapiPhoneMasked ? ` · ${whapiPhoneMasked}` : ' · ready to publish'}` : 'Connected · ready to publish') : 'Not connected'}</span>
+                            </div>
+                            <span aria-hidden="true" style={{ width: '10px', height: '10px', flex: 'none', borderRadius: '50%', background: isConnected ? '#34D399' : '#3E436C', boxShadow: isConnected ? '0 0 0 4px rgba(52,211,153,.18)' : '0 0 0 4px rgba(90,96,150,.16)' }} />
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '12px 16px', borderRadius: '14px', border: '1px dashed rgba(160,242,255,.32)', background: 'rgba(108,234,255,.07)' }}>
+                      <span style={{ fontSize: '13.5px', color: 'var(--sp-text)' }}>{connectedCount ? 'All set for publishing' : 'Connect a platform to start'}</span>
+                      <a href="#" onClick={(e) => { e.preventDefault(); goToTab('connect'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', minHeight: '32px', fontSize: '13.5px', fontWeight: 700, textDecoration: 'none' }}>
+                        <span>Connect</span>
+                        <SpIcon name="arrowRight" size={16} />
+                      </a>
+                    </div>
+                  </section>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {activeTab === 'scheduler' && (
-          <div style={{ padding: '24px 32px', flex: 1, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ padding: '24px 32px', flex: 1, display: 'flex', flexDirection: 'column', gap: 20, backgroundColor: '#f8fafc' }}>
             <div>
               <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', margin: 0 }}>Scheduler</h2>
               <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0' }}>Manage your content lifecycle</p>
@@ -4053,7 +4186,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
 
         {/* Analytics */}
         {activeTab === 'analytics' && (
-          <div style={{ padding: '24px 32px', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ padding: '24px 32px', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px', backgroundColor: '#f8fafc' }}>
             {allPosts.length === 0 ? (
               <div style={{ backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0', padding: '56px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                 <span style={{ fontSize: '36px', opacity: 0.3 }}>📈</span>

@@ -360,6 +360,15 @@ export default function AuthClient() {
         return;
       }
 
+      // Server-issued redirect means the session is already authenticated and
+      // no OTP step is required (currently: the Canva review account). Go
+      // straight to the app. Any response without `redirect` is the normal
+      // password-accepted-but-OTP-required path and continues unchanged below.
+      if (data.redirect) {
+        window.location.replace(data.redirect);
+        return;
+      }
+
       setPurpose(data.purpose);
       setChannels(data.channels);
       setStep('channel-select');

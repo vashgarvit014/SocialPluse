@@ -5,7 +5,6 @@
 // is NOT ported here yet (depends on media-service, not extracted).
 
 import { randomBytes, createHash } from 'node:crypto';
-import { appendSetCookie, serializeCookie } from '../../packages/cookies/index.mjs';
 
 export const CANVA_CLIENT_ID = process.env.CANVA_CLIENT_ID || '';
 export const CANVA_CLIENT_SECRET = process.env.CANVA_CLIENT_SECRET || '';
@@ -15,6 +14,7 @@ export const CANVA_SCOPES = 'asset:read asset:write design:content:read design:c
 
 const AUTHORIZE_URL = 'https://www.canva.com/api/oauth/authorize';
 const TOKEN_URL = 'https://api.canva.com/rest/v1/oauth/token';
+const REVOKE_URL = 'https://api.canva.com/rest/v1/oauth/revoke';
 const API_BASE = 'https://api.canva.com/rest/v1';
 
 export class CanvaError extends Error {
@@ -45,6 +45,11 @@ export function buildAuthorizeUrl(state, codeChallenge) {
     scope: CANVA_SCOPES,
     state,
     code_challenge: codeChallenge,
+    // RFC 7636 §4.3 registers the transformation as the token `S256` and
+    // states the value is case-sensitive; Canva's parameter spec likewise
+    // says this "must be set to S256". Lowercase `s256` appears only in
+    // Canva's example URL, where <CODE_CHALLENGE> and `<optional state>` are
+    // placeholders — not values to send.
     code_challenge_method: 'S256',
   });
   return `${AUTHORIZE_URL}?${params.toString()}`;
@@ -83,32 +88,107 @@ export async function getCanvaProfile(accessToken) {
   return { displayName: data.profile?.display_name || 'Canva' };
 }
 
-const CANVA_TOKEN_COOKIE_OPTS = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'Lax', path: '/' };
-
-export function setTokenCookies(res, token) {
-  appendSetCookie(res, serializeCookie('canva_access_token', token.access_token, { ...CANVA_TOKEN_COOKIE_OPTS, maxAge: token.expires_in }));
-  appendSetCookie(res, serializeCookie('canva_refresh_token', token.refresh_token, { ...CANVA_TOKEN_COOKIE_OPTS, maxAge: 60 * 60 * 24 * 90 }));
-  appendSetCookie(res, serializeCookie('canva_expires_at', String(Date.now() + token.expires_in * 1000), CANVA_TOKEN_COOKIE_OPTS));
+// Strict variant, for the places that must NOT paper over an auth failure.
+//
+// getCanvaProfile() above deliberately swallows every error and falls back to
+// the literal string 'Canva', which is right when the display name is just a
+// label (the connect callback). It is wrong for /status: that route used the
+// lenient call and therefore reported { connected: true } whenever the stored
+// token merely LOOKED unexpired locally, even after Canva had revoked it. The
+// UI then showed "● Connected" while every Create/Edit/Import failed with a
+// confusing downstream error. A 401/403 from Canva is the only trustworthy
+// signal that the grant is dead, so surface it as a typed CanvaError instead.
+export async function getCanvaProfileStrict(accessToken) {
+  const res = await fetch(`${API_BASE}/users/me/profile`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (res.status === 401 || res.status === 403) {
+    console.error('[Canva] stored access token rejected:', res.status);
+    throw new CanvaError('CANVA_TOKEN_EXPIRED', 'Canva rejected the stored access token - please reconnect');
+  }
+  if (!res.ok) {
+    console.error('[Canva] profile lookup failed (treating as still connected):', res.status);
+    return { displayName: '' };
+  }
+  const data = await res.json();
+  return { displayName: data.profile?.display_name || '' };
 }
 
-export function clearTokenCookies(res) {
-  for (const name of ['canva_access_token', 'canva_refresh_token', 'canva_expires_at', 'canva_display_name']) {
-    appendSetCookie(res, serializeCookie(name, '', { ...CANVA_TOKEN_COOKIE_OPTS, maxAge: 0 }));
+// GET /v1/users/me — requires no scope, returns Canva's own stable identity
+// for the authenticated user (team_user.user_id/team_id). This is the
+// provider_user_id the vault uses for ownership/cross-user-reuse checks; a
+// display name is not a safe identity key (it can collide or be changed).
+//
+// Called straight after a token exchange, so the token is guaranteed fresh and
+// a failure here is almost always transient: Canva rate-limits this endpoint to
+// 10 requests per minute per user, and it sits behind the same edge as every
+// other Canva call. It therefore retries 429/5xx before giving up. That
+// matters because this call gates the WHOLE callback — without a
+// provider_user_id the vault cannot store the connection at all, so a single
+// blip would otherwise discard a token the user had just successfully
+// consented to and force them to start over.
+export async function getCanvaUserId(accessToken) {
+  const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 500 * attempt));
+    const res = await fetch(`${API_BASE}/users/me`, { headers: { Authorization: `Bearer ${accessToken}` } }).catch(() => null);
+    if (res && res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const userId = data.team_user?.user_id;
+      if (!userId) throw new CanvaError('CANVA_AUTH_FAILED', 'Canva did not return a user id');
+      return { userId, teamId: data.team_user?.team_id || null };
+    }
+    if (!res) { lastStatus = 0; continue; } // network error — retry
+    lastStatus = res.status;
+    if (!RETRYABLE.has(res.status)) {
+      console.error('[Canva] users/me failed:', res.status);
+      throw new CanvaError('CANVA_AUTH_FAILED', 'Failed to identify the Canva account');
+    }
+    console.error(`[Canva] users/me retryable failure ${res.status} (attempt ${attempt + 1}/3)`);
+  }
+  throw new CanvaError('CANVA_AUTH_FAILED', `Failed to identify the Canva account (last status ${lastStatus || 'network error'})`);
+}
+
+// Best-effort token revocation on disconnect. Revoking a refresh token also
+// revokes every access token in its lineage and the user's consent for this
+// app (per Canva's /oauth/revoke docs), so one call covers both tokens.
+// Never throws — disconnect must still succeed locally even if Canva's
+// revoke endpoint is unreachable or the token is already invalid.
+export async function revokeToken(token) {
+  try {
+    const res = await fetch(REVOKE_URL, {
+      method: 'POST',
+      headers: { Authorization: basicAuthHeader(), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token }),
+    });
+    if (!res.ok) console.error('[Canva] token revoke failed (continuing with local disconnect):', res.status);
+  } catch (err) {
+    console.error('[Canva] token revoke errored (continuing with local disconnect):', err instanceof Error ? err.message : err);
   }
 }
 
 // Returns a usable access token, transparently refreshing if expired.
-// Callers must copy `refreshed` onto their own response's cookies when present.
-export async function getValidAccessToken(cookies) {
-  const expiresAt = Number(cookies.expiresAt || 0);
-  if (cookies.accessToken && expiresAt > Date.now() + 30_000) {
-    return { accessToken: cookies.accessToken };
+// `stored` is the row shape returned by vault.getCanvaAuth. Callers must
+// persist `refreshed` (via vault.updateCanvaCredentials) when present —
+// Canva rotates the refresh token on every use, so the old one stops
+// working the moment a new one is issued.
+export async function getValidAccessToken(stored) {
+  if (!stored) throw new CanvaError('CANVA_NOT_CONNECTED', 'Canva is not connected');
+  if (stored.accessToken && stored.expiresAt > Date.now() + 30_000) {
+    return { accessToken: stored.accessToken };
   }
-  if (!cookies.refreshToken) {
+  if (!stored.refreshToken) {
     throw new CanvaError('CANVA_NOT_CONNECTED', 'Canva is not connected');
   }
-  const refreshed = await refreshCanvaToken(cookies.refreshToken);
-  return { accessToken: refreshed.access_token, refreshed };
+  const refreshed = await refreshCanvaToken(stored.refreshToken);
+  return {
+    accessToken: refreshed.access_token,
+    refreshed: {
+      accessToken: refreshed.access_token,
+      refreshToken: refreshed.refresh_token || stored.refreshToken,
+      expiresAt: Date.now() + refreshed.expires_in * 1000,
+      scope: refreshed.scope || stored.scope,
+    },
+  };
 }
 
 // --- Asset upload + design creation (needed by create-design/create-blank) ---

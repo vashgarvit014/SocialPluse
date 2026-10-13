@@ -267,6 +267,44 @@ const server = http.createServer(async (req, res) => {
         return send(res, 401, { error: GENERIC_ERROR });
       }
       const purpose = user.status === 'PENDING' ? 'SIGNUP_VERIFY' : 'LOGIN_VERIFY';
+
+      // ---------------------------------------------------------------
+      // CANVA REVIEW ACCOUNT — OTP bypass, deliberately scoped.
+      //
+      // Purpose: Canva's app-review team is given this account to test the
+      // OAuth flow end to end. The account's mailbox (canva.review@dotstark.tech)
+      // is not a monitored human inbox, so the LOGIN_VERIFY OTP it would
+      // normally require cannot be retrieved by the reviewer. Without this the
+      // reviewer authenticates the password and then hits a wall.
+      //
+      // Every condition below must hold. Notably this is NOT matched by
+      // substring/domain, cannot be triggered by any client input, cookie, or
+      // query parameter, and never skips the PASSWORD check above — the user
+      // is already fully authenticated by this point. It cannot grant
+      // SUPERADMIN (role must equal 'USER') and is refused for suspended,
+      // unverified, or not-yet-activated accounts.
+      //
+      // Removal: deleting this block restores the standard OTP flow for this
+      // account with no other code change.
+      // ---------------------------------------------------------------
+      const CANVA_REVIEW_EMAIL = 'canva.review@dotstark.tech';
+      const isCanvaReviewAccount =
+        user.email?.toLowerCase() === CANVA_REVIEW_EMAIL &&
+        user.role === 'USER' &&
+        user.status === 'ACTIVE' &&
+        user.emailVerifiedAt !== null &&
+        user.emailVerifiedAt !== undefined;
+
+      if (isCanvaReviewAccount) {
+        // Issue exactly the same session object the OTP-verified path issues.
+        const { cookieString } = await sessionManager.createSession(user.id, user.sessionVersion, { userAgent: req.headers['user-agent'], ip });
+        setCookieHeader(res, cookieString);
+        await usersRepo.recordLogin(user.id);
+        // Safe fields only — never password, hash, OTP, or session token.
+        logAuthEvent('CANVA_REVIEW_OTP_SKIPPED', { userId: user.id, ip, purpose });
+        return send(res, 200, { success: true, redirect: '/dashboard', canvaReview: true });
+      }
+
       const cookie = await setPendingAuth({ userId: user.id, purpose });
       setCookieHeader(res, cookie);
       return send(res, 200, { success: true, purpose, channels: { email: maskEmail(user.email), whatsapp: user.mobile ? maskMobile(user.mobile) : null } });
