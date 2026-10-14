@@ -1023,7 +1023,11 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-plat-tab img{width:24px;height:24px;border-radius:7px;object-fit:contain}
         .sp-plat-tab.sp-on{border:2px solid #7C3AED;background:#F5F0FF;color:#5B21B6}
         .sp-prev-canvas{position:relative;border-radius:24px;padding:38px 34px;background:linear-gradient(135deg,#7C3AED 0%,#A855F7 26%,#D946EF 52%,#FB7185 74%,#FBBF24 100%);overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,0.35)}
-        .sp-prev-viewport{overflow:hidden;touch-action:pan-y}
+        .sp-prev-ambient{position:absolute;inset:0;z-index:0;overflow:hidden;background:#120E16}
+        .sp-prev-ambient img{position:absolute;inset:-18%;width:136%;height:136%;object-fit:cover;filter:blur(64px) saturate(2.2)}
+        .sp-prev-ambient::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 80% at 50% 47%, rgba(10,8,14,0) 40%, rgba(10,8,14,0.6) 100%), rgba(14,10,20,0.1)}
+        .sp-prev-grain{position:absolute;inset:0;z-index:1;background-image:url(/textures/grain.png);background-size:160px 160px;pointer-events:none}
+        .sp-prev-viewport{position:relative;z-index:2;overflow:hidden;touch-action:pan-y}
         .sp-prev-track{display:flex;transition:transform 0.3s cubic-bezier(.22,1,.36,1)}
         .sp-prev-slide{flex:0 0 100%;min-width:0;display:flex;justify-content:center}
         .sp-prev-arrow{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;border:none;background:#fff;color:#1E293B;font-size:22px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;box-shadow:0 6px 18px rgba(15,23,42,0.22);transition:transform .18s,box-shadow .18s}
@@ -2608,6 +2612,14 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     </div>
 
                     <div className="sp-prev-canvas">
+                      {heroUrl && !heroIsVideo && (
+                        <>
+                          <div className="sp-prev-ambient" aria-hidden="true">
+                            <img src={heroUrl} alt="" />
+                          </div>
+                          <div className="sp-prev-grain" aria-hidden="true" />
+                        </>
+                      )}
                       {previewOpts.length > 1 && (
                         <button className="sp-prev-arrow" style={{ left: 14 }} aria-label="Previous platform" onClick={() => gotoSlide((safePreviewIdx - 1 + previewOpts.length) % previewOpts.length)}>‹</button>
                       )}
