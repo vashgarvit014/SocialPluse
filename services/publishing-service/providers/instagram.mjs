@@ -83,7 +83,13 @@ export async function publishToInstagram({ ig, content, imageUrl, videoUrl, medi
         await waitForContainer(childData.id, ig.token);
         childIds.push(childData.id);
       }
-      const parentRes = await fetch(`${GRAPH}/${ig.igUserId}/media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ media_type: 'CAROUSEL', children: childIds, caption: content || '', access_token: ig.token }) });
+      const parentBody = { media_type: 'CAROUSEL', children: childIds, caption: content || '', access_token: ig.token };
+      // Collaborators go ONLY on the carousel PARENT container (Meta does not
+      // take them on carousel children). Reuses the exact username
+      // normalization as single image/Reel paths; when empty, no field is sent.
+      const collaboratorUsernames = typeof collaborator === 'string' && collaborator.trim() ? collaborator.split(/[,\s]+/).map((c) => c.trim().replace(/^@+/, '')).filter(Boolean).slice(0, 3) : undefined;
+      if (collaboratorUsernames) parentBody.collaborators = collaboratorUsernames;
+      const parentRes = await fetch(`${GRAPH}/${ig.igUserId}/media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parentBody) });
       if (!parentRes.ok) { const { code, message } = graphError(parentRes.status, await parentRes.text(), 'carousel container creation'); return { ok: false, code, message: `${message} The post was NOT published.`, status: parentRes.status === 429 ? 429 : 502 }; }
       const parentData = await parentRes.json();
       if (!parentData.id) return { ok: false, code: 'INSTAGRAM_MEDIA_UPLOAD_FAILED', message: 'Instagram did not return a carousel container id. The post was NOT published.', status: 502 };
