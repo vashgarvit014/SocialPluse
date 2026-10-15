@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { ZodType } from 'zod';
 import OtpInput from './otp-input';
+import { SP_LOGO } from '@/app/_shell/brand-assets';
 import { nameSchema, emailSchema, mobileSchema, passwordSchema, loginIdentifierSchema } from '@/lib/auth/schemas';
 import { PASSWORD_REQUIREMENTS } from '@/lib/auth/password-rules';
 
@@ -169,7 +170,7 @@ function BrandHeader() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28 }}>
       <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-        <span style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg,#5b6cff,#9b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: '#fff', boxShadow: '0 8px 20px rgba(91,76,245,.35)' }}>SP</span>
+        <img src={SP_LOGO} alt="SocialPulse logo" width={40} height={40} style={{ width: 40, height: 40, borderRadius: 12, objectFit: 'cover', boxShadow: '0 8px 20px rgba(91,76,245,.35)' }} />
         <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: '#0f1020' }}>SocialPulse</span>
       </Link>
       <p style={{ marginTop: 10, fontSize: 14, color: '#64748b' }}>Welcome to SocialPulse</p>

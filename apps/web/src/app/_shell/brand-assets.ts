@@ -1,5 +1,8 @@
 import spLogoAsset from '@/assets/sp-logo.png';
 import studioMarkAsset from '@/assets/studio-mark.png';
+import spLoaderBaseAsset from '@/assets/sp-loader-base.png';
+import spLoaderArcsAsset from '@/assets/sp-loader-arcs.png';
+import spLoaderDotAsset from '@/assets/sp-loader-dot.png';
 
 /**
  * Brand asset URLs.
@@ -21,3 +24,13 @@ import studioMarkAsset from '@/assets/studio-mark.png';
  */
 export const SP_LOGO = spLogoAsset.src;
 export const STUDIO_MARK = studioMarkAsset.src;
+
+/**
+ * Layered SocialPulse AI loader mark (approved "final" prototype artwork):
+ * stationary navy base, independently-animated arcs layer, pulsing center
+ * dot. Separate files (not one flattened PNG) so each layer animates on its
+ * own without redrawing the mark. Same hashed-URL treatment as SP_LOGO above.
+ */
+export const SP_LOADER_BASE = spLoaderBaseAsset.src;
+export const SP_LOADER_ARCS = spLoaderArcsAsset.src;
+export const SP_LOADER_DOT = spLoaderDotAsset.src;
