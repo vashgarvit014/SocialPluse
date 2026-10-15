@@ -327,13 +327,16 @@ export default function ConnectPlatforms(p: ConnectPlatformsProps) {
               <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Canva</div>
               <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>Design integration</div>
             </div>
-            <StatusPill status={p.canvaConnected ? 'connected' : 'disconnected'} />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, backgroundColor: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', padding: '5px 11px', borderRadius: 999 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+              Coming Soon
+            </span>
           </div>
           <div style={{ padding: '16px 20px', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
             {p.canvaConnected ? (
               <div style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>● Connected{p.canvaName ? ` as ${p.canvaName}` : ''}</div>
             ) : null}
-            <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.5 }}>{p.canvaConnected ? 'Create, edit and import Canva designs into SocialPulse.' : 'Connect Canva to create, edit and import designs for your social content.'}</div>
+            <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.5 }}>Canva integration is temporarily unavailable.</div>
             <div style={{ backgroundColor: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {['Create stunning designs', 'Access your templates', 'Import designs into SocialPulse', 'Streamline your content workflow'].map(t => (
                 <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: '#334155', fontWeight: 500 }}>
@@ -344,11 +347,11 @@ export default function ConnectPlatforms(p: ConnectPlatformsProps) {
             <div style={{ display: 'flex', gap: 10, marginTop: 'auto', paddingTop: 14 }}>
               {p.canvaConnected ? (
                 <>
-                  <button onClick={() => p.connectPlatform('canva')} style={{ flex: 1, height: 44, borderRadius: 10, fontSize: 12, fontWeight: 700, border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#334155', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>↺ Reconnect</button>
+                  <button disabled title="Canva integration is temporarily unavailable." style={{ flex: 1, height: 44, borderRadius: 10, fontSize: 12, fontWeight: 800, border: '1px solid #e2e8f0', backgroundColor: '#f1f5f9', color: '#94a3b8', cursor: 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Coming Soon</button>
                   <button onClick={() => p.disconnectCanva()} style={{ flex: 1, height: 44, borderRadius: 10, fontSize: 12, fontWeight: 700, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>🗑️ Disconnect</button>
                 </>
               ) : (
-                <button onClick={() => p.connectPlatform('canva')} style={{ width: '100%', height: 46, borderRadius: 10, fontSize: 13, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#00C4CC,#7C3AED)', color: '#fff', cursor: 'pointer', boxShadow: '0 3px 10px rgba(0,196,204,0.28)' }}>Connect Canva →</button>
+                <button disabled title="Canva integration is temporarily unavailable." style={{ width: '100%', height: 46, borderRadius: 10, fontSize: 13, fontWeight: 800, border: '1px solid #e2e8f0', background: '#f1f5f9', color: '#94a3b8', cursor: 'not-allowed' }}>Coming Soon</button>
               )}
             </div>
           </div>

@@ -1186,7 +1186,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, fontSize: 10, color: '#fff', background: 'linear-gradient(0deg,rgba(0,0,0,0.72),transparent)', padding: '14px 6px 5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'left' }}>{item.name}</div>
                     <button onClick={() => p.removeTopicMedia(item.id)} title="Remove image" aria-label={`Remove ${item.name}`} style={{ position: 'absolute', top: 5, right: 5, width: 22, height: 22, borderRadius: '50%', backgroundColor: 'rgba(15,23,42,0.78)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
                     <span title="Added" style={{ position: 'absolute', left: 5, top: 5, minWidth: 20, height: 20, borderRadius: 999, backgroundColor: '#059669', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px', boxShadow: '0 2px 6px rgba(0,0,0,0.25)' }}>✓</span>
-                    <button onClick={() => p.openInCanva(item.url)} disabled={p.isSendingToCanva} title="Edit this image in Canva" style={{ position: 'absolute', bottom: 5, right: 5, height: 22, padding: '0 8px', borderRadius: 7, backgroundColor: 'rgba(255,255,255,0.92)', color: '#0F172A', border: '1px solid #E2E8F0', cursor: p.isSendingToCanva ? 'wait' : 'pointer', fontSize: 10, fontWeight: 800 }}>🎨 Edit</button>
+                    <button disabled title="Coming Soon — Canva integration is temporarily unavailable." style={{ position: 'absolute', bottom: 5, right: 5, height: 22, padding: '0 8px', borderRadius: 7, backgroundColor: 'rgba(241,245,249,0.92)', color: '#94A3B8', border: '1px solid #E2E8F0', cursor: 'not-allowed', fontSize: 10, fontWeight: 800 }}>🎨 Edit</button>
                   </div>
                 ))}
                 {Array.from({ length: Math.max(0, 4 - p.topicMediaItems.length) }).map((_, i) => (
@@ -1986,7 +1986,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                               {openMenuId === m.id && (
                                 <span onClick={e => e.stopPropagation()} style={{ position: 'absolute', bottom: 64, right: 8, width: 178, backgroundColor: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: '0 12px 32px rgba(15,23,42,0.18)', zIndex: 51, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 4 }}>
                                   <button onClick={() => { p.setMediaCover(m.id); setOpenMenuId(null); }} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>🖼️ Set as cover</button>
-                                  {m.type === 'image' && <button onClick={() => { p.openInCanva(m.url); setOpenMenuId(null); }} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>🎨 Edit in Canva</button>}
+                                  {m.type === 'image' && <button disabled title="Coming Soon — Canva integration is temporarily unavailable." style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#94A3B8', background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'not-allowed', fontFamily: 'inherit' }}>🎨 Edit in Canva — Coming Soon</button>}
                                   <button onClick={() => { p.setLogoTargetId(m.id); p.setLogoModalOpen(true); setOpenMenuId(null); }} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>🏷️ Apply logo here</button>
                                   {m.type === 'image' && <button onClick={() => { p.varyImageFromUrl(m.url); setOpenMenuId(null); }} disabled={!!p.varyingImageUrl || p.isGeneratingImage} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', opacity: (!!p.varyingImageUrl || p.isGeneratingImage) ? 0.5 : 1 }}>✨ Vary image</button>}
                                   {m.type === 'image' && p.isCarousel && <button onClick={() => { p.toggleCarouselSlide(m.id); setOpenMenuId(null); }} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>{inCarousel ? '🎠 Remove from carousel' : '🎠 Add to carousel'}</button>}
@@ -2089,18 +2089,10 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <div style={{ flex: '1 1 260px', minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Design with Canva</span>
-                      {p.canvaConnected ? (
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0' }}>Canva Connected ✓{p.canvaName ? ` as ${p.canvaName}` : ''}</span>
-                      ) : (
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, color: C.muted, backgroundColor: '#fff', border: `1px solid ${C.border}` }}>Not connected</span>
-                      )}
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, color: '#b45309', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>Coming Soon</span>
                     </div>
-                    <div style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.6, marginTop: 6 }}>Create or edit a design in Canva, then import it directly into your SocialPulse gallery.</div>
-                    {!p.canvaConnected ? (
-                      <button onClick={() => p.openInCanva()} style={{ marginTop: 14, minHeight: 48, padding: '13px 30px', borderRadius: 12, fontSize: 14, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 6px 20px rgba(124,58,237,0.4)' }}>Connect Canva →</button>
-                    ) : (
-                      <button onClick={() => p.openInCanva()} disabled={p.isSendingToCanva} title="Open Canva" style={{ marginTop: 14, minHeight: 48, padding: '13px 30px', borderRadius: 12, fontSize: 14, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#7C3AED,#A855F7)', color: '#fff', cursor: p.isSendingToCanva ? 'wait' : 'pointer', fontFamily: 'inherit', boxShadow: '0 6px 20px rgba(124,58,237,0.4)', opacity: p.isSendingToCanva ? 0.7 : 1 }}>{p.isSendingToCanva ? 'Opening…' : 'Open Canva →'}</button>
-                    )}
+                    <div style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.6, marginTop: 6 }}>Canva integration is temporarily unavailable.</div>
+                    <button disabled title="Canva integration is temporarily unavailable." style={{ marginTop: 14, minHeight: 48, padding: '13px 30px', borderRadius: 12, fontSize: 14, fontWeight: 800, border: `1px solid ${C.border}`, background: '#F1F5F9', color: '#94A3B8', cursor: 'not-allowed', fontFamily: 'inherit' }}>Coming Soon</button>
                   </div>
                   <div style={{ flex: '0 1 190px', minWidth: 150, borderRadius: 16, background: 'linear-gradient(135deg,#E0F7FA,#EDE9FE)', border: '1px solid #C4B5FD', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', minHeight: 150, overflow: 'hidden' }}>
                     <span style={{ width: 64, height: 64, borderRadius: 18, background: 'linear-gradient(135deg,#00C4CC,#7C3AED)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 32, fontStyle: 'italic', fontFamily: 'Georgia, serif', boxShadow: '0 8px 24px rgba(124,58,237,0.3)' }}>C</span>
@@ -2116,36 +2108,17 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, backgroundColor: '#F6F1FF', border: `1px solid ${C.primaryBorder}`, fontSize: 12.5, color: C.primaryDark, lineHeight: 1.6 }}>🎨 Your Canva editor is open in another tab. When you finish editing, return here and import the latest version.</div>
                     )}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10 }}>
-                      <button
-                        onClick={p.createInCanva}
-                        disabled={p.isCreatingInCanva}
-                        title="Start a blank design in Canva and build it with Canva's own tools"
-                        style={{ textAlign: 'left', padding: 14, borderRadius: 14, border: `1px solid ${C.border}`, backgroundColor: '#fff', cursor: p.isCreatingInCanva ? 'wait' : 'pointer', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' }}
-                      >
-                        <div style={{ fontSize: 18 }}>➕</div>
-                        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.ink, marginTop: 6 }}>{p.isCreatingInCanva ? 'Creating…' : 'Create in Canva'}</div>
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>Start a new design from scratch</div>
-                      </button>
-                      <button
-                        onClick={() => { if (canvaEditTarget) p.openInCanva(canvaEditTarget.url); }}
-                        disabled={p.isSendingToCanva || !canvaEditTarget}
-                        title={!canvaEditTarget ? (selectedMedia ? 'Select an image (not a video) to edit' : 'Generate or upload an image first') : `Open “${mediaFileName(canvaEditTarget)}” in Canva`}
-                        style={{ textAlign: 'left', padding: 14, borderRadius: 14, border: `1px solid ${!canvaEditTarget ? C.border : C.primaryBorder}`, backgroundColor: canvaEditTarget ? '#F6F1FF' : '#fff', cursor: (!canvaEditTarget || p.isSendingToCanva) ? 'not-allowed' : 'pointer', opacity: (!canvaEditTarget || p.isSendingToCanva) ? 0.55 : 1, fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' }}
-                      >
-                        <div style={{ fontSize: 18 }}>🖼️</div>
-                        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.ink, marginTop: 6 }}>{p.isSendingToCanva ? 'Opening…' : 'Edit Selected in Canva'}</div>
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2, lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{canvaEditTarget ? `✦ ${mediaFileName(canvaEditTarget)}` : 'Select an image below'}</div>
-                      </button>
-                      <button
-                        onClick={p.importFromCanva}
-                        disabled={!p.canvaReadyId || p.isImportingFromCanva}
-                        title={p.canvaReadyId ? 'Bring your edited design back as a new gallery item' : 'Finish editing in Canva first'}
-                        style={{ textAlign: 'left', padding: 14, borderRadius: 14, border: `1px solid ${p.canvaReadyId ? C.primaryBorder : C.border}`, backgroundColor: p.canvaReadyId ? C.primarySoft : '#fff', cursor: (!p.canvaReadyId || p.isImportingFromCanva) ? 'not-allowed' : 'pointer', opacity: (!p.canvaReadyId || p.isImportingFromCanva) ? 0.6 : 1, fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' }}
-                      >
-                        <div style={{ fontSize: 18 }}>{p.isImportingFromCanva ? '⏳' : '📥'}</div>
-                        <div style={{ fontSize: 12.5, fontWeight: 800, color: p.canvaReadyId ? C.primaryDark : C.ink, marginTop: 6 }}>{p.isImportingFromCanva ? 'Importing…' : 'Import from Canva'}{p.canvaReadyId && !p.isImportingFromCanva ? ' ●' : ''}</div>
-                        <div style={{ fontSize: 11, color: p.canvaReadyId ? C.primaryDark : C.muted, marginTop: 2, lineHeight: 1.5 }}>{p.canvaReadyId ? 'Your edited design is ready — bring it in' : 'Finish editing in Canva first'}</div>
-                      </button>
+                      {['Create in Canva', 'Edit Selected in Canva', 'Import from Canva'].map(label => (
+                        <button
+                          key={label}
+                          disabled
+                          title="Coming Soon — Canva integration is temporarily unavailable."
+                          style={{ textAlign: 'left', padding: 14, borderRadius: 14, border: `1px solid ${C.border}`, backgroundColor: '#F8FAFC', cursor: 'not-allowed', opacity: 0.6, fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' }}
+                        >
+                          <div style={{ fontSize: 12.5, fontWeight: 800, color: C.ink, marginTop: 6 }}>Coming Soon</div>
+                          <div style={{ fontSize: 11, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>{label}</div>
+                        </button>
+                      ))}
                     </div>
                     <button onClick={p.disconnectCanva} style={{ marginTop: 10, fontSize: 11, fontWeight: 700, color: '#B91C1C', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Disconnect Canva</button>
                   </div>
