@@ -30,9 +30,27 @@ import { createHash } from 'node:crypto';
 //                    outright when the prompt is dominated by an educational,
 //                    medical or fine-art framing.
 
-export type ModerationDecision = 'ALLOW' | 'BLOCK_NUDITY' | 'BLOCK_EXPLICIT_SEXUAL' | 'BLOCK_OTHER_SAFETY';
+export type ModerationDecision = 'ALLOW' | 'BLOCK_NUDITY' | 'BLOCK_EXPLICIT_SEXUAL' | 'BLOCK_SUGGESTIVE' | 'BLOCK_MINOR_SEXUAL' | 'NEEDS_CLARIFICATION' | 'BLOCK_OTHER_SAFETY';
 export type ModerationSeverity = 'INFO' | 'WARNING' | 'HIGH' | 'CRITICAL';
 export type ModerationMethod = 'CLASSIFIER' | 'PROVIDER' | 'INTENT' | 'DISABLED';
+
+/** User-facing safety category: exactly one of the five pre-generation outcomes. */
+export type SafetyCategory = 'SAFE' | 'SEXUAL_EXPLICIT' | 'SEXUAL_SUGGESTIVE' | 'MINOR_SEXUAL' | 'UNCERTAIN' | 'OTHER_SAFETY';
+
+/** Maps an internal decision to the user-facing category. BLOCK_NUDITY (e.g. a
+ *  topless photo) is presented as sexually suggestive, matching the taxonomy
+ *  that suggestive nudity belongs with provocative content, not explicit acts. */
+export function decisionToCategory(decision: ModerationDecision): SafetyCategory {
+  switch (decision) {
+    case 'BLOCK_EXPLICIT_SEXUAL': return 'SEXUAL_EXPLICIT';
+    case 'BLOCK_NUDITY':
+    case 'BLOCK_SUGGESTIVE': return 'SEXUAL_SUGGESTIVE';
+    case 'BLOCK_MINOR_SEXUAL': return 'MINOR_SEXUAL';
+    case 'NEEDS_CLARIFICATION': return 'UNCERTAIN';
+    case 'BLOCK_OTHER_SAFETY': return 'OTHER_SAFETY';
+    default: return 'SAFE';
+  }
+}
 
 export interface ModerationResult {
   decision: ModerationDecision;
@@ -139,6 +157,45 @@ const SEXUAL_INTENT_PATTERNS: RegExp[] = [
 ];
 
 /**
+ * Highest-priority subject signals: anyone who is, or might be, under 18.
+ * "Teen" is deliberately always treated as a minor here — in a sexual
+ * context an ambiguous young-looking subject must never be assumed adult.
+ * These nouns alone never block; they only matter combined with a sexual
+ * context (checked first in localIntentCheck), so family, school and
+ * maternity content is unaffected.
+ */
+const MINOR_NOUN_PATTERNS: RegExp[] = [
+  /\b(child|children|kid|kids|kiddie|minor|underage|preteen|pre-teen|teen|teenager|teenage|baby|babies|toddler|infant|newborn|schoolboy|schoolgirl|youngster)\b/i,
+  /\bschool[ -]?(boy|girl|child|kid)\b/i,
+];
+
+/** Explicit under-18 age statements ("15-year-old", "age 15", "15yo"). */
+const UNDERAGE_PATTERNS: RegExp[] = [
+  /\b(1[0-7]|0?[0-9])\s*(-|–)?\s*(year|yr)s?\s*(-|\s)?old\b/i,
+  /\bage\s*(is|:)?\s*(1[0-7]|0?[0-9])\b/i,
+  /\b(1[0-7]|0?[0-9])\s*yo\b/i,
+  /\bunder\s*18\b/i,
+];
+
+/**
+ * Sexually suggestive / soft-pornographic framing: content primarily intended
+ * to be sexually provocative without describing an explicit sex act. Kept
+ * tight on purpose — bare anatomy words ("skin", "breast", "body") are NOT
+ * here, so medical, maternity, fitness and swimwear briefs never match.
+ */
+const SUGGESTIVE_PATTERNS: RegExp[] = [
+  /\bsoft[\s-]?porn\b/i,
+  /\blingerie\b/i,
+  /\bseductive(ly)?\b/i,
+  /\bsensual(ly)?\b/i,
+  /\bprovocative(ly)?\b/i,
+  /\bsexually\s+suggestive\b/i,
+  /\berotic\s+pos\w*\b/i,
+  /\bboudoir\b/i,
+  /\bsexual(ly)?\s+(arous\w*|teas\w*)\b/i,
+];
+
+/**
  * The subject has to be a person. "a photo of a nude" is an unfinished phrase,
  * and "a photo of a nude statue" is an artwork — neither is a request for a
  * nude photograph of a person, so neither may block on the exposure word alone.
@@ -195,6 +252,48 @@ export function localIntentCheck(rawPrompt: string): ModerationResult | null {
   const text = normalise(rawPrompt);
   if (!text) return null;
   const benign = benignContextScore(text);
+
+  // ---- Highest priority: minor + sexual context. Checked before everything
+  // else, and never suppressed by art/medical framing. A non-sexual prompt
+  // about a minor (family photo, school project) returns null here — this
+  // gate only acts when a sexual context is also present.
+  const minorSubject = matchesAny(rawPrompt, MINOR_NOUN_PATTERNS) || matchesAny(rawPrompt, UNDERAGE_PATTERNS);
+  if (minorSubject) {
+    const sexualContext =
+      matchesAny(rawPrompt, EXPLICIT_SEXUAL_PATTERNS) ||
+      matchesAny(rawPrompt, SEXUAL_INTENT_PATTERNS) ||
+      matchesAny(rawPrompt, SUGGESTIVE_PATTERNS) ||
+      (matchesAny(rawPrompt, EXPOSURE_PATTERNS) &&
+        (matchesAny(rawPrompt, DEPICTION_PATTERNS) || matchesAny(rawPrompt, PERSON_NOUN_PATTERNS)));
+    if (sexualContext) {
+      return {
+        decision: 'BLOCK_MINOR_SEXUAL',
+        method: 'INTENT',
+        confidence: 0.95,
+        reason: 'Request combines a minor with sexual content',
+        countsAsViolation: true,
+        severity: 'CRITICAL',
+      };
+    }
+    return null;
+  }
+
+  // ---- Sexually suggestive / soft-pornographic framing. Checked before the
+  // explicit-act patterns so "soft-porn" style briefs land in the suggestive
+  // category they belong to rather than the explicit one.
+  if (matchesAny(rawPrompt, SUGGESTIVE_PATTERNS)) {
+    if (matchesAny(rawPrompt, DEPICTION_PATTERNS) || matchesAny(rawPrompt, PERSON_NOUN_PATTERNS)) {
+      return {
+        decision: 'BLOCK_SUGGESTIVE',
+        method: 'INTENT',
+        confidence: 0.85,
+        reason: 'Request is sexually suggestive',
+        countsAsViolation: true,
+        severity: 'WARNING',
+      };
+    }
+    return null;
+  }
 
   for (const re of EXPLICIT_SEXUAL_PATTERNS) {
     if (re.test(rawPrompt)) {
@@ -292,6 +391,24 @@ BLOCK_NUDITY
   The prompt requests a nude or undressed real person, exposed breasts or
   buttocks, or a "topless" style photo of a person.
 
+BLOCK_SUGGESTIVE
+  The prompt is primarily sexually provocative without describing an explicit
+  sex act: lingerie-focused erotic posing, sexualized bedroom posing,
+  "soft porn", sexually suggestive nudity, provocative body-focused
+  compositions, or content clearly intended for sexual arousal.
+
+BLOCK_MINOR_SEXUAL
+  The prompt combines a minor — a child, teen, underage person, anyone
+  described as under 18, or anyone of unclear/ambiguous young age — with
+  sexual, erotic, nude, pornographic, fetishized or sexually suggestive
+  content. When age is ambiguous in a sexual context, choose this label:
+  never assume the subject is an adult.
+
+NEEDS_CLARIFICATION
+  The prompt may include sexualized content or an unclear age reference, but
+  it cannot be confidently placed in a block category. Use this when age or
+  sexual intent is genuinely ambiguous.
+
 BLOCK_OTHER_SAFETY
   Requests for graphic violence, gore, child sexual abuse material, hate
   symbols, or self-harm instructions.
@@ -314,7 +431,7 @@ does not make a prompt sexual. When a prompt has a legitimate framing such as
 medical, educational or fine-art, prefer ALLOW.
 
 Respond with ONLY a JSON object, nothing else:
-{"label":"ALLOW|BLOCK_NUDITY|BLOCK_EXPLICIT_SEXUAL|BLOCK_OTHER_SAFETY","confidence":0.0-1.0,"reason":"<=15 words, no prompt quotes"}`;
+{"label":"ALLOW|BLOCK_NUDITY|BLOCK_EXPLICIT_SEXUAL|BLOCK_SUGGESTIVE|BLOCK_MINOR_SEXUAL|NEEDS_CLARIFICATION|BLOCK_OTHER_SAFETY","confidence":0.0-1.0,"reason":"<=15 words, no prompt quotes"}`;
 
 interface ClassifierVerdict {
   label: ModerationDecision;
@@ -383,7 +500,7 @@ export function parseClassifierVerdict(raw: string): ClassifierVerdict | null {
   if (!parsed || typeof parsed !== 'object') return null;
   const obj = parsed as Record<string, unknown>;
   const label = String(obj.label || '').toUpperCase() as ModerationDecision;
-  const allowed: ModerationDecision[] = ['ALLOW', 'BLOCK_NUDITY', 'BLOCK_EXPLICIT_SEXUAL', 'BLOCK_OTHER_SAFETY'];
+  const allowed: ModerationDecision[] = ['ALLOW', 'BLOCK_NUDITY', 'BLOCK_EXPLICIT_SEXUAL', 'BLOCK_SUGGESTIVE', 'BLOCK_MINOR_SEXUAL', 'NEEDS_CLARIFICATION', 'BLOCK_OTHER_SAFETY'];
   if (!allowed.includes(label)) return null;
   const confidence = typeof obj.confidence === 'number' ? Math.max(0, Math.min(1, obj.confidence)) : 0.8;
   return {
@@ -419,11 +536,26 @@ async function classifierCheck(prompt: string): Promise<ClassifierOutcome> {
     const verdict = parseClassifierVerdict(raw || '');
     if (!verdict) continue;
     if (verdict.label === 'ALLOW') return { kind: 'allow' };
-    // A low-confidence block from a classifier is not treated as a confirmed
-    // violation — the counter is only incremented on a clear decision, so a
-    // borderline model wobble cannot accumulate against a real account.
-    if (verdict.confidence < 0.6) return { kind: 'allow' };
-    const sexual = verdict.label === 'BLOCK_NUDITY' || verdict.label === 'BLOCK_EXPLICIT_SEXUAL';
+    // An explicit NEEDS_CLARIFICATION verdict, or any block verdict the model
+    // itself is unsure about, becomes a clarification request — never a silent
+    // generate, and never a violation on the account. Ambiguous age or sexual
+    // intent must ask the user to rewrite, not guess.
+    const needsClarification = verdict.label === 'NEEDS_CLARIFICATION' || verdict.confidence < 0.6;
+    if (needsClarification) {
+      return {
+        kind: 'block',
+        result: {
+          decision: 'NEEDS_CLARIFICATION',
+          method: 'CLASSIFIER',
+          confidence: verdict.confidence,
+          reason: verdict.reason || 'Prompt needs clarification before generation',
+          countsAsViolation: false,
+          severity: 'INFO',
+          provider: p.name,
+        },
+      };
+    }
+    const sexual = verdict.label === 'BLOCK_NUDITY' || verdict.label === 'BLOCK_EXPLICIT_SEXUAL' || verdict.label === 'BLOCK_SUGGESTIVE' || verdict.label === 'BLOCK_MINOR_SEXUAL';
     return {
       kind: 'block',
       result: {
@@ -521,3 +653,77 @@ export function promptFingerprint(prompt: string): string {
 
 export const MODERATION_USER_MESSAGE =
   "This request can't be processed because it appears to request nudity or sexually explicit content, which isn't supported by SocialPulse. Please revise your request. Repeated attempts may result in your account being flagged for review.";
+
+/** Distinct, precise user-facing copy per safety category. No scores,
+ *  thresholds, hidden rules or provider policy text — only what to change. */
+export interface SafetyBlockCopy {
+  code: 'PROMPT_REQUIRES_REVISION' | 'PROMPT_BLOCKED';
+  category: SafetyCategory;
+  title: string;
+  message: string;
+  guidance: string[];
+  exampleInstead?: string;
+  exampleUse?: string;
+}
+
+const SAFETY_COPY: Record<Exclude<SafetyCategory, 'SAFE'>, Omit<SafetyBlockCopy, 'category'>> = {
+  SEXUAL_EXPLICIT: {
+    code: 'PROMPT_REQUIRES_REVISION',
+    title: 'Content not allowed',
+    message: 'This prompt requests explicit sexual content, so it can’t be generated.',
+    guidance: [
+      'explicit sexual acts',
+      'pornographic descriptions',
+      'sexualized nudity',
+      'fetish content',
+    ],
+    exampleInstead: 'Generate an explicit erotic bedroom scene...',
+    exampleUse: 'Generate a romantic cinematic portrait of an adult couple in an elegant bedroom, fully clothed.',
+  },
+  SEXUAL_SUGGESTIVE: {
+    code: 'PROMPT_REQUIRES_REVISION',
+    title: 'Please revise your prompt',
+    message: 'This prompt is too sexually suggestive for generation.',
+    guidance: [
+      'erotic posing',
+      'sexually provocative framing',
+      'sexualized nudity',
+      'body-focused sexual descriptions',
+    ],
+    exampleInstead: 'Create a seductive lingerie model posing on a bed...',
+    exampleUse: 'Create a high-fashion editorial portrait of an adult model in elegant eveningwear.',
+  },
+  MINOR_SEXUAL: {
+    code: 'PROMPT_BLOCKED',
+    title: 'This request cannot be processed',
+    message: 'Sexual content involving minors is not allowed.',
+    guidance: [
+      'make sure all subjects are clearly adults, AND',
+      'remove all sexual or exploitative elements.',
+    ],
+  },
+  UNCERTAIN: {
+    code: 'PROMPT_REQUIRES_REVISION',
+    title: 'Please clarify your prompt',
+    message: 'This prompt may include sexualized content or an unclear age reference.',
+    guidance: [
+      'make sure all people are clearly adults where relevant',
+      'request no explicit or sexually exploitative content',
+    ],
+  },
+  OTHER_SAFETY: {
+    code: 'PROMPT_REQUIRES_REVISION',
+    title: 'Content not allowed',
+    message: MODERATION_USER_MESSAGE,
+    guidance: [],
+  },
+};
+
+/** Builds the full pre-generation block payload for a decision. The original
+ *  prompt is never included and never sent anywhere after classification. */
+export function moderationBlockCopy(decision: ModerationDecision): SafetyBlockCopy {
+  const category = decisionToCategory(decision);
+  if (category === 'SAFE') throw new Error('moderationBlockCopy called for an ALLOW decision');
+  const copy = SAFETY_COPY[category];
+  return { category, ...copy };
+}

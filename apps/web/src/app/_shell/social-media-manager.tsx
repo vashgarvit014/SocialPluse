@@ -391,7 +391,28 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   // provider-refusal dialog above: this one means OUR classifier declined the
   // request before generation, which also advances the account's warning
   // counter, so the copy has to say so.
-  const [moderationWarning, setModerationWarning] = useState<{ message: string; violationCount: number; flagged: boolean; severity: string } | null>(null);
+  // Server-side moderation outcome. Carries the per-category revision copy
+  // (title/guidance/example) when the backend sent it; legacy responses
+  // without a category fall back to the generic message. The user's prompt
+  // is never cleared — the dialog only closes so they can edit it.
+  const [moderationWarning, setModerationWarning] = useState<{ message: string; violationCount: number; flagged: boolean; severity: string; title?: string; guidance?: string[]; exampleInstead?: string; exampleUse?: string; category?: string } | null>(null);
+
+  const applySafetyBlock = (data: { error?: string; message?: string; title?: string; guidance?: string[]; example?: { instead?: string; use?: string }; category?: string; moderation?: { violationCount?: number; flagged?: boolean; severity?: string } }) => {
+    setModerationWarning({
+      title: data.title,
+      message: data.message || data.error || 'This request cannot be processed.',
+      guidance: Array.isArray(data.guidance) ? data.guidance : undefined,
+      exampleInstead: data.example?.instead,
+      exampleUse: data.example?.use,
+      category: data.category,
+      violationCount: data.moderation?.violationCount ?? 0,
+      flagged: data.moderation?.flagged === true,
+      severity: data.moderation?.severity || 'WARNING',
+    });
+  };
+  const isSafetyBlockCode = (code: unknown) =>
+    code === 'PROMPT_REQUIRES_REVISION' || code === 'PROMPT_BLOCKED' ||
+    code === 'AI_MODERATION_BLOCKED' || code === 'CONTENT_SAFETY_BLOCKED';
   // Changing the visual prompt must always drop the previous refusal.
   //
   // The raw setter left generationError and any open denial dialog in place, so
@@ -2023,6 +2044,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       });
       const data = await res.json();
       if (!res.ok) {
+        if (isSafetyBlockCode(data.code)) { applySafetyBlock(data); setIsGeneratingContent(false); return; }
         throw new Error(data.error || 'Failed to generate content');
       }
       if (!data.platforms || typeof data.platforms !== 'object') {
@@ -2068,7 +2090,10 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         body: JSON.stringify({ prompt, tone, platforms: [platform], hasImage: imageDataListForAPI.length > 0, imageData: imageDataForAPI, imageDataList: imageDataListForAPI }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to regenerate content');
+      if (!res.ok) {
+        if (isSafetyBlockCode(data.code)) { applySafetyBlock(data); setIsGeneratingContent(false); return; }
+        throw new Error(data.error || 'Failed to regenerate content');
+      }
       if (!data.platforms?.[platform]) throw new Error('Invalid response from AI. Please try again.');
       const entry = data.platforms[platform];
       setPlatformContent(prev => ({ ...prev, [platform]: entry }));
@@ -2126,14 +2151,11 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       });
       const startData = await startRes.json();
       // Server refused BEFORE generating anything: no provider call, no image,
-      // no MediaAsset, nothing in the Asset Gallery.
-      if (startData.code === 'CONTENT_SAFETY_BLOCKED') {
-        setModerationWarning({
-          message: startData.error || 'This request cannot be processed.',
-          violationCount: startData.moderation?.violationCount ?? 0,
-          flagged: startData.moderation?.flagged === true,
-          severity: startData.moderation?.severity || 'WARNING',
-        });
+      // no MediaAsset, nothing in the Asset Gallery. Safety blocks open the
+      // revision warning (per-category copy when the backend sent it); anything
+      // else is a genuine error.
+      if (isSafetyBlockCode(startData.code)) {
+        applySafetyBlock(startData);
         setIsGeneratingImage(false);
         return null;
       }
@@ -4324,9 +4346,11 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         </div>
       )}
 
-      {/* Server-side moderation warning. Shown when OUR classifier blocked the
-          request before generation; the account counter has already advanced,
-          so the copy states that plainly. */}
+      {/* Server-side moderation warning. Shown when OUR pre-generation gate
+          blocked the request; nothing was sent to any provider and the prompt
+          was left untouched. Confirmed violations advance the account counter
+          (first attempt is a warning only, never a suspension); clarification
+          requests do not count. */}
       {moderationWarning && (() => {
         const warnBody =
           moderationWarning.violationCount < 2
@@ -4356,14 +4380,28 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
                 width: '42px', height: '42px', borderRadius: '12px', flexShrink: 0,
                 background: 'linear-gradient(135deg,#ef4444,#b91c1c)', color: '#fff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '19px',
-              }}>&#128737;</div>
+              }}>&#9888;</div>
               <div>
-                <div id="sp-moderation-warning-title" style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Content Safety Warning</div>
-                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>This request was not processed</div>
+                <div id="sp-moderation-warning-title" style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>{moderationWarning.title || 'Content Safety Warning'}</div>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>This request was not processed — your prompt is unchanged</div>
               </div>
             </div>
             <div style={{ padding: '18px 24px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ fontSize: '13px', color: '#334155', lineHeight: 1.65 }}>{moderationWarning.message}</div>
+              {moderationWarning.guidance && moderationWarning.guidance.length > 0 && (
+                <div style={{ fontSize: '12.5px', color: '#334155', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '11px 13px', borderRadius: '10px', lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>What to change:</div>
+                  {moderationWarning.guidance.map(g => (
+                    <div key={g} style={{ display: 'flex', gap: 7, marginTop: 3 }}><span>•</span><span>{g}</span></div>
+                  ))}
+                </div>
+              )}
+              {moderationWarning.exampleInstead && (
+                <div style={{ fontSize: '12.5px', color: '#334155', lineHeight: 1.6 }}>
+                  <div style={{ marginBottom: 4 }}>Instead of: <i>“{moderationWarning.exampleInstead}”</i></div>
+                  {moderationWarning.exampleUse && <div>Use: <i>“{moderationWarning.exampleUse}”</i></div>}
+                </div>
+              )}
               {moderationWarning.violationCount > 0 && (
                 <div style={{
                   fontSize: '12px', color: '#b45309', backgroundColor: '#fffbeb', border: '1px solid #fde68a',
@@ -4373,7 +4411,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               <button
                 onClick={() => setModerationWarning(null)}
                 style={{ padding: '11px 18px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg,#7C3AED,#8B5CF6)', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
-              >I Understand</button>
+              >{moderationWarning.category ? 'Edit Prompt' : 'I Understand'}</button>
             </div>
           </div>
         </div>

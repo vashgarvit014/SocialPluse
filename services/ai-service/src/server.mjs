@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { createLogger } from '../packages/logger/index.mjs';
 import { verifyInternalSecret } from '../packages/service-auth/index.mjs';
 import { generateContent } from './content.mjs';
-import { moderatePrompt, promptFingerprint, providerSafetyDecision, MODERATION_USER_MESSAGE } from './moderation.mjs';
+import { moderatePrompt, promptFingerprint, providerSafetyDecision, moderationBlockCopy } from './moderation.mjs';
 import { createModerationStore } from './moderation-escalation.mjs';
 import { createUsageRecorder } from './ai-usage.mjs';
 import { createRateLimiter } from './rate-limit.mjs';
@@ -87,6 +87,29 @@ async function handleGenerateContent(req, res) {
   const selectedPlatforms = platforms.filter((p) => validPlatforms.includes(p));
   if (selectedPlatforms.length === 0) return send(res, 400, { error: 'No valid platforms selected' });
 
+  // Same pre-generation safety gate as image generation: an explicit,
+  // suggestive, minor-sexual or genuinely ambiguous topic must not reach the
+  // text model either. Only the topic text is classified (attached user
+  // photos are never generated content). Recorded exactly like image blocks.
+  if (prompt?.trim()) {
+    const textModeration = await moderatePrompt(String(prompt));
+    if (textModeration.decision !== 'ALLOW') {
+      const textEscalation = await moderationStore.recordModerationDecision(textModeration, {
+        userId, decision: textModeration.decision, method: textModeration.method, action: 'BLOCKED_BEFORE_GENERATION',
+        provider: textModeration.provider ?? null, reason: textModeration.reason ?? undefined,
+        promptFingerprint: promptFingerprint(String(prompt)), safeMetadata: { pipeline: 'content' },
+      });
+      const textCopy = moderationBlockCopy(textModeration.decision);
+      return send(res, 422, {
+        success: false, code: textCopy.code, category: textCopy.category,
+        title: textCopy.title, message: textCopy.message, guidance: textCopy.guidance,
+        example: textCopy.exampleInstead ? { instead: textCopy.exampleInstead, use: textCopy.exampleUse } : undefined,
+        error: textCopy.message,
+        moderation: { decision: textModeration.decision, violationCount: textEscalation.count, flagged: textEscalation.flagged, severity: textEscalation.severity },
+      });
+    }
+  }
+
   const startedAt = Date.now();
   try {
     const result = await generateContent(prompt.trim(), selectedPlatforms, tone || 'professional', !!hasImage, imageData, Array.isArray(imageDataList) ? imageDataList : undefined);
@@ -112,6 +135,9 @@ async function handleStartImageJob(req, res) {
 
   // Moderation BEFORE any provider call — a blocked request must not reach
   // the image model, must not be persisted, must not produce a MediaAsset.
+  // The response carries per-category revision copy (title/guidance/example)
+  // so the client can show a precise warning; the prompt itself is never
+  // echoed back and never sent to any provider after classification.
   const moderation = await moderatePrompt(String(prompt));
   if (moderation.decision !== 'ALLOW') {
     const escalation = await moderationStore.recordModerationDecision(moderation, {
@@ -119,8 +145,12 @@ async function handleStartImageJob(req, res) {
       provider: moderation.provider ?? null, reason: moderation.reason ?? undefined,
       promptFingerprint: promptFingerprint(String(prompt)), safeMetadata: { style: typeof style === 'string' ? style : 'unspecified' },
     });
+    const copy = moderationBlockCopy(moderation.decision);
     return send(res, 422, {
-      error: MODERATION_USER_MESSAGE, code: 'AI_MODERATION_BLOCKED',
+      success: false, code: copy.code, category: copy.category,
+      title: copy.title, message: copy.message, guidance: copy.guidance,
+      example: copy.exampleInstead ? { instead: copy.exampleInstead, use: copy.exampleUse } : undefined,
+      error: copy.message,
       moderation: { decision: moderation.decision, violationCount: escalation.count, flagged: escalation.flagged, severity: escalation.severity },
     });
   }

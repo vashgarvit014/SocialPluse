@@ -21,6 +21,9 @@ export function severityForCount(count) {
 function categoryFor(decision) {
   if (decision === 'BLOCK_NUDITY') return 'NUDITY';
   if (decision === 'BLOCK_EXPLICIT_SEXUAL') return 'EXPLICIT_SEXUAL';
+  if (decision === 'BLOCK_SUGGESTIVE') return 'SUGGESTIVE';
+  if (decision === 'BLOCK_MINOR_SEXUAL') return 'MINOR_SEXUAL';
+  if (decision === 'NEEDS_CLARIFICATION') return 'UNCERTAIN';
   if (decision === 'BLOCK_OTHER_SAFETY') return 'OTHER_SAFETY';
   return 'NONE';
 }
