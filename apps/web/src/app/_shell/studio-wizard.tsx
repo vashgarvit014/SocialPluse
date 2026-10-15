@@ -208,6 +208,12 @@ function WizardStepper({ step, go, canAdvance = true }: { step: number; go: (n: 
         @media (max-width: 768px) {
           .sp-cr { height: auto; padding: 14px 16px; border-radius: 28px; gap: 12px; flex-wrap: wrap; }
           .sp-cr-ring { width: 52px !important; height: 52px !important; }
+          /* Root cause of the clipped 8/8 ring: the wrapper above shrinks but
+             the inner svg keeps its fixed 68x68 attributes and paints 8px past
+             the wrapper on every side. Bind it to the wrapper (viewBox scales
+             it cleanly) so the full circle stays inside the bar. */
+          .sp-cr-ring svg { width: 100% !important; height: 100% !important; }
+          .sp-cr-dots { gap: 5px; }
           .sp-cr-cur { font-size: 17px; }
           .sp-cr-next { display: none; }
           .sp-cr-btn { width: 40px !important; height: 40px !important; }
@@ -948,6 +954,15 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
           .sp-s8-h2{white-space:normal;font-size:21px}
           .sp-s8-card-base{padding:18px}
           .sp-s8-card::before{display:none}
+          /* Painted-overflow containment (layout boxes already measure inside
+             the gutters; this paints outside its box on mobile):
+             - selected platform cards: the outer 3px glow ring reads as wider
+               than siblings and reaches toward the viewport edge → inner
+               outline instead, same selected signal, zero bleed.
+             - hero blobs at negative offsets → clipped to the hero's own
+               rounded shape instead of bleeding past its corners. */
+          .sp-s8-plat.selected{box-shadow:none;outline:3px solid rgba(124,58,237,.35);outline-offset:-3px}
+          .sp-s8-hero{overflow:hidden}
         }
         /* ---- Post Summary highlight animation (ported from the reference) ---- */
         @property --sp-s8-a{syntax:"<angle>";inherits:false;initial-value:0deg}
