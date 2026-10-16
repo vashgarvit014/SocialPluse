@@ -2,9 +2,11 @@
 // client can run the exact same normalize/validate the server does (see
 // schemas.ts) instead of a second, potentially-drifting copy.
 //
-// E.164: leading '+', country code, up to 15 digits total, no spaces/dashes.
-// We require the caller to type the country code (e.g. "+91 98765 43210")
-// rather than guessing one — guessing silently produces wrong numbers.
+import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
+
+// Existing records are already stored as E.164. Keep the lightweight shape
+// check available for login compatibility while new signup data receives the
+// full country-aware libphonenumber validation below.
 const E164_RE = /^\+[1-9]\d{7,14}$/;
 
 export function normalizeMobile(input: string): string {
@@ -13,6 +15,12 @@ export function normalizeMobile(input: string): string {
 }
 
 export function isValidMobile(input: string): boolean {
+  const normalized = normalizeMobile(input);
+  if (!E164_RE.test(normalized)) return false;
+  return parsePhoneNumberFromString(normalized)?.isValid() === true;
+}
+
+export function isLegacyE164Mobile(input: string): boolean {
   return E164_RE.test(normalizeMobile(input));
 }
 

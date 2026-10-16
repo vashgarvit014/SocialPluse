@@ -16,7 +16,7 @@ import { hashPassword, verifyPassword } from './password.mjs';
 import { deliverOtp, warmUpEmailTransport } from './delivery/index.mjs';
 import { sendPasswordChangedEmail } from './delivery/email.mjs';
 import { isValidEmailFormat } from './format-rules.mjs';
-import { isValidMobile, normalizeMobile, maskEmail, maskMobile } from './mobile.mjs';
+import { isLegacyE164Mobile, maskEmail, maskMobile } from './mobile.mjs';
 import { normalizeHost, isPublicHost, SUPERADMIN_ORIGIN } from './admin-host.mjs';
 import {
   signupSchema, loginSchema, otpRequestSchema, otpVerifySchema, otpResendSchema,
@@ -346,7 +346,7 @@ const server = http.createServer(async (req, res) => {
 
       const destination = channel === 'EMAIL' ? user.email : user.mobile;
       if (!destination) return send(res, 400, { error: 'WhatsApp is not available for this account — no mobile number on file. Please use Email.' });
-      const destinationValid = channel === 'EMAIL' ? isValidEmailFormat(destination) : isValidMobile(destination);
+      const destinationValid = channel === 'EMAIL' ? isValidEmailFormat(destination) : isLegacyE164Mobile(destination);
       if (!destinationValid) return send(res, 400, { error: 'This account has no valid destination on file for that channel. Please contact support.' });
 
       // Idempotent within the resend cooldown. createChallenge() invalidates
@@ -496,7 +496,7 @@ const server = http.createServer(async (req, res) => {
       }
       const isEmail = identifier.includes('@');
       const channel = isEmail ? 'EMAIL' : 'WHATSAPP';
-      if (!isEmail && !isValidMobile(identifier)) return dummy();
+      if (!isEmail && !isLegacyE164Mobile(identifier)) return dummy();
 
       const user = await usersRepo.findUserByIdentifier(identifier);
       if (!user || user.status === 'SUSPENDED') return dummy();

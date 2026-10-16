@@ -4,7 +4,9 @@ import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { ZodType } from 'zod';
+import type { CountryCode } from 'libphonenumber-js';
 import OtpInput from './otp-input';
+import CountryPhoneField from './country-phone-field';
 import { SP_LOGO } from '@/app/_shell/brand-assets';
 import { nameSchema, emailSchema, mobileSchema, passwordSchema, loginIdentifierSchema } from '@/lib/auth/schemas';
 import { PASSWORD_REQUIREMENTS } from '@/lib/auth/password-rules';
@@ -13,6 +15,7 @@ type Mode = 'login' | 'signup';
 type Purpose = 'SIGNUP_VERIFY' | 'LOGIN_VERIFY' | 'PASSWORD_RESET';
 type Step = 'credentials' | 'forgot-identifier' | 'channel-select' | 'otp-entry' | 'reset-password' | 'reset-done';
 type Channel = 'EMAIL' | 'WHATSAPP';
+type IdentifierMode = 'email' | 'mobile';
 type FieldErrors = Partial<Record<string, string>>;
 
 // Non-shorthand border properties throughout this file on purpose:
@@ -107,6 +110,93 @@ function TextField({
         aria-describedby={error ? errorId : undefined}
       />
       {error && <p id={errorId} style={fieldErrorTextStyle}>{error}</p>}
+    </div>
+  );
+}
+
+function IdentifierField({
+  id,
+  label,
+  mode,
+  onModeChange,
+  emailValue,
+  onEmailChange,
+  mobileValue,
+  onMobileChange,
+  mobileCountry,
+  onMobileCountryChange,
+  onBlur,
+  error,
+}: {
+  id: string;
+  label: string;
+  mode: IdentifierMode;
+  onModeChange: (mode: IdentifierMode) => void;
+  emailValue: string;
+  onEmailChange: (value: string) => void;
+  mobileValue: string;
+  onMobileChange: (value: string) => void;
+  mobileCountry: CountryCode;
+  onMobileCountryChange: (country: CountryCode) => void;
+  onBlur: () => void;
+  error?: string;
+}) {
+  const errorId = `${id}-error`;
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
+        <label htmlFor={id} style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
+        <div role="radiogroup" aria-label={`${label} type`} style={{ display: 'inline-flex', padding: 3, borderRadius: 9, background: '#f1f2f8' }}>
+          {(['email', 'mobile'] as const).map(option => (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={mode === option}
+              onClick={() => onModeChange(option)}
+              style={{
+                minHeight: 30, padding: '5px 10px', border: 0, borderRadius: 7,
+                background: mode === option ? '#fff' : 'transparent',
+                color: mode === option ? '#30218b' : '#64748b',
+                boxShadow: mode === option ? '0 1px 5px rgba(15,23,42,.1)' : 'none',
+                cursor: 'pointer', font: 'inherit', fontSize: 11.5, fontWeight: 750,
+              }}
+            >
+              {option === 'email' ? 'Email' : 'Mobile'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {mode === 'email' ? (
+        <>
+          <input
+            id={id}
+            type="email"
+            inputMode="email"
+            value={emailValue}
+            onChange={event => onEmailChange(event.target.value)}
+            onBlur={onBlur}
+            autoComplete="username"
+            placeholder="you@company.com"
+            style={{ ...inputStyle, ...(error ? inputErrorStyle : {}) }}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
+          />
+          {error && <p id={errorId} style={fieldErrorTextStyle}>{error}</p>}
+        </>
+      ) : (
+        <CountryPhoneField
+          id={id}
+          label=""
+          value={mobileValue}
+          onChange={onMobileChange}
+          country={mobileCountry}
+          onCountryChange={onMobileCountryChange}
+          onBlur={onBlur}
+          error={error}
+          autoComplete="tel"
+        />
+      )}
     </div>
   );
 }
@@ -218,7 +308,7 @@ function safeCallbackUrl(raw: string): string {
   return rest ? `${path}?${rest}` : path;
 }
 
-export default function AuthClient() {
+export default function AuthClient({ initialCountry }: { initialCountry: CountryCode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl');
@@ -234,7 +324,12 @@ export default function AuthClient() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
-  const [identifier, setIdentifier] = useState(''); // login: email or mobile
+  const [signupCountry, setSignupCountry] = useState<CountryCode>(initialCountry);
+  const [identifierMode, setIdentifierMode] = useState<IdentifierMode>('email');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginMobile, setLoginMobile] = useState('');
+  const [loginCountry, setLoginCountry] = useState<CountryCode>(initialCountry);
+  const identifier = identifierMode === 'email' ? loginEmail : loginMobile;
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -257,7 +352,11 @@ export default function AuthClient() {
   }, []);
 
   // Forgot-password identifier + reset-new-password
-  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [forgotIdentifierMode, setForgotIdentifierMode] = useState<IdentifierMode>('email');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotMobile, setForgotMobile] = useState('');
+  const [forgotCountry, setForgotCountry] = useState<CountryCode>(initialCountry);
+  const forgotIdentifier = forgotIdentifierMode === 'email' ? forgotEmail : forgotMobile;
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [resetFieldErrors, setResetFieldErrors] = useState<FieldErrors>({});
@@ -400,7 +499,8 @@ export default function AuthClient() {
   const handleForgotSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!forgotIdentifier.trim()) { setFieldErrors({ identifier: 'Please enter your email or mobile number.' }); setTouched({ identifier: true }); return; }
+    const identifierError = validateField(loginIdentifierSchema, forgotIdentifier);
+    if (identifierError) { setFieldErrors({ identifier: identifierError }); setTouched({ identifier: true }); return; }
     setSubmitting(true);
     try {
       const { data } = await postJson('/api/auth/password/forgot', { identifier: forgotIdentifier });
@@ -584,22 +684,30 @@ export default function AuthClient() {
                   autoComplete="email" placeholder="you@company.com"
                 />
               ) : (
-                <TextField
-                  id="sp-identifier" label="Email or Mobile Number" value={identifier}
-                  onChange={v => { setIdentifier(v); if (touched.identifier) setFieldError('identifier', validateField(loginIdentifierSchema, v)); }}
+                <IdentifierField
+                  id="sp-identifier" label="Email or Mobile Number"
+                  mode={identifierMode}
+                  onModeChange={next => { setIdentifierMode(next); setFieldError('identifier', undefined); }}
+                  emailValue={loginEmail}
+                  onEmailChange={v => { setLoginEmail(v); if (touched.identifier) setFieldError('identifier', validateField(emailSchema, v)); }}
+                  mobileValue={loginMobile}
+                  onMobileChange={v => { setLoginMobile(v); if (touched.identifier) setFieldError('identifier', validateField(loginIdentifierSchema, v)); }}
+                  mobileCountry={loginCountry}
+                  onMobileCountryChange={setLoginCountry}
                   onBlur={() => blurValidate('identifier', loginIdentifierSchema, identifier)}
                   error={shown('identifier', fieldErrors, touched)}
-                  autoComplete="username" placeholder="you@company.com or +919876543210"
                 />
               )}
 
               {mode === 'signup' && (
-                <TextField
-                  id="sp-mobile" label="Mobile Number" type="tel" inputMode="tel" value={mobile}
+                <CountryPhoneField
+                  id="sp-mobile" label="Mobile Number" value={mobile}
                   onChange={v => { setMobile(v); if (touched.mobile) setFieldError('mobile', validateField(mobileSchema, v)); }}
+                  country={signupCountry}
+                  onCountryChange={setSignupCountry}
                   onBlur={() => blurValidate('mobile', mobileSchema, mobile)}
                   error={shown('mobile', fieldErrors, touched)}
-                  autoComplete="tel" placeholder="+919876543210"
+                  autoComplete="tel"
                 />
               )}
 
@@ -661,12 +769,18 @@ export default function AuthClient() {
             <h1 style={{ fontSize: 18, fontWeight: 800, color: '#0f1020', margin: '0 0 6px' }}>Reset your password</h1>
             <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 20px' }}>Enter the email or mobile number on your account and we&apos;ll send a verification code.</p>
             <form onSubmit={handleForgotSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }} noValidate>
-              <TextField
-                id="sp-forgot" label="Email or Mobile Number" value={forgotIdentifier}
-                onChange={v => { setForgotIdentifier(v); if (touched.identifier) setFieldError('identifier', v.trim() ? undefined : 'Please enter your email or mobile number.'); }}
-                onBlur={() => { markTouched('identifier'); setFieldError('identifier', forgotIdentifier.trim() ? undefined : 'Please enter your email or mobile number.'); }}
+              <IdentifierField
+                id="sp-forgot" label="Email or Mobile Number"
+                mode={forgotIdentifierMode}
+                onModeChange={next => { setForgotIdentifierMode(next); setFieldError('identifier', undefined); }}
+                emailValue={forgotEmail}
+                onEmailChange={v => { setForgotEmail(v); if (touched.identifier) setFieldError('identifier', validateField(emailSchema, v)); }}
+                mobileValue={forgotMobile}
+                onMobileChange={v => { setForgotMobile(v); if (touched.identifier) setFieldError('identifier', validateField(loginIdentifierSchema, v)); }}
+                mobileCountry={forgotCountry}
+                onMobileCountryChange={setForgotCountry}
+                onBlur={() => blurValidate('identifier', loginIdentifierSchema, forgotIdentifier)}
                 error={shown('identifier', fieldErrors, touched)}
-                autoComplete="username" placeholder="you@company.com or +919876543210"
               />
               <ErrorBanner message={error} />
               <button type="submit" disabled={submitting} style={primaryButtonStyle(submitting)}>{submitting ? 'Sending…' : 'Send Code'}</button>

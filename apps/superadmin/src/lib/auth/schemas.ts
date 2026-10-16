@@ -9,11 +9,11 @@
 import { z } from 'zod';
 import { isValidName, isValidEmailFormat } from './format-rules';
 import { isPasswordValid, PASSWORD_REQUIREMENTS_MESSAGE, PASSWORD_MAX_LENGTH } from './password-rules';
-import { isValidMobile, normalizeMobile } from './mobile';
+import { isLegacyE164Mobile, isValidMobile, normalizeMobile } from './mobile';
 
 const NAME_MESSAGE = 'Please enter a valid name.';
 const EMAIL_MESSAGE = 'Please enter a valid email address.';
-const MOBILE_MESSAGE = 'Please enter a valid mobile number with country code (e.g. +919876543210).';
+const MOBILE_MESSAGE = 'Please enter a valid mobile number for the selected country.';
 const OTP_MESSAGE = 'Enter a valid 6-digit verification code.';
 const IDENTIFIER_MESSAGE = 'Please enter a valid email or mobile number.';
 
@@ -43,7 +43,7 @@ export const loginIdentifierSchema = z
   .string()
   .trim()
   .min(1, IDENTIFIER_MESSAGE)
-  .refine(v => (v.includes('@') ? isValidEmailFormat(v) : isValidMobile(normalizeMobile(v))), IDENTIFIER_MESSAGE);
+  .refine(v => (v.includes('@') ? isValidEmailFormat(v) : isLegacyE164Mobile(normalizeMobile(v))), IDENTIFIER_MESSAGE);
 
 export const signupSchema = z
   .object({

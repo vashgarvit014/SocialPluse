@@ -7,9 +7,12 @@ import SuperadminOtpPanel from '../otp-panel';
 import Mascot, { type MascotState } from './mascot';
 import { loginIdentifierSchema, passwordSchema } from '@/lib/auth/schemas';
 import { PASSWORD_REQUIREMENTS } from '@/lib/auth/password-rules';
+import type { CountryCode } from 'libphonenumber-js';
+import CountryPhoneField from '@/app/login-signup/country-phone-field';
 
 type Step = 'credentials' | 'forgot-identifier' | 'channel-select' | 'otp-entry' | 'reset-password' | 'reset-done';
 type Channel = 'EMAIL' | 'WHATSAPP';
+type IdentifierMode = 'email' | 'mobile';
 // Animation phases. React owns this and every visual class is derived from it
 // in the JSX below — no imperative classList writes, which get silently wiped
 // on the next re-render.
@@ -47,6 +50,41 @@ function LockIcon() {
       <rect x="4" y="11" width="16" height="10" rx="2" />
       <path d="M8 11V7a4 4 0 0 1 8 0v4" />
     </svg>
+  );
+}
+
+function IdentifierField({ id, mode, setMode, email, setEmail, mobile, setMobile, country, setCountry, disabled, onFocus, onBlur }: {
+  id: string;
+  mode: IdentifierMode;
+  setMode: (mode: IdentifierMode) => void;
+  email: string;
+  setEmail: (value: string) => void;
+  mobile: string;
+  setMobile: (value: string) => void;
+  country: CountryCode;
+  setCountry: (country: CountryCode) => void;
+  disabled?: boolean;
+  onFocus?: () => void;
+  onBlur?: () => void;
+}) {
+  return (
+    <div>
+      <div className="sa-id-head">
+        <label htmlFor={id}>Email or mobile</label>
+        <div className="sa-id-switch" role="radiogroup" aria-label="Identifier type">
+          {(['email', 'mobile'] as const).map(option => (
+            <button key={option} type="button" role="radio" aria-checked={mode === option} onClick={() => setMode(option)} disabled={disabled}>
+              {option === 'email' ? 'Email' : 'Mobile'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {mode === 'email' ? (
+        <input id={id} className="sa-input" type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" disabled={disabled} onFocus={onFocus} onBlur={onBlur} required />
+      ) : (
+        <CountryPhoneField id={id} label="" value={mobile} onChange={setMobile} country={country} onCountryChange={setCountry} disabled={disabled} onFocus={onFocus} onBlur={onBlur} theme="dark" />
+      )}
+    </div>
   );
 }
 
@@ -119,7 +157,7 @@ async function postJson(path: string, body: unknown): Promise<{ ok: boolean; dat
   return { ok: res.ok, data };
 }
 
-export default function SuperadminLoginClient() {
+export default function SuperadminLoginClient({ initialCountry }: { initialCountry: CountryCode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Local-only: ?animationDebug=1 replays the CSS sequence with no auth call.
@@ -127,9 +165,17 @@ export default function SuperadminLoginClient() {
   const debug = searchParams.get('animationDebug') === '1' && process.env.NODE_ENV !== 'production';
 
   const [step, setStep] = useState<Step>('credentials');
-  const [identifier, setIdentifier] = useState('');
+  const [identifierMode, setIdentifierMode] = useState<IdentifierMode>('email');
+  const [identifierEmail, setIdentifierEmail] = useState('');
+  const [identifierMobile, setIdentifierMobile] = useState('');
+  const [identifierCountry, setIdentifierCountry] = useState<CountryCode>(initialCountry);
+  const identifier = identifierMode === 'email' ? identifierEmail : identifierMobile;
   const [password, setPassword] = useState('');
-  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [forgotMode, setForgotMode] = useState<IdentifierMode>('email');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotMobile, setForgotMobile] = useState('');
+  const [forgotCountry, setForgotCountry] = useState<CountryCode>(initialCountry);
+  const forgotIdentifier = forgotMode === 'email' ? forgotEmail : forgotMobile;
   const [channels, setChannels] = useState<{ email?: string | null; whatsapp?: string | null }>({});
   const [challengeId, setChallengeId] = useState('');
   const [resendAvailableAt, setResendAvailableAt] = useState('');
@@ -348,19 +394,7 @@ export default function SuperadminLoginClient() {
           {step === 'credentials' && (
             <form onSubmit={submitCredentials} noValidate>
               <div className="sa-field">
-                <label htmlFor="sa-email">Email</label>
-                <input
-                  id="sa-email"
-                  className="sa-input"
-                  type="email"
-                  value={identifier}
-                  onChange={e => setIdentifier(e.target.value)}
-                  autoComplete="username"
-                  disabled={locked}
-                  onFocus={() => setFocusedField('email')}
-                  onBlur={() => setFocusedField(f => (f === 'email' ? null : f))}
-                  required
-                />
+                <IdentifierField id="sa-email" mode={identifierMode} setMode={setIdentifierMode} email={identifierEmail} setEmail={setIdentifierEmail} mobile={identifierMobile} setMobile={setIdentifierMobile} country={identifierCountry} setCountry={setIdentifierCountry} disabled={locked} onFocus={() => setFocusedField('email')} onBlur={() => setFocusedField(f => (f === 'email' ? null : f))} />
               </div>
 
               <PasswordField
@@ -414,19 +448,7 @@ export default function SuperadminLoginClient() {
             <form onSubmit={startForgot} noValidate>
               <p className="sa-hint">Enter your Superadmin email or mobile to receive a reset code.</p>
               <div className="sa-field">
-                <label htmlFor="sa-forgot">Email or mobile</label>
-                <input
-                  id="sa-forgot"
-                  className="sa-input"
-                  type="text"
-                  value={forgotIdentifier}
-                  onChange={e => setForgotIdentifier(e.target.value)}
-                  autoComplete="username"
-                  disabled={busy}
-                  onFocus={() => setFocusedField('email')}
-                  onBlur={() => setFocusedField(f => (f === 'email' ? null : f))}
-                  required
-                />
+                <IdentifierField id="sa-forgot" mode={forgotMode} setMode={setForgotMode} email={forgotEmail} setEmail={setForgotEmail} mobile={forgotMobile} setMobile={setForgotMobile} country={forgotCountry} setCountry={setForgotCountry} disabled={busy} onFocus={() => setFocusedField('email')} onBlur={() => setFocusedField(f => (f === 'email' ? null : f))} />
               </div>
               <button className="sa-btn" type="submit" disabled={busy} style={{ background: busy ? '#1d3a63' : undefined }}>
                 <span className="sa-btn__label">{busy ? 'Sending…' : 'Send Reset Code'}</span>

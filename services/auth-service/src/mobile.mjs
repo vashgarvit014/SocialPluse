@@ -1,4 +1,5 @@
-// Faithful port of src/lib/auth/mobile.ts.
+import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
+
 const E164_RE = /^\+[1-9]\d{7,14}$/;
 
 export function normalizeMobile(input) {
@@ -7,6 +8,12 @@ export function normalizeMobile(input) {
 }
 
 export function isValidMobile(input) {
+  const normalized = normalizeMobile(input);
+  if (!E164_RE.test(normalized)) return false;
+  return parsePhoneNumberFromString(normalized)?.isValid() === true;
+}
+
+export function isLegacyE164Mobile(input) {
   return E164_RE.test(normalizeMobile(input));
 }
 

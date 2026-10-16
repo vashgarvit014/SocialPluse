@@ -215,6 +215,12 @@
 
 .sa-field { position: relative; margin-bottom: 16px; }
 
+.sa-id-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+.sa-id-head > label { color: #8fa9cf; font-size: 12.5px; font-weight: 600; }
+.sa-id-switch { display: inline-flex; padding: 3px; border-radius: 9px; background: rgba(255,255,255,.065); }
+.sa-id-switch button { min-height: 30px; padding: 5px 10px; border: 0; border-radius: 7px; background: transparent; color: #93a1b6; cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 750; }
+.sa-id-switch button[aria-checked="true"] { background: rgba(111,176,255,.18); color: #e6f0ff; box-shadow: inset 0 0 0 1px rgba(111,176,255,.25); }
+
 .sa-field label {
   position: absolute;
   top: 11px;
@@ -226,6 +232,8 @@
   pointer-events: none;
   transition: top 0.18s ease, font-size 0.18s ease, color 0.18s ease;
 }
+
+.sa-field .sa-id-head > label { position: static; pointer-events: auto; transition: none; }
 
 /* Class-based, not type-based: the globalsheet's
    `input { background-color: white !important }` wins against a bare element
