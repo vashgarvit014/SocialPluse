@@ -13,14 +13,33 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 
 export function createInstagramMediaStager(directory, appOrigin) {
+  const origin = new URL(appOrigin || 'http://localhost:3001');
+
+  async function stage(bytes, video) {
+    if (origin.protocol !== 'https:') throw new Error('Set NEXT_PUBLIC_APP_URL to your public HTTPS tunnel URL before publishing Instagram uploads.');
+    await mkdir(directory, { recursive: true });
+    const id = `${randomBytes(24).toString('hex')}.${video ? 'mp4' : 'jpg'}`;
+    await writeFile(join(directory, id), bytes, { flag: 'wx', mode: 0o600 });
+    return new URL(`/api/instagram/media/${id}`, origin).href;
+  }
+
   return async function prepareInstagramMedia(url, video = false) {
     if (!url.startsWith('data:')) {
       const parsed = new URL(url);
       if (parsed.protocol !== 'https:') throw new Error('Instagram media must use a public HTTPS URL.');
-      return parsed.href;
+      if (video) return parsed.href;
+      // Instagram's media-container step enforces a stricter spec (aspect
+      // ratio 0.8-1.91, JPEG, color profile) than the hosting URL's own
+      // format guarantees. Normalize already-hosted images the same way
+      // data: URLs are normalized below, instead of passing them through
+      // unchecked and letting Graph API reject them at container creation.
+      const res = await fetch(parsed.href);
+      if (!res.ok) throw new Error(`Could not fetch image for Instagram upload (${res.status}).`);
+      const bytes = await sharp(Buffer.from(await res.arrayBuffer()), { limitInputPixels: 40_000_000 }).rotate()
+        .resize(1080, 1080, { fit: 'contain', background: '#ffffff' })
+        .flatten({ background: '#ffffff' }).jpeg({ quality: 90 }).toBuffer();
+      return stage(bytes, false);
     }
-    const origin = new URL(appOrigin || 'http://localhost:3001');
-    if (origin.protocol !== 'https:') throw new Error('Set NEXT_PUBLIC_APP_URL to your public HTTPS tunnel URL before publishing Instagram uploads.');
     const match = /^data:(image\/(?:png|jpeg|webp)|video\/mp4);base64,([A-Za-z0-9+/=\r\n]+)$/.exec(url);
     if (!match || video !== match[1].startsWith('video/')) throw new Error('Use a PNG, JPEG or WebP image, or an MP4 video.');
     const limit = video ? 100 * 1024 * 1024 : 20 * 1024 * 1024;
@@ -31,9 +50,6 @@ export function createInstagramMediaStager(directory, appOrigin) {
         .resize(1080, 1080, { fit: 'contain', background: '#ffffff' })
         .flatten({ background: '#ffffff' }).jpeg({ quality: 90 }).toBuffer();
     }
-    await mkdir(directory, { recursive: true });
-    const id = `${randomBytes(24).toString('hex')}.${video ? 'mp4' : 'jpg'}`;
-    await writeFile(join(directory, id), bytes, { flag: 'wx', mode: 0o600 });
-    return new URL(`/api/instagram/media/${id}`, origin).href;
+    return stage(bytes, video);
   };
 }

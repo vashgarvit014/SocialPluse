@@ -144,6 +144,9 @@ ABSOLUTE RULES — VIOLATION = REJECTED:
 5. Mention the key terms (${topicKeywords || clean}) naturally, not as copied instruction.
 6. PLATFORM DIFFERENTIATION IS MANDATORY: each platform's caption must be structurally different (different hook, different paragraphing, different CTA, different length profile). Sharing facts is required; sharing sentences is forbidden. Two captions that read as copies with swapped words will be rejected.
 7. TONE STRUCTURE IS MANDATORY (see TONE LOCK): Professional output that is not in paragraph form, Casual output written as a formal essay, Inspirational output without an emotional arc, or Educational output without a lesson structure will be rejected.
+8. IMAGE_PROMPT RULE: ${hasImage
+    ? 'An image was attached. "image_prompt" MUST describe the ACTUAL visible content of that attached image — real subjects, setting, colors, composition, on-image text if any — specific enough that regenerating from it would recreate a similar scene. It must NOT be a generic phrase like "professional scene" or "general social media post", and must NOT reuse the literal wording shown in the JSON skeleton below (that is a FORMAT example only, not sample text to copy).'
+    : '"image_prompt" must describe a concrete scene for the real topic/subject above — specific enough to recreate it, not a generic placeholder, and not copied from the JSON skeleton below.'}
 
 Topic (cleaned): "${clean}"
 Original Topic: "${topic}"
@@ -159,7 +162,7 @@ JSON exactly (ONLY selected platform keys, no extras, no empty objects for unsel
   "platforms": {
     ${jsonFields || '"linkedin": { "caption": "...", "hashtags": [...] }'}
   },
-  "image_prompt": "photorealistic, high detail, professional scene about \\"${clean}\\", no sexualization, 4K"
+  "image_prompt": "<your own fresh, specific prompt per the IMAGE_PROMPT RULE above — do not copy this placeholder text>"
 }
 
 Write original, platform-native content now.`;
@@ -256,13 +259,13 @@ async function callMercury(prompt, systemPrompt, timeoutMs = TEXT_TIMEOUT_MS, mo
   }
 }
 
-const NVIDIA_TIMEOUT_MS = 20_000;
+const NVIDIA_TIMEOUT_MS = 60_000;
 const NVIDIA_COOLOFF_MS = 10 * 60 * 1000;
 let nvidiaDownUntil = 0;
 
 async function callNVIDIA(prompt, systemPrompt, timeoutMs = NVIDIA_TIMEOUT_MS, model = TEXT_MODEL) {
   if (!NVIDIA_API_KEY) throw new Error('NVIDIA API key not configured');
-  if (Date.now() < nvidiaDownUntil) throw new Error('NVIDIA fallback is in cool-off after a timeout — skipped without waiting');
+  if (Date.now() < nvidiaDownUntil) throw new Error('NVIDIA fallback is in cool-off — skipping without waiting');
   const budget = Math.min(timeoutMs, NVIDIA_TIMEOUT_MS);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), budget);
@@ -456,6 +459,14 @@ function parseAndValidate(raw) {
   if (lowerCap.startsWith('i want you to generate') || lowerCap.includes('i want you to generate the context for')) return null;
   if (caption.includes('your content') || caption.includes('hashtag') || caption.length < 80) return null;
   if (!validateStructure(parsed)) return null;
+  // Safety net for the IMAGE_PROMPT RULE above: if the model ignored the
+  // instruction and either echoed the "don't copy this" skeleton text
+  // verbatim, or fell back to the old generic phrasing, treat it as an
+  // invalid response so the normal fallback-model chain retries instead of
+  // the user getting an image generated from leaked instruction text or a
+  // prompt unrelated to their actual image/topic.
+  const imgPromptLower = (parsed.image_prompt || '').toLowerCase();
+  if (imgPromptLower.includes('do not copy this placeholder') || imgPromptLower.includes('your own fresh, specific prompt')) return null;
 
   const result = parsed;
   for (const key of Object.keys(result.platforms)) {
@@ -537,7 +548,9 @@ export async function generateContent(prompt, platforms, tone, hasImage, imageDa
     if (result) {
       let scoped = scopeToSelected(result);
       const minWords = linkedinMinWords(prompt);
-      if (platforms.includes('linkedin') && scoped.platforms['linkedin'] && linkedinWordCount(scoped) < minWords) {
+      // Only pay for a second sequential round-trip when the draft is
+      // substantially short — a near-miss isn't worth doubling latency for.
+      if (platforms.includes('linkedin') && scoped.platforms['linkedin'] && linkedinWordCount(scoped) < minWords * 0.75) {
         try {
           const rawExp = await callMercury(userPrompt, systemPrompt + `\n\nEXPANSION REQUIRED: your previous draft was too short (under ${minWords} words for LinkedIn). Rewrite it FULLY at ${minWords}+ words with fuller context, concrete detail, and structured • points — same facts, no invented details. Output the complete JSON again.`, TEXT_TIMEOUT_MS, MERCURY_MODEL);
           const resultExp = parseAndValidate(rawExp);
