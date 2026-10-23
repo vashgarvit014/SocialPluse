@@ -31,6 +31,24 @@ export interface PostSummary {
   detail: string;
 }
 
+// Instagram collab-post status for one collaborator. Automatic transitions
+// (driven by a publish attempt) only ever reach 'Submitted'/'Ready'/'Failed'/
+// 'Unknown'. 'Manual Action Required'/'Pending Acceptance' are set only by an
+// explicit user click, and 'Accepted'/'Declined' only by an explicit,
+// self-reported "mark as" action — Instagram's API exposes no way to confirm
+// a collaborator actually accepted, so this app must never infer it.
+export type CollabStatus =
+  | 'Not Requested' | 'Ready' | 'Submitted' | 'Manual Action Required'
+  | 'Pending Acceptance' | 'Accepted' | 'Declined' | 'Failed' | 'Unknown';
+
+export interface Collaborator {
+  username: string; // normalized, no leading @
+  type: 'professional' | 'private';
+  status: CollabStatus;
+  lastUpdatedAt?: string; // ISO, set on every status transition
+  note?: string; // last error/status detail, shown in the badge tooltip
+}
+
 export interface PostRecord {
   id: string; content: string; imageUrl: string; videoUrl?: string; mediaUrl?: string;
   mediaType?: 'image' | 'video' | null; mediaUrls?: string[]; mediaList?: PostMedia[];
@@ -42,10 +60,18 @@ export interface PostRecord {
   // badge, and routed to the trial seam at publish time (never silently
   // posted as a normal Reel).
   trialReel?: boolean;
-  // Instagram collaborator username (without @): set in the studio alongside
-  // trialReel, saved with drafts/scheduled posts, forwarded to
-  // instagram/publish at publish time (normal + trial Reels).
+  // Instagram collaborators (up to 3): set in the studio alongside trialReel,
+  // saved with drafts/scheduled posts, forwarded to instagram/publish at
+  // publish time (normal + trial Reels). Replaces the legacy single-string
+  // `collaborator` field — see normalizeLegacyCollaborator() for reading old
+  // records that still only have that field.
+  collaborators?: Collaborator[];
+  /** @deprecated use `collaborators` — kept only so old saved payloads still type-check */
   collaborator?: string;
+  // Permalink for the published Instagram post, fetched best-effort only
+  // when a private collaborator needs the "Open Instagram" deep link. Unset
+  // when there's nothing to link to, or when the lookup itself failed.
+  instagramPostUrl?: string;
   // Last time this post was scheduled for, preserved through cancellation so
   // the Drafts view can still show/sort by "was going out at 5:00 AM" etc.
   previousScheduledAt?: string | null;
@@ -58,6 +84,20 @@ export interface PostRecord {
   summary?: PostSummary;
   [key: string]: unknown;
 }
+// Reads either shape a saved PostRecord may have: the current `collaborators`
+// array, or a pre-migration `collaborator` string (comma/space-separated
+// usernames, no type/status — always treated as 'professional', since that's
+// what the old single-string path always sent to Graph as a real
+// `collaborators` param).
+export function normalizeLegacyCollaborator(post: Pick<PostRecord, 'collaborator' | 'collaborators'>): Collaborator[] | undefined {
+  if (post.collaborators && post.collaborators.length) return post.collaborators;
+  const raw = post.collaborator;
+  if (!raw || typeof raw !== 'string') return undefined;
+  const usernames = raw.split(/[,\s]+/).map(c => c.trim().replace(/^@+/, '')).filter(Boolean).slice(0, 3);
+  if (!usernames.length) return undefined;
+  return usernames.map(username => ({ username, type: 'professional' as const, status: 'Not Requested' as const }));
+}
+
 export function cancelPost(post: PostRecord, now = new Date().toISOString()): PostRecord {
   if (!['pending', 'scheduled', 'cancelled'].includes(post.status)) throw new Error('This post cannot be cancelled. It may already be publishing.');
   return {

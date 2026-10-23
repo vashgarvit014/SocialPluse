@@ -111,8 +111,16 @@
 .sp-btn-primary { position: relative; overflow: hidden; background: linear-gradient(115deg, #4C5FEF 0%, #4BCBEF 52%, #3B9EE6 100%); box-shadow: 0 14px 34px -12px rgba(84,221,255,.85), inset 0 1px 0 rgba(255,255,255,.24); }
 .sp-btn-primary:hover { box-shadow: 0 20px 46px -12px rgba(92,218,255,.95), inset 0 1px 0 rgba(255,255,255,.3); }
 .sp-btn-primary::after { content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 45%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.24), transparent); transform: skewX(-20deg); animation: sp-sheen 6s ease-in-out infinite; pointer-events: none; }
-.sp-btn-ghost { background-color: rgba(255,255,255,.035); }
-.sp-btn-ghost:hover { background-color: rgba(140,241,255,.12); border-color: rgba(168,242,255,.46) !important; }
+/* No duplicate .sp-btn-ghost rule here on purpose: an earlier version of this
+   file hardcoded its background/hover here to dark-theme-only values
+   (rgba(255,255,255,...)), which — being declared after the theme-token
+   rule above with equal specificity — always won, in both themes. In light
+   mode that made the ghost button's background nearly invisible against
+   the light page (a few % white-on-near-white), leaving only a faint
+   cyan border as any visible affordance. Removing it lets the earlier
+   `--sp-ghost-bg` / `--sp-ghost-bg-hover` tokens apply per-theme instead —
+   dark theme is visually unchanged (its token values matched the hardcoded
+   ones), light theme now gets its own (blue-tinted) visible background. */
 
 .sp-led { position: relative; display: inline-block; flex: none; border-radius: 50%; }
 .sp-led::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1.5px solid currentColor; opacity: 0; animation: sp-ping 2.4s cubic-bezier(.2,.6,.3,1) infinite; }

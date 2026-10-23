@@ -272,24 +272,33 @@ const server = http.createServer(async (req, res) => {
       // CANVA REVIEW ACCOUNT — OTP bypass, deliberately scoped.
       //
       // Purpose: Canva's app-review team is given this account to test the
-      // OAuth flow end to end. The account's mailbox (canva.review@dotstark.tech)
+      // OAuth flow end to end. The account's mailbox (canva.review@dotstark.com)
       // is not a monitored human inbox, so the LOGIN_VERIFY OTP it would
       // normally require cannot be retrieved by the reviewer. Without this the
       // reviewer authenticates the password and then hits a wall.
       //
-      // Every condition below must hold. Notably this is NOT matched by
-      // substring/domain, cannot be triggered by any client input, cookie, or
-      // query parameter, and never skips the PASSWORD check above — the user
-      // is already fully authenticated by this point. It cannot grant
-      // SUPERADMIN (role must equal 'USER') and is refused for suspended,
-      // unverified, or not-yet-activated accounts.
+      // Matched by the account's immutable id (CANVA_REVIEW_USER_ID, set via
+      // environment — see infrastructure/scripts/seed-canva-review-user.mjs),
+      // NOT by email: an email string can be changed or reused by a future
+      // signup, but this id was assigned once at account creation and cannot
+      // migrate to a different row. This is the only account that id can ever
+      // resolve to.
+      //
+      // Every condition below must hold. This cannot be triggered by any
+      // client input, cookie, or query parameter, and never skips the
+      // PASSWORD check above — the user is already fully authenticated by
+      // this point. It cannot grant SUPERADMIN (role must equal 'USER') and
+      // is refused for suspended, unverified, or not-yet-activated accounts.
+      // If CANVA_REVIEW_USER_ID is unset, this branch can never match —
+      // fails closed, not open.
       //
       // Removal: deleting this block restores the standard OTP flow for this
       // account with no other code change.
       // ---------------------------------------------------------------
-      const CANVA_REVIEW_EMAIL = 'canva.review@dotstark.tech';
+      const CANVA_REVIEW_USER_ID = process.env.CANVA_REVIEW_USER_ID || '';
       const isCanvaReviewAccount =
-        user.email?.toLowerCase() === CANVA_REVIEW_EMAIL &&
+        CANVA_REVIEW_USER_ID.length > 0 &&
+        user.id === CANVA_REVIEW_USER_ID &&
         user.role === 'USER' &&
         user.status === 'ACTIVE' &&
         user.emailVerifiedAt !== null &&

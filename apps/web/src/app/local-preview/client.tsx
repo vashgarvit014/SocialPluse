@@ -82,7 +82,7 @@ export default function PreviewClient() {
   const [pubBusy, setPubBusy] = useState(false);
   const [schedBusy, setSchedBusy] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
-  const [collab, setCollab] = useState('');
+  const [collab, setCollab] = useState<Array<{ username: string; type: 'professional' | 'private'; status: string; lastUpdatedAt?: string; note?: string }>>([]);
   const imgBlock = search.get('imgblock') === '1';
   useEffect(() => {
     if (!demoBrand) return;
@@ -300,7 +300,14 @@ export default function PreviewClient() {
     disconnectPlatform: (pl: string) => setConnPlats(prev => prev.filter(x => x !== pl)), disconnectWhatsApp: () => setWhapiOn(false), whatsappDisconnecting: false, whapiLoading: false,
     refreshWhapiStatus: noop, whapiSelectedDestinations: new Set<string>() as unknown as Set<string>, setWhapiSelectedDestinations: noop, whapiDestinations: [] as unknown[], whapiGroupsLoading: false, whapiGroupsError: '', loadWhapiDestinations: noop, whapiSelectedGroupId: whapiOn ? 'wa-preview-chat' : null, whapiPublishing: false, publishToWhapi: noop, setAccountPageId: noop,
     connectPlatform: (pl: string) => setConnPlats(prev => [...new Set([...prev, pl])]),
-    collaborator: collab, setCollaborator: (v: string) => setCollab(v),
+    collaborators: collab,
+    addCollaborator: () => setCollab(cs => cs.length >= 3 ? cs : [...cs, { username: '', type: 'professional', status: 'Not Requested' }]),
+    removeCollaborator: (i: number) => setCollab(cs => cs.filter((_, idx) => idx !== i)),
+    updateCollaboratorField: (i: number, patch: Record<string, unknown>) => setCollab(cs => cs.map((c, idx) => idx === i ? { ...c, ...patch } : c)),
+    markCollaboratorSent: (i: number) => setCollab(cs => cs.map((c, idx) => idx === i ? { ...c, status: 'Manual Action Required' } : c)),
+    markCollaboratorPending: (i: number) => setCollab(cs => cs.map((c, idx) => idx === i ? { ...c, status: 'Pending Acceptance' } : c)),
+    markCollaboratorResolved: (i: number, outcome: string) => setCollab(cs => cs.map((c, idx) => idx === i ? { ...c, status: outcome } : c)),
+    instagramPostUrl: '',
     logoImage: logoImg, logoPosition: logoPos, logoScale: 0.18, logoOpacity: 1,
     setLogoModalOpen: noop,
     setLogoPosition: (v: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center') => setLogoPos(v),

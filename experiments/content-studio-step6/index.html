@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Social Media Manager Dashboard – Content Studio</title>
+<style>
+:root{
+  --bg:#f5f6fb; --card:#fff; --ink:#111827; --muted:#5b6475; --line:#e8eaf2;
+  --brand:#7c3aed; --brand-2:#6d28d9; --brand-soft:#f1ebff; --brand-line:#ddd0fb;
+  --ok:#0f9d6b; --ok-soft:#e3f8ef; --danger:#dc2626;
+  --side:#0f1530; --side-ink:#d7dbf0; --side-muted:#8a90b0;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);display:flex;min-height:100vh}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+/* Sidebar */
+.sidebar{width:260px;background:var(--side);color:var(--side-ink);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;flex-shrink:0}
+.logo-row{display:flex;align-items:center;gap:12px;padding:22px 20px;border-bottom:1px solid #ffffff12}
+.logo-mark{width:40px;height:40px;border-radius:12px;background:#0b0f26;display:grid;place-items:center;box-shadow:0 0 0 1px #ffffff18}
+.logo-row b{display:block;color:#fff;font-size:20px}
+.logo-row small{color:var(--side-muted);font-size:13px}
+.collapse{margin-left:auto;width:30px;height:30px;border-radius:8px;background:#ffffff10;color:var(--side-ink)}
+.nav-label{font-size:11px;letter-spacing:.12em;color:var(--side-muted);padding:22px 20px 10px}
+.nav a{display:flex;align-items:center;gap:12px;margin:2px 12px;padding:13px 14px;border-radius:12px;color:var(--side-ink);text-decoration:none;font-weight:600;font-size:15px}
+.nav a:hover{background:#ffffff0d}
+.nav a.active{background:var(--brand);color:#fff;box-shadow:0 8px 20px #7c3aed55}
+.side-bottom{margin-top:auto;padding:16px;border-top:1px solid #ffffff12}
+.user{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:13px}
+.avatar{width:40px;height:40px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:700}
+.user small{display:block;color:var(--side-muted)}
+.promo{background:linear-gradient(135deg,#7c3aed,#8b5cf6);border-radius:16px;padding:16px;color:#fff}
+.promo small{font-size:11px;letter-spacing:.12em;opacity:.85;font-weight:700}
+.promo b{display:block;margin:6px 0 12px;font-size:17px;line-height:1.25}
+.promo button{width:100%;padding:10px;border-radius:10px;background:#ffffff2e;font-weight:600;font-size:13px;color:#fff}
+
+/* Main */
+.main{flex:1;min-width:0}
+.topbar{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;padding:14px 24px}
+.menu-btn{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:#f7f8fc}
+.title h1{font-size:19px;display:flex;align-items:center;gap:8px}
+.title h1::before{content:"";width:8px;height:8px;border-radius:50%;background:#22c55e}
+.title p{color:var(--muted);font-size:14px;margin-top:2px}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:14px;font-size:14px;color:var(--muted)}
+.pill{padding:9px 16px;border-radius:999px;border:1px solid var(--line);font-weight:600}
+.pill.brand{background:var(--brand-soft);border-color:var(--brand-line);color:var(--brand-2);font-weight:700}
+.pill i{display:inline-block;width:10px;height:10px;border-radius:50%;background:#64748b;margin-right:8px}
+.bell{width:48px;height:48px;border-radius:14px;border:1px solid var(--line);background:#fff}
+.top-avatar{width:48px;height:48px;border-radius:14px;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:700}
+
+.content{padding:28px 32px 40px;max-width:1600px;margin:0 auto}
+.card{background:var(--card);border-radius:20px;border:1px solid var(--line);box-shadow:0 6px 24px #1118270a;padding:26px}
+
+/* Stepper */
+.stepper-card{padding:20px}
+.stepper{background:#0b0f1e;border-radius:48px;padding:26px 36px 22px;color:#fff;overflow:hidden}
+.steps{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.step{display:flex;align-items:center;gap:12px;font-weight:600;white-space:nowrap}
+.dot{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:#1c2236;border:1px solid #2c3450;color:#9aa3bd;font-weight:700}
+.step.done .dot{background:var(--brand);border-color:var(--brand);color:#fff}
+.step.current .dot{background:#8b5cf6;color:#fff;box-shadow:0 0 0 6px #7c3aed33}
+.step.future{color:#aab1c8}
+.bar{flex:1;height:2px;background:#2b3350;min-width:20px}
+.bar.on{background:var(--brand)}
+.progress{height:6px;background:#1c2236;border-radius:6px;margin:20px 40px 0;position:relative}
+.progress span{display:block;height:100%;width:75%;border-radius:6px;background:linear-gradient(90deg,#6d28d9,#a78bfa)}
+.progress span::after{content:"";position:absolute;left:75%;top:50%;width:14px;height:14px;border-radius:50%;background:#c4b5fd;transform:translate(-50%,-50%);box-shadow:0 0 0 3px #7c3aed66}
+
+/* Layout */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;margin-top:22px}
+.stack{display:flex;flex-direction:column;gap:22px;min-width:0}
+.head{display:flex;gap:16px;align-items:center}
+.head .ico{width:52px;height:52px;border-radius:14px;background:var(--brand-soft);display:grid;place-items:center;font-size:24px;flex-shrink:0}
+.head h2{font-size:26px;letter-spacing:-.01em}
+.head p{color:var(--muted);margin-top:2px}
+.callout{margin-top:22px;background:var(--brand-soft);border:1px solid var(--brand-line);border-radius:14px;padding:18px 22px;color:var(--brand-2);font-weight:600;line-height:1.5}
+.section-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.section-top h3,.card h3{font-size:19px}
+.sub{color:var(--muted);font-size:14.5px;margin-top:4px}
+.btn{padding:14px 26px;border-radius:14px;font-weight:700;font-size:15px}
+.btn.primary{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;box-shadow:0 10px 22px #7c3aed44}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:#fff;border:1px solid var(--line)}
+.btn.ghost:hover{background:#f7f8fc}
+
+/* Logo block (single, full width now that colors/fonts are removed) */
+.logo-box{margin-top:20px;border:1px solid var(--line);border-radius:16px;padding:22px;display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.logo-thumb{width:68px;height:68px;border-radius:16px;background:#0b0f26;display:grid;place-items:center;border:1px solid var(--line)}
+.logo-info{flex:1;min-width:200px}
+.logo-info small{font-size:12px;letter-spacing:.12em;font-weight:700;color:var(--muted)}
+.logo-info b{display:block;font-size:18px;margin:4px 0}
+.logo-info .ok{color:var(--ok);font-size:13.5px;font-weight:600}
+.logo-actions{display:flex;gap:10px}
+.btn.dashed{border:1.5px dashed #a78bfa;color:var(--brand-2);background:#fff;padding:12px 20px}
+.btn.remove{border:1px solid #f2b4b4;color:var(--danger);background:#fff;padding:12px 20px}
+.note{margin-top:14px;font-size:13.5px;color:var(--muted)}
+.wide{width:100%;margin-top:12px;padding:15px;border:1px solid var(--line);border-radius:12px;font-weight:700;background:#fff}
+.wide:hover{background:#f7f8fc}
+
+/* Preview */
+.chips{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:16px 0}
+.chips label{font-weight:700}
+select{font:inherit;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:#fff;font-weight:600}
+.chip{padding:8px 16px;border-radius:999px;background:var(--brand-soft);border:1px solid var(--brand-line);color:var(--brand-2);font-weight:700;font-size:14px}
+.preview{position:relative;border-radius:20px;overflow:hidden;background:#0b0f26;aspect-ratio:16/9}
+.photo{position:absolute;inset:0 6.5% 0 6.5%;background:
+  radial-gradient(circle at 62% 38%,#f2c9a8 0 9%,transparent 9.5%),
+  radial-gradient(ellipse at 60% 70%,#3d6b9a 0 24%,transparent 24.5%),
+  radial-gradient(circle at 20% 20%,#cfd6e2,transparent 40%),
+  linear-gradient(135deg,#8fa3b8,#c8b8a6 55%,#587a58)}
+.wm{position:absolute;padding:6px;background:#fff;border-radius:8px;width:18%;max-width:180px;aspect-ratio:1;left:1.5%;bottom:21%}
+.wm div{width:100%;height:100%;border-radius:14px;background:#0b0f26;display:grid;place-items:center}
+.actions{position:absolute;left:1.5%;right:1.5%;bottom:3%;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.actions button{padding:12px;border-radius:10px;font-weight:700;background:#f3f4f8;color:var(--ink)}
+.actions .apply{background:var(--brand);color:#fff}
+.actions .del{background:#d62828;color:#fff}
+
+/* ALT */
+.alt-row{display:flex;justify-content:space-between;color:var(--muted);font-size:13.5px;margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+.alt-row b{color:var(--ink);font-size:16px}
+details{margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:13px 16px;font-weight:600}
+details textarea{width:100%;margin-top:12px;padding:12px;border-radius:10px;border:1px solid var(--line);font:inherit;min-height:80px;resize:vertical}
+.gen{margin-top:14px;padding:12px 20px;border-radius:10px;border:1px solid var(--line);font-weight:600;background:#fff}
+.gen:hover{background:#f7f8fc}
+.nav-btns{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
+.nav-btns .right{display:flex;gap:14px}
+
+/* Right column */
+.ai{background:linear-gradient(160deg,#ece4ff,#d9ccff);border:1px solid var(--brand-line);text-align:center;padding:30px 24px;position:relative}
+.ai .bot{width:96px;height:96px;margin:0 auto 14px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:46px;box-shadow:0 8px 20px #7c3aed2a}
+.ai h3{font-size:22px;line-height:1.3}
+.ai p{margin-top:12px;color:#4b4f6b;font-weight:500;line-height:1.5}
+.tips h3{display:flex;gap:8px;align-items:center;margin-bottom:16px}
+.tips li{list-style:none;display:flex;gap:12px;align-items:center;padding:9px 0;font-weight:600;font-size:15px}
+.tips li::before{content:"✓";width:26px;height:26px;border-radius:50%;border:1.5px solid #34d399;color:var(--ok);display:grid;place-items:center;font-size:13px;flex-shrink:0}
+.quote{background:var(--brand-soft);border:1px solid var(--brand-line);text-align:center;color:var(--brand-2);font-weight:700;font-size:18px;line-height:1.5}
+.quote span{display:block;font-size:34px;line-height:.8;margin-bottom:8px}
+
+
+/* Balanced two-column panel */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:0;padding:0}
+.pane{display:flex;flex-direction:column;gap:14px;padding:26px 28px;min-width:0;min-height:0}
+.pane+.pane{border-left:1px solid var(--line)}
+.pane .logo-box{margin:6px 0 0;padding:18px;background:#fbfbfe;flex-wrap:nowrap;flex:1}
+.pane .alt-row{margin:6px 0 0;padding:14px 0 0}
+.pane details{margin:0;flex:1;display:flex;flex-direction:column}
+.pane details textarea{flex:1;min-height:120px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pair .btn{padding:14px 10px;text-align:center;font-size:14px;white-space:nowrap}
+.pair+.pair{margin-top:0}
+.pair.bottom{margin-top:auto}
+@media (max-width:900px){.split{grid-template-columns:1fr}.pane+.pane{border-left:0;border-top:1px solid var(--line)}}
+@media (max-width:1100px){.grid{grid-template-columns:1fr}.sidebar{display:none}.steps .step span{display:none}}
+@media (max-width:640px){.content{padding:16px}.top-right .pill,.top-right>span{display:none}.actions{grid-template-columns:1fr 1fr}.actions button{padding:8px;font-size:12px}}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="logo-row">
+    <div class="logo-mark"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7" stroke="#8b5cf6" stroke-width="2.5" stroke-dasharray="30 14"/><circle cx="12" cy="12" r="2.5" fill="#fff"/></svg></div>
+    <div><b>SocialPulse</b><small>Content Manager</small></div>
+    <button class="collapse" aria-label="Collapse sidebar">‹</button>
+  </div>
+  <div class="nav-label">MAIN</div>
+  <nav class="nav">
+    <a href="#">📊 Dashboard</a>
+    <a href="#" class="active">✏️ Content Studio</a>
+    <a href="#">📅 Scheduler</a>
+    <a href="#">📈 Analytics</a>
+    <a href="#">🖼️ Asset Gallery</a>
+    <a href="#">🔗 Connect Platforms</a>
+  </nav>
+  <div class="side-bottom">
+    <div class="user"><div class="avatar">G</div><div><b style="color:#fff">Garvit</b><small>dev.dotstark@gmail.com</small></div></div>
+    <div class="promo"><small>AI-POWERED</small><b>Social Media Made Simple</b><button>Try Studio →</button></div>
+  </div>
+</aside>
+
+<div class="main">
+  <header class="topbar">
+    <button class="menu-btn" aria-label="Menu">≡</button>
+    <div class="title"><h1>Content Studio</h1><p>Turn your ideas into impactful social media content with AI</p></div>
+    <div class="top-right">
+      <span class="pill brand">Create. Brand. Schedule. Grow.</span>
+      <span class="pill"><i></i>No platform connected</span>
+      <span>Wed, Oct 7</span>
+      <button class="bell" aria-label="Notifications">🔔</button>
+      <div class="top-avatar">A</div>
+    </div>
+  </header>
+
+  <div class="content">
+    <!-- Stepper -->
+    <section class="card stepper-card">
+      <div class="stepper">
+        <div class="steps">
+          <div class="step done"><div class="dot">✓</div><span>Media</span></div><div class="bar on"></div>
+          <div class="step done"><div class="dot">✓</div><span>Design</span></div><div class="bar on"></div>
+          <div class="step current"><div class="dot">6</div><span>Personalization</span></div><div class="bar"></div>
+          <div class="step future"><div class="dot">7</div><span>Preview</span></div><div class="bar"></div>
+          <div class="step future"><div class="dot">8</div><span>Publish</span></div>
+        </div>
+        <div class="progress"><span></span></div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <!-- LEFT -->
+      <div class="stack">
+        <section class="card">
+          <div class="head">
+            <div class="ico">🎨</div>
+            <div><h2>Branding &amp; Accessibility</h2><p>Step 6 of 8: Apply your brand identity and make your visuals accessible</p></div>
+          </div>
+          <div class="callout">✨ Consistent branding creates recognition, while accessible visuals make your content easier for everyone to understand.</div>
+        </section>
+
+        <!-- Design Preview -->
+        <section class="card">
+          <h3>Design Preview</h3>
+          <p class="sub">See how your brand identity looks on your selected visual.</p>
+          <div class="chips">
+            <label for="platform">Preview for</label>
+            <select id="platform"><option>Instagram</option><option>Facebook</option><option>LinkedIn</option><option>X</option></select>
+            <span class="chip">16:9 • Landscape</span><span class="chip">Cinematic</span>
+          </div>
+          <div class="preview">
+            <div class="photo"></div>
+            <div class="wm"><div><svg width="56%" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7" stroke="#8b5cf6" stroke-width="2.5" stroke-dasharray="30 14"/><circle cx="12" cy="12" r="2.5" fill="#fff"/></svg></div></div>
+            <div class="actions">
+              <button>✏️ Edit</button><button>🖼️ Cover</button><button class="apply">🏷️ Apply to All</button><button class="del">🗑️ Delete</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Logo + ALT: balanced two-column panel -->
+        <section class="card split">
+          <div class="pane">
+            <h3>Logo &amp; Visual Identity</h3>
+            <p class="sub">Upload your brand logo once and apply it to this image or all images.</p>
+            <div class="logo-box">
+              <div class="logo-thumb"><svg width="36" height="36" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7" stroke="#8b5cf6" stroke-width="2.5" stroke-dasharray="30 14"/><circle cx="12" cy="12" r="2.5" fill="#fff"/></svg></div>
+              <div class="logo-info"><small>BRAND LOGO</small><b>SocialPulse</b><span class="ok">✓ Logo uploaded • bottom-right • 18%</span></div>
+            </div>
+            <div class="pair"><button class="btn dashed">Change Logo</button><button class="btn remove">Remove</button></div>
+            <div class="pair bottom"><button class="btn ghost">🏷️ Adjust Logo</button><button class="btn primary">Apply to All Slides</button></div>
+          </div>
+          <div class="pane">
+            <h3>Describe Your Image</h3>
+            <p class="sub">Add a short description to help people using screen readers understand your image.</p>
+            <div class="alt-row"><b>Image ALT text</b><span>Descriptions stay with your images.</span></div>
+            <details open>
+              <summary>Image 1 · ALT missing</summary>
+              <textarea placeholder="Describe this image, e.g. “A smiling woman using a tablet outdoors”"></textarea>
+            </details>
+            <div class="pair bottom"><button class="btn ghost">Generate Missing ALT Text</button><button class="btn primary">Save ALT Text</button></div>
+          </div>
+        </section>
+
+        <div class="nav-btns">
+          <button class="btn ghost">← Back</button>
+          <div class="right"><button class="btn ghost">Preview</button><button class="btn primary">Next →</button></div>
+        </div>
+      </div>
+
+      <!-- RIGHT -->
+      <aside class="stack">
+        <section class="card ai">
+          <div class="bot">🤖</div>
+          <h3>Build a Stronger Brand with AI ✨</h3>
+          <p>Consistent visuals create recognition and make your content easier to remember.</p>
+        </section>
+
+        <section class="card tips">
+          <h3>💡 Quick Tips</h3>
+          <ul>
+            <li>Use a recognizable logo</li>
+            <li>Maintain strong contrast</li>
+            <li>Add ALT text to images</li>
+            <li>Apply branding across slides</li>
+          </ul>
+        </section>
+
+        <section class="card quote"><span>“</span>Consistency today,<br>stronger connections tomorrow.</section>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+/* Demo-only interactions for local review. No backend, no network. */
+function $(s){ return document.querySelector(s); }
+function $(all, s){ return Array.prototype.slice.call(document.querySelectorAll(all ? s || all : all)); }
+function flash(msg){
+  var el = document.createElement('div');
+  el.textContent = msg;
+  el.setAttribute('role', 'status');
+  el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;font-size:13px;font-weight:600;border-radius:12px;padding:12px 20px;box-shadow:0 12px 32px rgba(0,0,0,.3);z-index:50';
+  document.body.appendChild(el);
+  setTimeout(function(){ el.remove(); }, 2200);
+}
+var DEFAULT_LOGO = document.querySelector('.logo-thumb').innerHTML;
+var DEFAULT_WM = document.querySelector('.wm > div').innerHTML;
+var fileInput = document.createElement('input');
+fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.hidden = true;
+document.body.appendChild(fileInput);
+fileInput.addEventListener('change', function(){
+  var f = fileInput.files && fileInput.files[0];
+  if (!f) return;
+  var url = URL.createObjectURL(f);
+  var img = '<img src="' + url + '" alt="Brand logo" style="width:100%;height:100%;object-fit:cover">';
+  document.querySelector('.logo-thumb').innerHTML = img;
+  document.querySelector('.wm > div').innerHTML = img;
+  var ok = document.querySelector('.logo-info .ok');
+  if (ok) ok.textContent = '✓ Logo uploaded • ' + f.name;
+  fileInput.value = '';
+  flash('Logo updated (demo, local only)');
+});
+document.querySelectorAll('.logo-actions .dashed').forEach(function(b){
+  b.addEventListener('click', function(){ fileInput.click(); });
+});
+document.querySelectorAll('.logo-actions .remove').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.querySelector('.logo-thumb').innerHTML = DEFAULT_LOGO;
+    document.querySelector('.wm > div').innerHTML = DEFAULT_WM;
+    var ok = document.querySelector('.logo-info .ok');
+    if (ok) ok.textContent = 'No logo uploaded';
+    flash('Logo removed (demo)');
+  });
+});
+var sizes = ['14%', '18%', '24%'], sizeIdx = 1;
+document.querySelectorAll('.wide').forEach(function(b){
+  if (!/Adjust Logo/.test(b.textContent)) return;
+  b.addEventListener('click', function(){
+    sizeIdx = (sizeIdx + 1) % sizes.length;
+    document.querySelector('.wm').style.width = 'calc(18% + ' + (sizeIdx * 4) + '%)';
+    flash('Logo size: ' + sizes[sizeIdx] + ' (demo)');
+  });
+});
+var genBtn = null;
+document.querySelectorAll('button').forEach(function(b){
+  if (/Generate Missing ALT Text/.test(b.textContent)) genBtn = b;
+});
+if (genBtn) genBtn.addEventListener('click', function(){
+  var btn = genBtn;
+  btn.disabled = true;
+  var orig = btn.textContent;
+  btn.textContent = 'Generating…';
+  setTimeout(function(){
+    var samples = [
+      'A smiling woman using a tablet outdoors in natural light.',
+      'A product close-up on a clean pastel background.'
+    ];
+    var tas = document.querySelectorAll('details textarea');
+    var filled = 0;
+    Array.prototype.forEach.call(tas, function(ta, i){
+      if (!ta.value.trim()) { ta.value = samples[i % samples.length]; filled++; }
+    });
+    btn.textContent = filled ? '✓ Descriptions added' : orig;
+    btn.disabled = false;
+    setTimeout(function(){ btn.textContent = orig; }, 2500);
+  }, 900);
+});
+document.querySelectorAll('.actions button, .nav-btns button').forEach(function(b){
+  if (b === genBtn) return;
+  b.addEventListener('click', function(){ flash(b.textContent.trim() + ' (demo)'); });
+});
+Array.prototype.forEach.call(document.querySelectorAll('button'), function(b){
+  if (/^Save ALT Text$/.test(b.textContent.trim())) b.addEventListener('click', function(){ flash('ALT text saved (demo)'); });
+});
+})();
+</script>
+</body>
+</html>

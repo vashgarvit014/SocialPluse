@@ -67,6 +67,9 @@ export default async function SuperadminModerationPage() {
 
   return (
     <>
+      <div style={{ marginBottom: 14 }}>
+        <a href="/superadmin/moderation/violations" style={{ fontSize: 12.5, fontWeight: 700, color: '#6b5cf6', textDecoration: 'none' }}>View all violations (uploads, AI generation, publishing) →</a>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
         <StatTile label="Flagged Accounts" value={flagged.length} tone={flagged.length ? '#c0352c' : undefined} />
         <StatTile label="Warnings Today" value={warningsToday} />

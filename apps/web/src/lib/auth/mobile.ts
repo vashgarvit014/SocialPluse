@@ -16,7 +16,7 @@ export function normalizeMobile(input: string): string {
 
 export function isValidMobile(input: string): boolean {
   const normalized = normalizeMobile(input);
-  if (!E164_RE.test(normalized)) return false;
+  if (!normalized.startsWith('+')) return false;
   return parsePhoneNumberFromString(normalized)?.isValid() === true;
 }
 

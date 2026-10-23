@@ -1,9 +1,12 @@
 // Faithful port of src/lib/instagram-trial.ts.
 const TRIAL_GRAPH = 'https://graph.facebook.com/v26.0';
 
+// Input here is already the professional-only, normalized username list
+// produced by instagram.mjs's splitCollaborators() — this just applies the
+// final shape/cap, it does not re-derive type-blind splitting from raw text.
 function normalizeCollaborators(input) {
   if (!input || input.length === 0) return undefined;
-  const names = input.flatMap((c) => String(c).split(/[,\s]+/)).map((c) => c.trim().replace(/^@+/, '')).filter(Boolean).slice(0, 3);
+  const names = input.map((c) => String(c).trim().replace(/^@+/, '')).filter(Boolean).slice(0, 3);
   return names.length > 0 ? names : undefined;
 }
 
@@ -33,7 +36,7 @@ async function waitForTrialContainer(containerId, token) {
 
 export async function publishInstagramTrialReel(req) {
   if (process.env.MOCK_TRIAL_REELS === 'true') {
-    return { ok: true, code: 'TRIAL_REEL_MOCK_SUCCESS', message: 'Trial Reel simulated (mock mode — nothing was posted to Instagram).', status: 200, postId: `mock_${req.attemptId}`, mock: true };
+    return { ok: true, code: 'TRIAL_REEL_MOCK_SUCCESS', message: 'Trial Reel simulated (mock mode — nothing was posted to Instagram).', status: 200, postId: `mock_${req.attemptId}`, mock: true, collaborators: req.collaborators };
   }
   if (!req.videoUrl) return { ok: false, code: 'INSTAGRAM_MEDIA_REQUIRED', message: 'Instagram Trial Reels require a video — text-only posts are not supported by the API.', status: 400 };
   if (!req.igUserId || !req.token) return { ok: false, code: 'INSTAGRAM_NOT_CONNECTED', message: 'Instagram is not connected. Connect Facebook (with a linked Instagram Business account) before publishing.', status: 401 };

@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
 import { Pool, types } from 'pg';
 import { createLogger } from '../packages/logger/index.mjs';
 import { verifyInternalSecret, internalFetchHeaders } from '../packages/service-auth/index.mjs';
@@ -28,6 +28,26 @@ const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://user-service:4010';
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:4011';
 const SCHEDULER_SERVICE_URL = process.env.SCHEDULER_SERVICE_URL || 'http://scheduler-service:4007';
+const MEDIA_SERVICE_URL = process.env.MEDIA_SERVICE_URL || 'http://media-service:4004';
+// Dedicated secret for the short-lived flagged-media view token — kept
+// separate from INTERNAL_SERVICE_SECRET because this one, unlike every
+// other internal secret in the system, ends up embedded in a URL that
+// reaches a browser (a different trust boundary).
+const ADMIN_MEDIA_SIGNING_SECRET = process.env.ADMIN_MEDIA_SIGNING_SECRET || INTERNAL_SECRET;
+const MEDIA_TOKEN_TTL_MS = 5 * 60 * 1000;
+
+function signMediaToken(assetId) {
+  const exp = Date.now() + MEDIA_TOKEN_TTL_MS;
+  const sig = createHmac('sha256', ADMIN_MEDIA_SIGNING_SECRET).update(`${assetId}.${exp}`).digest('base64url');
+  return new URLSearchParams({ exp: String(exp), sig }).toString();
+}
+function verifyMediaToken(assetId, exp, sig) {
+  if (!exp || !sig || Date.now() > exp) return false;
+  const expected = createHmac('sha256', ADMIN_MEDIA_SIGNING_SECRET).update(`${assetId}.${exp}`).digest('base64url');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(sig);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 const WHAPI_API_TOKEN = process.env.WHAPI_API_TOKEN || '';
 const log = createLogger('admin-service');
 
@@ -66,8 +86,21 @@ async function getConnectionsOverview(db) {
       WHERE disconnected_at IS NULL
       ORDER BY platform, created_at DESC`,
   );
+  // WhatsApp/Whapi lives in its own table, not platform_connections — see
+  // apps/web/src/lib/whatsapp-connections.ts's header comment: status used
+  // to be derived from the shared WHAPI_API_TOKEN being merely configured,
+  // which reported every user as "connected" the moment the service had a
+  // token set, with nobody having scanned a QR code. That bug was fixed for
+  // the per-user flow there; this overview must read the same real table,
+  // not repeat the discredited shortcut.
+  const { rows: waRows } = await db.query(
+    `SELECT user_id, account_name, phone_masked, connected_at
+       FROM whatsapp_connections
+      WHERE status = 'CONNECTED'
+      ORDER BY connected_at DESC`,
+  );
   const fb = summariseConnections('facebook', rows);
-  const ig = summariseConnections('facebook', rows);
+  const ig = summariseConnections('instagram', rows);
   const li = summariseConnections('linkedin', rows);
   const canva = summariseConnections('canva', rows);
   const fbNames = fb.rows
@@ -104,11 +137,13 @@ async function getConnectionsOverview(db) {
     },
     {
       name: 'Whapi (WhatsApp groups)',
-      status: WHAPI_API_TOKEN ? 'CONNECTED' : 'NOT_CONNECTED',
-      account: null,
-      detail: WHAPI_API_TOKEN ? 'Token configured in integrations-service/admin-service env' : 'WHAPI_API_TOKEN not set',
+      status: waRows.length > 0 ? 'CONNECTED' : 'NOT_CONNECTED',
+      account: waRows.map((row) => row.account_name || row.phone_masked).filter(Boolean).slice(0, 5).join(', ') || null,
+      detail: waRows.length > 0
+        ? `${waRows.length} user${waRows.length === 1 ? '' : 's'} connected`
+        : WHAPI_API_TOKEN ? 'Provider configured — no user has connected yet' : 'WHAPI_API_TOKEN not set',
       lastPublishAt: null,
-      connectedUsers: WHAPI_API_TOKEN ? 1 : 0,
+      connectedUsers: waRows.length,
     },
     {
       name: 'Canva',
@@ -140,6 +175,7 @@ function getPool() {
 const ADMIN_ACTION_EVENTS = [
   'ACCOUNT_SUSPENDED', 'ACCOUNT_REACTIVATED', 'USER_CREATED_BY_ADMIN', 'RESET_ACCESS_TRIGGERED',
   'SESSION_TERMINATED', 'PUBLISH_RETRIED', 'PUBLISH_MOVED_TO_DRAFT',
+  'MODERATION_INCIDENT_ACTION', 'RESTRICTED_MEDIA_VIEWED',
 ];
 
 async function listAdminAuditEvents({ search, limit }) {
@@ -343,6 +379,95 @@ const server = http.createServer(async (req, res) => {
       return send(res, status, data);
     } catch (err) {
       log.error({ requestId, event: 'moderation_action_failed', message: err instanceof Error ? err.message : 'unknown' });
+      return send(res, 503, { code: 'ADMIN_SERVICE_UNAVAILABLE', message: 'Admin service is temporarily unavailable.' });
+    }
+  }
+
+  // --- Content Violation Monitoring: GET /moderation/violations[/:id][/stats] ---
+
+  if (url.pathname === '/moderation/violations/stats' && req.method === 'GET') {
+    if (!verifyInternalSecret(req, INTERNAL_SECRET)) return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
+    try {
+      const { status, data } = await callUserService('/internal/moderation/incidents/stats');
+      return send(res, status, data);
+    } catch (err) {
+      log.error({ requestId, event: 'violations_stats_failed', message: err instanceof Error ? err.message : 'unknown' });
+      return send(res, 503, { code: 'ADMIN_SERVICE_UNAVAILABLE', message: 'Admin service is temporarily unavailable.' });
+    }
+  }
+
+  if (url.pathname === '/moderation/violations' && req.method === 'GET') {
+    if (!verifyInternalSecret(req, INTERNAL_SECRET)) return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
+    try {
+      const { status, data } = await callUserService(`/internal/moderation/incidents${url.search}`);
+      return send(res, status, data);
+    } catch (err) {
+      log.error({ requestId, event: 'violations_list_failed', message: err instanceof Error ? err.message : 'unknown' });
+      return send(res, 503, { code: 'ADMIN_SERVICE_UNAVAILABLE', message: 'Admin service is temporarily unavailable.' });
+    }
+  }
+
+  // GET /moderation/violations/:id — detail, plus a short-lived
+  // admin-signed media-view token when the incident has non-restricted media.
+  if (parts[0] === 'moderation' && parts[1] === 'violations' && parts.length === 3 && req.method === 'GET') {
+    if (!verifyInternalSecret(req, INTERNAL_SECRET)) return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
+    try {
+      const { status, data } = await callUserService(`/internal/moderation/incidents/${parts[2]}`);
+      if (status !== 200) return send(res, status, data);
+      const incident = data.incident;
+      // Relative to admin-service's OWN routes (no /api/admin prefix) — the
+      // browser never reaches this service directly; apps/superadmin's
+      // local proxy route (api/superadmin/moderation/media/[assetId]) is
+      // what turns this into a real fetchable URL via the gateway.
+      let mediaViewUrl;
+      if (incident.media_asset_id && !incident.media_restricted) {
+        mediaViewUrl = `/moderation/media/${incident.media_asset_id}?${signMediaToken(incident.media_asset_id)}`;
+      }
+      return send(res, 200, { incident, mediaViewUrl });
+    } catch (err) {
+      log.error({ requestId, event: 'violation_detail_failed', message: err instanceof Error ? err.message : 'unknown' });
+      return send(res, 503, { code: 'ADMIN_SERVICE_UNAVAILABLE', message: 'Admin service is temporarily unavailable.' });
+    }
+  }
+
+  // POST /moderation/violations/:id — mark-under-review | resolve |
+  // dismiss-false-positive | escalate-restricted.
+  if (parts[0] === 'moderation' && parts[1] === 'violations' && parts.length === 3 && req.method === 'POST') {
+    if (!verifyInternalSecret(req, INTERNAL_SECRET)) return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
+    try {
+      const body = await readJsonBody(req);
+      const { status, data } = await callUserService(`/internal/moderation/incidents/${parts[2]}`, { method: 'POST', body: { ...body, adminId: actorUserId } });
+      if (status === 200) logAuditEvent(getPool(), 'MODERATION_INCIDENT_ACTION', { userId: actorUserId, meta: { incidentId: parts[2], action: body.action } });
+      return send(res, status, data);
+    } catch (err) {
+      log.error({ requestId, event: 'violation_action_failed', message: err instanceof Error ? err.message : 'unknown' });
+      return send(res, 503, { code: 'ADMIN_SERVICE_UNAVAILABLE', message: 'Admin service is temporarily unavailable.' });
+    }
+  }
+
+  // GET /moderation/media/:assetId?exp=&sig= — the ONLY way restricted
+  // flagged media ever reaches a Super Admin's browser: a short-lived
+  // (5-minute) signed token, never a public URL, verified here, then
+  // streamed from media-service's internal-only route. Every successful
+  // redemption is audited.
+  if (parts[0] === 'moderation' && parts[1] === 'media' && parts.length === 3 && req.method === 'GET') {
+    if (!verifyInternalSecret(req, INTERNAL_SECRET)) return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
+    const assetId = parts[2];
+    const exp = Number(url.searchParams.get('exp'));
+    const sig = url.searchParams.get('sig') || '';
+    if (!verifyMediaToken(assetId, exp, sig)) return send(res, 403, { code: 'MEDIA_TOKEN_INVALID', message: 'This media link has expired or is invalid.' });
+    try {
+      const mediaRes = await fetch(`${MEDIA_SERVICE_URL}/internal/media-assets/${assetId}`, {
+        headers: internalFetchHeaders(INTERNAL_SECRET, requestId),
+      });
+      if (!mediaRes.ok) return send(res, mediaRes.status, { code: 'MEDIA_NOT_FOUND', message: 'Media not found.' });
+      logAuditEvent(getPool(), 'RESTRICTED_MEDIA_VIEWED', { userId: actorUserId, meta: { assetId } });
+      const contentType = mediaRes.headers.get('content-type') || 'application/octet-stream';
+      res.writeHead(200, { 'content-type': contentType, 'cache-control': 'private, no-store' });
+      const buf = Buffer.from(await mediaRes.arrayBuffer());
+      return res.end(buf);
+    } catch (err) {
+      log.error({ requestId, event: 'media_proxy_failed', message: err instanceof Error ? err.message : 'unknown' });
       return send(res, 503, { code: 'ADMIN_SERVICE_UNAVAILABLE', message: 'Admin service is temporarily unavailable.' });
     }
   }

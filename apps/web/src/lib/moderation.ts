@@ -341,10 +341,22 @@ export function localIntentCheck(rawPrompt: string): ModerationResult | null {
     const realPerson = matchesAny(rawPrompt, REAL_PERSON_PATTERNS);
     if (staticFraming && !realPerson) return null;
     if (benign >= 2 && !realPerson) return null;
+    // Keyword-only and inherently ambiguous: DEPICTION_PATTERNS matches
+    // generic words like "photo"/"show", and REAL_PERSON_PATTERNS itself
+    // matches "photo"/"photograph" — so almost every image-gen prompt here
+    // ("photo of a ...") trips realPerson and skips the benign-context
+    // escape above. Confidence used to reach 0.85 (>= the 0.8
+    // LOCAL_CONFIDENCE_FLOOR below), letting this generic combo hard-block
+    // at the INTENT layer alone — e.g. "photo of a topless man swimming" —
+    // without ever reaching the CLASSIFIER layer that understands context
+    // (sports, swimwear, art). Both values now stay under the floor so this
+    // ambiguous case always escalates to the classifier instead; the
+    // unambiguous patterns above (explicit sexual acts, minors, suggestive
+    // keywords) are untouched and still hard-block here.
     return {
       decision: 'BLOCK_NUDITY',
       method: 'INTENT',
-      confidence: benign >= 1 ? 0.65 : 0.85,
+      confidence: benign >= 1 ? 0.5 : 0.75,
       reason: 'Request asks to depict an exposed or undressed person',
       countsAsViolation: true,
       severity: 'WARNING',

@@ -478,6 +478,19 @@ async function migrate(client: PoolClient) {
   await client.query(`CREATE INDEX IF NOT EXISTS idx_moderation_created ON moderation_events(created_at DESC)`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_moderation_violations ON moderation_events(user_id, created_at DESC) WHERE counts_as_violation`);
 
+  // Pre-existing bug fix (found while testing Content Violation Monitoring):
+  // this CHECK only ever allowed 4 of ModerationDecision's 7 real values —
+  // BLOCK_SUGGESTIVE, BLOCK_MINOR_SEXUAL and NEEDS_CLARIFICATION were never
+  // included, so any AI-generation request landing on one of those three
+  // decisions would have failed this INSERT outright. Widened to the full
+  // enum (moderation.ts/moderation.mjs's ModerationDecision type).
+  await client.query(`ALTER TABLE moderation_events DROP CONSTRAINT IF EXISTS moderation_events_decision_check`);
+  await client.query(`
+    ALTER TABLE moderation_events ADD CONSTRAINT moderation_events_decision_check CHECK (decision IN (
+      'ALLOW', 'BLOCK_NUDITY', 'BLOCK_EXPLICIT_SEXUAL', 'BLOCK_SUGGESTIVE', 'BLOCK_MINOR_SEXUAL', 'NEEDS_CLARIFICATION', 'BLOCK_OTHER_SAFETY'
+    ))
+  `);
+
   // Denormalised escalation state on the user so the "is this account
   // flagged" question is a single indexed read on the Superadmin users table
   // rather than a scan over moderation_events.
@@ -509,6 +522,50 @@ async function migrate(client: PoolClient) {
   `);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_notif_unread ON admin_notifications(is_read, created_at DESC)`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_notif_user ON admin_notifications(user_id, created_at DESC)`);
+
+  // Content Violation Monitoring. Layered ON TOP of moderation_events (which
+  // stays exactly as-is — the immutable audit log driving the escalation
+  // counter) rather than replacing it: this is the mutable, richer,
+  // one-row-per-case record with a status lifecycle, a human reviewer, and
+  // source/platform/media context, none of which belongs on an append-only
+  // log. Owned by user-service (same owner as moderation_events/
+  // admin_notifications/users.moderation_*) so a user's full moderation
+  // picture stays in one transactional owner. `decision` is deliberately
+  // plain TEXT (not CHECK-constrained) since moderation_events' own
+  // decision CHECK is already missing newer ModerationDecision values
+  // (BLOCK_SUGGESTIVE/BLOCK_MINOR_SEXUAL/NEEDS_CLARIFICATION) — this table
+  // should not duplicate that drift risk.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS moderation_incidents (
+      id UUID PRIMARY KEY,
+      idempotency_key TEXT NOT NULL,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      source TEXT NOT NULL CHECK (source IN ('ASSET_GALLERY_UPLOAD', 'AI_GENERATION', 'DIRECT_PUBLISH', 'SCHEDULED_PUBLISH')),
+      platform TEXT,
+      category TEXT NOT NULL,
+      decision TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'BLOCKED' CHECK (status IN ('BLOCKED', 'UNCERTAIN', 'UNDER_REVIEW', 'RESOLVED', 'DISMISSED_FALSE_POSITIVE')),
+      confidence TEXT,
+      method TEXT NOT NULL,
+      content_excerpt_fingerprint TEXT,
+      content_preview TEXT,
+      media_asset_id UUID,
+      media_restricted BOOLEAN NOT NULL DEFAULT false,
+      violation_count_after INTEGER,
+      warning_notification_id UUID,
+      reviewed_by_admin_id UUID REFERENCES users(id),
+      reviewed_at TIMESTAMPTZ,
+      review_note TEXT,
+      safe_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL,
+      deleted_at TIMESTAMPTZ
+    )
+  `);
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mod_incidents_idem ON moderation_incidents(idempotency_key)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_mod_incidents_user ON moderation_incidents(user_id, created_at DESC)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_mod_incidents_status ON moderation_incidents(status, created_at DESC)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_mod_incidents_category ON moderation_incidents(category, created_at DESC)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_mod_incidents_source ON moderation_incidents(source, created_at DESC)`);
 
   // Durable idempotency + publishing history for publishing-service
   // (services/publishing-service). Previously each provider route kept its

@@ -9,15 +9,17 @@ const NVIDIA_API_URL = `${NVIDIA_BASE_URL.replace(/\/$/, '')}/chat/completions`;
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
 const TEXT_MODEL = process.env.NVIDIA_TEXT_MODEL || 'nvidia/nemotron-3.5-lightning-30b-a3b';
 const TEXT_FALLBACK_MODEL = process.env.NVIDIA_TEXT_FALLBACK_MODEL || 'nvidia/nemotron-3.5-lightning-30b-a3b';
-const VISION_MODEL = 'meta/llama-3.2-11b-vision-instruct';
+const VISION_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning';
+const VISION_FALLBACK_MODEL = 'meta/llama-3.2-11b-vision-instruct';
 const TEXT_TIMEOUT_MS = 120_000;
 
 const INCEPTION_BASE_URL = process.env.INCEPTION_BASE_URL || 'https://api.inceptionlabs.ai/v1';
 const INCEPTION_API_URL = `${INCEPTION_BASE_URL.replace(/\/$/, '')}/chat/completions`;
 const INCEPTION_API_KEY = process.env.INCEPTION_API_KEY;
-const MERCURY_MODEL = process.env.INCEPTION_TEXT_MODEL || 'mercury-2.5';
+const MERCURY_MODEL = process.env.INCEPTION_TEXT_MODEL || 'mercury-3';
+const MERCURY_FALLBACK_MODEL = process.env.INCEPTION_TEXT_FALLBACK_MODEL || 'mercury-2.5';
 const MERCURY_REASONING_EFFORT = process.env.INCEPTION_REASONING_EFFORT || 'low';
-const VISION_MODELS = ['meta/llama-3.2-11b-vision-instruct'];
+const VISION_MODELS = [VISION_MODEL, VISION_FALLBACK_MODEL];
 
 function cleanTopic(raw) {
   let t = raw.trim();
@@ -499,7 +501,10 @@ export async function generateContent(prompt, platforms, tone, hasImage, imageDa
       } catch { /* out of the race */ }
       return null;
     };
-    const winner = await raceToFirst(VISION_MODELS.map(raceDirect));
+    // Only race the primary model directly — VISION_MODELS (tried in order
+    // below) is the sequential fallback chain, not a second concurrent call
+    // on every request.
+    const winner = await raceToFirst([raceDirect(VISION_MODEL)]);
     if (winner) return winner.result;
 
     for (const model of VISION_MODELS) {
@@ -515,6 +520,13 @@ export async function generateContent(prompt, platforms, tone, hasImage, imageDa
           } catch (e) {
             if (/timeout/i.test(e.message)) throw e;
           }
+          try {
+            const rawMercuryFallback = await callMercury(userPrompt, systemPrompt, TEXT_TIMEOUT_MS, MERCURY_FALLBACK_MODEL);
+            const resultMercuryFallback = parseAndValidate(rawMercuryFallback);
+            if (resultMercuryFallback) return resultMercuryFallback;
+          } catch (e) {
+            if (/timeout/i.test(e.message)) throw e;
+          }
           const raw = await callNVIDIA(userPrompt, systemPrompt, TEXT_TIMEOUT_MS, TEXT_MODEL);
           const result = parseAndValidate(raw);
           if (result) return result;
@@ -523,6 +535,11 @@ export async function generateContent(prompt, platforms, tone, hasImage, imageDa
             const rawStrictMercury = await callMercury(userPrompt, strictSystem, TEXT_TIMEOUT_MS, MERCURY_MODEL);
             const resultStrictMercury = parseAndValidate(rawStrictMercury);
             if (resultStrictMercury) return resultStrictMercury;
+          } catch { /* fall through */ }
+          try {
+            const rawStrictMercuryFallback = await callMercury(userPrompt, strictSystem, TEXT_TIMEOUT_MS, MERCURY_FALLBACK_MODEL);
+            const resultStrictMercuryFallback = parseAndValidate(rawStrictMercuryFallback);
+            if (resultStrictMercuryFallback) return resultStrictMercuryFallback;
           } catch { /* fall through */ }
           const rawStrict = await callNVIDIA(userPrompt, strictSystem, TEXT_TIMEOUT_MS, TEXT_FALLBACK_MODEL !== TEXT_MODEL ? TEXT_FALLBACK_MODEL : TEXT_MODEL);
           const resultStrict = parseAndValidate(rawStrict);
@@ -567,6 +584,14 @@ export async function generateContent(prompt, platforms, tone, hasImage, imageDa
   }
 
   try {
+    const rawMercuryFallback = await callMercury(userPrompt, activeSystem, TEXT_TIMEOUT_MS, MERCURY_FALLBACK_MODEL);
+    const resultMercuryFallback = parseAndValidate(rawMercuryFallback);
+    if (resultMercuryFallback) return scopeToSelected(resultMercuryFallback);
+  } catch (e) {
+    if (/timeout/i.test(e.message)) throw e;
+  }
+
+  try {
     const raw = await callNVIDIA(userPrompt, activeSystem, TEXT_TIMEOUT_MS, TEXT_MODEL);
     const result = parseAndValidate(raw);
     if (result) return scopeToSelected(result);
@@ -579,6 +604,11 @@ export async function generateContent(prompt, platforms, tone, hasImage, imageDa
     const rawStrictMercury = await callMercury(userPrompt, retrySystem, TEXT_TIMEOUT_MS, MERCURY_MODEL);
     const resultStrictMercury = parseAndValidate(rawStrictMercury);
     if (resultStrictMercury) return scopeToSelected(resultStrictMercury);
+  } catch { /* fall through to Mercury fallback strict */ }
+  try {
+    const rawStrictMercuryFallback = await callMercury(userPrompt, retrySystem, TEXT_TIMEOUT_MS, MERCURY_FALLBACK_MODEL);
+    const resultStrictMercuryFallback = parseAndValidate(rawStrictMercuryFallback);
+    if (resultStrictMercuryFallback) return scopeToSelected(resultStrictMercuryFallback);
   } catch { /* fall through to NVIDIA strict */ }
   const raw2 = await callNVIDIA(userPrompt, retrySystem, TEXT_TIMEOUT_MS, TEXT_FALLBACK_MODEL !== TEXT_MODEL ? TEXT_FALLBACK_MODEL : TEXT_MODEL);
   const result2 = parseAndValidate(raw2);

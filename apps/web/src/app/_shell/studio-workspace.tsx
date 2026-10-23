@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { MediaItem } from './social-media-manager';
+import type { Collaborator } from '@/lib/posts';
 import StudioWizard from './studio-wizard';
 
 // ---------------------------------------------------------------------------
@@ -148,7 +149,14 @@ export interface StudioWorkspaceProps {
   carouselSlideCount: number; setCarouselSlideCount: (v: number) => void;
   // Instagram Trial Reel (checkbox only for IG + single video Reel)
   trialReel: boolean; setTrialReel: (v: boolean) => void; instagramReelReady: boolean;
-  collaborator: string; setCollaborator: (v: string) => void;
+  collaborators: Collaborator[];
+  addCollaborator: () => void;
+  removeCollaborator: (index: number) => void;
+  updateCollaboratorField: (index: number, patch: Partial<Collaborator>) => void;
+  markCollaboratorSent: (index: number) => void;
+  markCollaboratorPending: (index: number) => void;
+  markCollaboratorResolved: (index: number, outcome: 'Accepted' | 'Declined') => void;
+  instagramPostUrl: string;
   isSavingDraft: boolean;
   // brand
   logoImage: string; logoPosition: string; logoScale: number; logoOpacity: number;

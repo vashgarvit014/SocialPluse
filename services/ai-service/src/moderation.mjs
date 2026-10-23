@@ -151,14 +151,28 @@ export function localIntentCheck(rawPrompt) {
     const realPerson = matchesAny(rawPrompt, REAL_PERSON_PATTERNS);
     if (staticFraming && !realPerson) return null;
     if (benign >= 2 && !realPerson) return null;
-    return { decision: 'BLOCK_NUDITY', method: 'INTENT', confidence: benign >= 1 ? 0.65 : 0.85, reason: 'Request asks to depict an exposed or undressed person', countsAsViolation: true, severity: 'WARNING' };
+    // This branch is keyword-only and inherently ambiguous: DEPICTION_PATTERNS
+    // matches on generic words like "photo"/"show", and REAL_PERSON_PATTERNS
+    // itself matches "photo"/"photograph" — which means almost every
+    // image-gen prompt in this product ("photo of a ...") trips realPerson,
+    // skipping the benign-context escape above entirely. Confidence here used
+    // to reach 0.85 (>= the 0.8 LOCAL_CONFIDENCE_FLOOR in moderatePrompt),
+    // which let this generic combo auto-block at the INTENT layer alone —
+    // e.g. "photo of a topless man swimming" — without ever reaching the
+    // CLASSIFIER layer that actually understands context (sports, swimwear,
+    // art). Both confidences now stay under the floor so this ambiguous case
+    // always escalates to the classifier instead of hard-blocking on
+    // generic nouns; the unambiguous patterns above (explicit sexual acts,
+    // minors, suggestive keywords) are untouched and still hard-block here.
+    return { decision: 'BLOCK_NUDITY', method: 'INTENT', confidence: benign >= 1 ? 0.5 : 0.75, reason: 'Request asks to depict an exposed or undressed person', countsAsViolation: true, severity: 'WARNING' };
   }
   return null;
 }
 
 const INCEPTION_BASE_URL = process.env.INCEPTION_API_BASE || 'https://api.inceptionlabs.ai/v1';
 const INCEPTION_API_KEY = process.env.INCEPTION_API_KEY;
-const INCEPTION_MODEL = process.env.INCEPTION_TEXT_MODEL || 'mercury-2.5';
+const INCEPTION_MODEL = process.env.INCEPTION_TEXT_MODEL || 'mercury-3';
+const INCEPTION_FALLBACK_MODEL = process.env.INCEPTION_TEXT_FALLBACK_MODEL || 'mercury-2.5';
 const INCEPTION_REASONING_EFFORT = process.env.INCEPTION_REASONING_EFFORT || 'low';
 const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
@@ -258,6 +272,7 @@ export function parseClassifierVerdict(raw) {
 async function classifierCheck(prompt) {
   const providers = [];
   if (INCEPTION_API_KEY) providers.push({ base: INCEPTION_BASE_URL, key: INCEPTION_API_KEY, model: INCEPTION_MODEL, name: 'inception', extra: { reasoning_effort: INCEPTION_REASONING_EFFORT } });
+  if (INCEPTION_API_KEY && INCEPTION_FALLBACK_MODEL !== INCEPTION_MODEL) providers.push({ base: INCEPTION_BASE_URL, key: INCEPTION_API_KEY, model: INCEPTION_FALLBACK_MODEL, name: 'inception-fallback', extra: { reasoning_effort: INCEPTION_REASONING_EFFORT } });
   if (NVIDIA_API_KEY) providers.push({ base: NVIDIA_BASE_URL, key: NVIDIA_API_KEY, model: NVIDIA_MODEL, name: 'nvidia' });
 
   for (const p of providers) {

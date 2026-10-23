@@ -2,8 +2,9 @@ import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { createLogger } from '../packages/logger/index.mjs';
-import { verifyInternalSecret } from '../packages/service-auth/index.mjs';
+import { verifyInternalSecret, internalFetchHeaders } from '../packages/service-auth/index.mjs';
 import { createMediaAssetsStore } from './media-assets.mjs';
+import { createHash } from 'node:crypto';
 import { createBrandedVideo } from './ffmpeg-logo.mjs';
 
 // media-service — Asset Gallery storage/retrieval, faithfully ported from
@@ -28,6 +29,20 @@ import { createBrandedVideo } from './ffmpeg-logo.mjs';
 
 const PORT = Number(process.env.PORT || 4004);
 const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET || '';
+const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://user-service:4010';
+
+// Non-blocking, best-effort: an upload rejection must reach the user
+// regardless of whether this side-channel call succeeds — never await-block
+// the upload response on it, never let it throw into the request handler.
+function recordUploadRejectionIncident({ userId, reason, filename }) {
+  const idempotencyKey = createHash('sha256').update(`${userId}|ASSET_GALLERY_UPLOAD|${filename}|${reason}|${Math.floor(Date.now() / 60000)}`).digest('hex');
+  fetch(`${USER_SERVICE_URL}/internal/moderation/upload-rejection`, {
+    method: 'POST',
+    headers: internalFetchHeaders(INTERNAL_SECRET, randomUUID(), { 'content-type': 'application/json' }),
+    body: JSON.stringify({ userId, reason, filename, idempotencyKey }),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => { /* best-effort dashboard visibility only, never blocks the upload path */ });
+}
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/app/.media-assets';
 const log = createLogger('media-service');
 
@@ -130,6 +145,7 @@ const server = http.createServer(async (req, res) => {
         if (checked.error) {
           failed.push({ filename, error: checked.error });
           log.warn({ requestId, event: 'upload_rejected', userId, filename, error: checked.error });
+          recordUploadRejectionIncident({ userId, reason: checked.error, filename });
           continue;
         }
         const asset = await store.saveMediaAsset({ userId, filename, mime: file.type, bytes, source: 'UPLOAD' });
@@ -249,6 +265,21 @@ const server = http.createServer(async (req, res) => {
     if (!deleted) return send(res, 404, { error: 'Asset not found.' });
     log.info({ requestId, event: 'asset_deleted', userId, assetId: idMatch[1] });
     return send(res, 200, { success: true });
+  }
+
+  // GET /internal/media-assets/:id — bytes, internal-secret-gated, NO owner
+  // check. Reachable only by admin-service's Super Admin media viewer,
+  // after it has already verified a short-lived signed token for this exact
+  // asset id — this route itself does not and cannot know who's asking.
+  const internalIdMatch = url.pathname.match(/^\/internal\/media-assets\/([^/]+)$/);
+  if (internalIdMatch && req.method === 'GET') {
+    if (!verifyInternalSecret(req, INTERNAL_SECRET)) return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
+    const asset = await store.getMediaAssetById(internalIdMatch[1], { includeExpired: true });
+    if (!asset) return send(res, 404, { error: 'Asset not found.' });
+    const bytes = await store.readMediaAssetBytes(asset);
+    if (!bytes) return send(res, 404, { error: 'Asset not found.' });
+    res.writeHead(200, { 'Content-Type': asset.mime, 'Content-Length': String(bytes.length), 'Cache-Control': 'private, no-store' });
+    return res.end(bytes);
   }
 
   // POST /internal/assets — service-to-service create (AI/integrations/

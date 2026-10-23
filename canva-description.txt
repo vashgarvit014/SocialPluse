@@ -1,0 +1,51 @@
+SocialPulse is a social media content workspace that takes you from a blank page to a published post. Instead of switching between a caption tool, an image generator, a brand kit, a scheduler and a publishing dashboard, you do all of it in one place.
+
+HOW IT WORKS
+
+You start with a topic — "coffee", "new gym membership", "Q3 product launch" — and SocialPulse turns it into a complete post: a caption, relevant hashtags, a matching image, and a carousel when the topic benefits from multiple slides. Everything it generates is a starting point, not a final answer, and every element is editable before you use it.
+
+Your brand kit sits on top. Upload your logo once and choose where it sits on every format. Set your colours and fonts and they apply across previews, carousels and variations, so a post always looks like it came from your company rather than from a template.
+
+You then pick the channels. Write one post, publish it to LinkedIn, Facebook, Instagram or WhatsApp, or schedule it for a time you choose. Scheduled posts sit in a visible queue you can reschedule or cancel.
+
+ALT text is handled alongside creation — edit it, clear it, or generate missing descriptions across a whole carousel in one action.
+
+CANVA INTEGRATION
+
+The Canva connection adds a full design toolchain inside that workflow. Any image SocialPulse generates, or any image you upload, can be sent into Canva's editor as a genuinely editable design — not a flattened picture. You lay it out with Canva's full toolset, then bring the result back into your post as a high-resolution PNG, ready to schedule or publish.
+
+Nothing is downloaded and re-uploaded by hand, and your media never passes through a third-party file-sharing service. The integration covers three things: "Edit in Canva" to design an existing SocialPulse image, "Create in Canva" to start a blank design inside your workflow, and "Import from Canva" to pull a finished design back as a new image in your post.
+
+CONNECTING CANVA IS OPTIONAL
+
+SocialPulse works fully without it. Content creation, AI generation, branding, ALT text, scheduling and publishing all work with no Canva connection at all. Connect only when you want Canva's editor in your workflow.
+
+WHAT WE ACCESS WHEN YOU CONNECT
+
+Six scopes, and no more:
+
+- asset:read and asset:write — upload the one image you chose into Canva and confirm it finished processing
+- design:content:read and design:content:write — create that design and open it in Canva's editor
+- design:meta:read — read the design's id and editor link so we can match it on return
+- profile:read — show your Canva display name so you can see which account is connected
+
+Those six map one-to-one to the six API calls the app makes. Nothing beyond them is requested, and no Canva call is ever made that you did not start yourself.
+
+WHAT WE DO NOT DO
+
+- We never post, schedule or publish anything to your Canva account. The integration only uploads an asset, creates a design and exports it back.
+- We never list, browse or search your designs, folders or assets.
+- We never modify or delete anything already in your Canva account.
+- We never read your Canva email address or any profile field beyond your display name.
+- We do not sell your data, and we do not share your content with third parties.
+
+YOUR DATA
+
+Canva OAuth tokens are stored server-side only — never in browser storage, never in a URL, never in a log — and are isolated per account, so no other user can read or use them. Drafts, scheduled posts and saved media are scoped to your account; knowing an asset id is not enough to access someone else's content.
+
+Media — uploads, AI-generated images and Canva imports — is retained for 30 days and then deleted. You can disconnect Canva at any time, which deletes your stored token immediately and revokes it at Canva, ending the whole token lineage and the consent grant. You can also revoke access directly in Canva under Settings -> Permitted apps.
+
+Content you create in Canva remains subject to Canva's Terms of Use and Privacy Policy.
+
+Policy: https://socialpulse.dotstark.tech/privacy
+Contact: privacy@dotstark.tech

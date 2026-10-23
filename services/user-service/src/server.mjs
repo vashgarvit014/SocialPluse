@@ -233,10 +233,80 @@ const server = http.createServer(async (req, res) => {
       if (!UUID_RE.test(id)) return send(res, 404, { error: 'User not found.' });
       const body = await readJsonBody(req);
       const outcome = await moderationStore.recordModerationDecision(
-        { decision: body.decision, method: body.method, countsAsViolation: body.countsAsViolation },
-        { userId: id, action: body.action, provider: body.provider ?? null, reason: body.reason, promptFingerprint: body.promptFingerprint ?? null, safeMetadata: body.safeMetadata },
+        { decision: body.decision, method: body.method, countsAsViolation: body.countsAsViolation, confidence: body.confidence ?? null },
+        {
+          userId: id, action: body.action, provider: body.provider ?? null, reason: body.reason, promptFingerprint: body.promptFingerprint ?? null, safeMetadata: body.safeMetadata,
+          source: body.source, platform: body.platform ?? null, idempotencyKey: body.idempotencyKey ?? null,
+          contentPreview: body.contentPreview ?? null, mediaAssetId: body.mediaAssetId ?? null,
+        },
       );
       return send(res, 200, outcome);
+    }
+
+    // POST /internal/moderation/upload-rejection — media-service's non-blocking
+    // call on an upload-format rejection (never counts as a violation).
+    if (url.pathname === '/internal/moderation/upload-rejection' && req.method === 'POST') {
+      const body = await readJsonBody(req);
+      if (!body.userId || !body.idempotencyKey) return send(res, 400, { error: 'userId and idempotencyKey are required.' });
+      const result = await moderationStore.recordUploadRejectionIncident({ userId: body.userId, reason: body.reason, idempotencyKey: body.idempotencyKey, filename: body.filename });
+      return send(res, 200, result);
+    }
+
+    // GET /internal/moderation/incidents — Super Admin Violations list.
+    if (url.pathname === '/internal/moderation/incidents' && req.method === 'GET') {
+      const result = await moderationStore.listIncidents({
+        status: url.searchParams.get('status') || undefined,
+        category: url.searchParams.get('category') || undefined,
+        source: url.searchParams.get('source') || undefined,
+        userId: url.searchParams.get('userId') || undefined,
+        page: url.searchParams.get('page') || undefined,
+        pageSize: url.searchParams.get('pageSize') || undefined,
+        includeArchived: url.searchParams.get('includeArchived') === 'true',
+      });
+      return send(res, 200, result);
+    }
+
+    if (url.pathname === '/internal/moderation/incidents/stats' && req.method === 'GET') {
+      const stats = await moderationStore.getIncidentStats();
+      return send(res, 200, { stats });
+    }
+
+    // GET/POST /internal/moderation/incidents/:id
+    if (parts[0] === 'internal' && parts[1] === 'moderation' && parts[2] === 'incidents' && parts.length === 4 && req.method === 'GET') {
+      const incident = await moderationStore.getIncidentById(parts[3]);
+      if (!incident) return send(res, 404, { error: 'Incident not found.' });
+      return send(res, 200, { incident });
+    }
+    if (parts[0] === 'internal' && parts[1] === 'moderation' && parts[2] === 'incidents' && parts.length === 4 && req.method === 'POST') {
+      const body = await readJsonBody(req);
+      const result = await moderationStore.applyIncidentAction(parts[3], body.adminId, body.action, body.note);
+      if (result.error) return send(res, 400, { error: result.error });
+      return send(res, 200, result);
+    }
+
+    // GET /moderation/incidents/:id/self — the browser-facing, actor-scoped
+    // route (via gateway, x-actor-user-id already verified+attached there).
+    // Deliberately a DIFFERENT path from the admin-only
+    // /internal/moderation/incidents/:id above, which has no ownership
+    // check at all — reusing that path here would let any signed-in user
+    // view any other user's incident by id.
+    if (parts[0] === 'moderation' && parts[1] === 'incidents' && parts[3] === 'self' && parts.length === 4 && req.method === 'GET') {
+      const userId = requireActor(req);
+      if (!userId) return send(res, 401, { error: 'Unauthorized' });
+      const incident = await moderationStore.getUserIncidentById(userId, parts[2]);
+      if (!incident) return send(res, 404, { error: 'Incident not found.' });
+      return send(res, 200, { incident });
+    }
+
+    // GET /internal/users/:id/moderation/incidents/:incidentId — self-scoped
+    // warning detail. The whole access-control boundary is the userId=id
+    // clause inside getUserIncidentById — a user can never fetch another
+    // user's incident by id alone.
+    if (parts[0] === 'internal' && parts[1] === 'users' && parts[3] === 'moderation' && parts[4] === 'incidents' && parts.length === 6 && req.method === 'GET') {
+      const userId = parts[2];
+      const incident = await moderationStore.getUserIncidentById(userId, parts[5]);
+      if (!incident) return send(res, 404, { error: 'Incident not found.' });
+      return send(res, 200, { incident });
     }
 
     return send(res, 404, { code: 'NOT_FOUND', message: 'No such user-service route.' });

@@ -98,6 +98,7 @@ async function handleGenerateContent(req, res) {
         userId, decision: textModeration.decision, method: textModeration.method, action: 'BLOCKED_BEFORE_GENERATION',
         provider: textModeration.provider ?? null, reason: textModeration.reason ?? undefined,
         promptFingerprint: promptFingerprint(String(prompt)), safeMetadata: { pipeline: 'content' },
+        source: 'AI_GENERATION', idempotencyKey: `${userId}:AI_GENERATION:${randomUUID()}`,
       });
       const textCopy = moderationBlockCopy(textModeration.decision);
       return send(res, 422, {
@@ -144,6 +145,7 @@ async function handleStartImageJob(req, res) {
       userId, decision: moderation.decision, method: moderation.method, action: 'BLOCKED_BEFORE_GENERATION',
       provider: moderation.provider ?? null, reason: moderation.reason ?? undefined,
       promptFingerprint: promptFingerprint(String(prompt)), safeMetadata: { style: typeof style === 'string' ? style : 'unspecified' },
+      source: 'AI_GENERATION', idempotencyKey: `${userId}:AI_GENERATION:${randomUUID()}`,
     });
     const copy = moderationBlockCopy(moderation.decision);
     return send(res, 422, {
@@ -280,6 +282,19 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/content' && req.method === 'POST') return await handleGenerateContent(req, res);
     if (url.pathname === '/image' && req.method === 'POST') return await handleStartImageJob(req, res);
     if (url.pathname === '/image' && req.method === 'GET') return handlePollImageJob(req, res, url);
+
+    // POST /internal/moderate/text — thin classification endpoint for other
+    // services (publishing-service, media-service) that need to run the
+    // SAME text classifier used for AI-generation prompts, now also against
+    // publish-time captions/hashtags and other text content. No new
+    // classifier, no new external API — just moderatePrompt() over the wire.
+    if (url.pathname === '/internal/moderate/text' && req.method === 'POST') {
+      const body = await readJsonBody(req);
+      const text = typeof body.text === 'string' ? body.text : '';
+      if (!text.trim()) return send(res, 200, { decision: 'ALLOW', method: 'EMPTY', confidence: 1, countsAsViolation: false, severity: 'INFO' });
+      const result = await moderatePrompt(text);
+      return send(res, 200, result);
+    }
 
     // Phase 11: vary-image and alt-text moved here from the monolith's
     // /api/vary-image and /api/media/alt — genuine AI-provider calls the

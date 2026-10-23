@@ -18,9 +18,11 @@ export function createModerationStore(_pool) {
         method: 'POST',
         headers: internalFetchHeaders(INTERNAL_SECRET, randomUUID(), { 'content-type': 'application/json' }),
         body: JSON.stringify({
-          decision: result.decision, method: result.method, countsAsViolation: result.countsAsViolation,
+          decision: result.decision, method: result.method, countsAsViolation: result.countsAsViolation, confidence: result.confidence ?? null,
           action: input.action, provider: input.provider ?? null, reason: input.reason,
           promptFingerprint: input.promptFingerprint ?? null, safeMetadata: input.safeMetadata,
+          source: input.source, platform: input.platform ?? null, idempotencyKey: input.idempotencyKey ?? null,
+          contentPreview: input.contentPreview ?? null, mediaAssetId: input.mediaAssetId ?? null,
         }),
       });
       if (!res.ok) {

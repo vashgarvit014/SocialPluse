@@ -420,6 +420,10 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [dragSlideId, setDragSlideId] = useState<string | null>(null);
   const [dragOverSlideId, setDragOverSlideId] = useState<string | null>(null);
+  // Generated-media download button feedback (idle/loading spinner, brief
+  // success tick, or an error state the user can hover for the reason).
+  const [downloadState, setDownloadState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [downloadErrorMsg, setDownloadErrorMsg] = useState<string | null>(null);
   // Click-to-toggle/add fires on card click, but a completed drag can also
   // emit a click on the same element — swallow clicks right after a drag so
   // reordering never removes/adds a slide by accident. Compares event
@@ -732,17 +736,61 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
   const saveDraft = p.saveFullDraft;
 
-  const downloadGeneratedMedia = () => {
+  // Fetches the media as a Blob first rather than pointing <a download> at
+  // `url` directly — `url` can be either a data: URI (generation result) or
+  // a same-/cross-origin http(s) URL (a loaded draft/scheduled post served
+  // from media-service). Browsers silently ignore the `download` attribute
+  // on a cross-origin link and just navigate to it instead, which is the
+  // "download does nothing" failure this was hitting for non-data URLs. A
+  // Blob fetched client-side is turned into an object URL, which is always
+  // same-origin, so `download` works regardless of where the media came
+  // from. iOS Safari additionally never honored `download` at all (it just
+  // opens the image in-place) — detected here and routed through the Web
+  // Share API instead, which gives the native "Save Image" sheet; every
+  // other browser keeps the normal anchor-click flow.
+  const downloadGeneratedMedia = async () => {
     const url = p.generatedVideo || p.generatedImage;
-    if (!url) return;
+    if (!url || downloadState === 'loading') return;
     const isVideo = !!p.generatedVideo;
-    const ext = isVideo ? 'mp4' : (url.match(/^data:image\/(\w+)/)?.[1] || 'jpg');
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `socialpulse-${Date.now()}.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    setDownloadErrorMsg(null);
+    setDownloadState('loading');
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Fetch failed (${response.status})`);
+      const blob = await response.blob();
+      const ext = isVideo
+        ? 'mp4'
+        : (blob.type.split('/')[1] || url.match(/^data:image\/(\w+)/)?.[1] || 'jpg').replace('jpeg', 'jpg');
+      const filename = `socialpulse-${Date.now()}.${ext}`;
+
+      const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent)
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const file = typeof File !== 'undefined' ? new File([blob], filename, { type: blob.type || (isVideo ? 'video/mp4' : 'image/jpeg') }) : null;
+      if (isIOS && file && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file] });
+      } else {
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      }
+      setDownloadState('done');
+      setTimeout(() => setDownloadState('idle'), 2000);
+    } catch (err) {
+      // The Web Share sheet throws AbortError when the user just cancels it
+      // — that is not a download failure, so don't show an error for it.
+      if (err instanceof Error && err.name === 'AbortError') {
+        setDownloadState('idle');
+        return;
+      }
+      setDownloadErrorMsg(err instanceof Error ? err.message : 'Download failed');
+      setDownloadState('error');
+      setTimeout(() => setDownloadState('idle'), 3000);
+    }
   };
 
   const goNext = () => setCurrentStep(s => Math.min(8, s + 1));
@@ -943,6 +991,17 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-s8-collab-hl input::placeholder{color:#a78bfa}
         .sp-s8-collab-hl input:focus{outline:none;border-color:#7c3aed;box-shadow:0 0 0 3px rgba(124,58,237,.16)}
         .sp-s8-collab-hl small{color:#6b5f8a}
+        .sp-s8-collab-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;min-width:0}
+        .sp-s8-collab-row input{flex:1 1 160px;min-width:0;width:auto}
+        .sp-s8-collab-row select{flex:0 1 auto;font:inherit;padding:9px 10px;border-radius:10px;border:1px solid #e8eaf2}
+        .sp-s8-collab-badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:#f1f5f9;color:#475569;flex-shrink:0}
+        .sp-s8-collab-badge[data-status="Submitted"],.sp-s8-collab-badge[data-status="Ready"],.sp-s8-collab-badge[data-status="Accepted"]{background:#e3f8ef;color:#0b7a53}
+        .sp-s8-collab-badge[data-status="Failed"],.sp-s8-collab-badge[data-status="Declined"]{background:#fef2f2;color:#b91c1c}
+        .sp-s8-collab-badge[data-status="Manual Action Required"],.sp-s8-collab-badge[data-status="Pending Acceptance"]{background:#fffbea;color:#8a5a00}
+        .sp-s8-collab-manual{flex-basis:100%;display:flex;flex-direction:column;gap:6px;margin-top:4px;padding:10px 12px;border-radius:10px;background:#fff;border:1px solid #e8eaf2}
+        .sp-s8-collab-action{font-size:13px;font-weight:700;color:#6d28d9;background:none;border:none;cursor:pointer;font-family:inherit;padding:0}
+        .sp-s8-collab-action:hover{text-decoration:underline}
+        @media(max-width:640px){.sp-s8-collab-row{flex-direction:column;align-items:stretch}.sp-s8-collab-row select{width:100%}}
         .sp-s8-whatsapp{margin-top:14px;border:1.5px solid #e8eaf2;border-radius:16px;padding:16px}
         .sp-s8-when-tz{grid-column:1/-1;font-size:12.5px;color:#5b6475;margin-top:2px}
         .sp-s8-err{grid-column:1/-1;font-size:13px;font-weight:700;color:#8a5a00;background:#fffbea;border:1px solid #f4e3a1;border-radius:12px;padding:10px 13px}
@@ -1009,7 +1068,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
         .sp-s8-ready{animation:spS8Rise .6s both 1.3s}
         .sp-s8-cta-on{animation:spS8Ready 1.6s ease-in-out infinite}
         .sp-s8-res{margin-top:14px;padding-top:14px;border-top:1px solid #e8eaf2;display:flex;flex-direction:column;gap:8px}
-        .sp-s8-res-row{display:flex;align-items:center;gap:9px;font-size:13.5px}
+        .sp-s8-res-row{display:flex;align-items:center;gap:9px;font-size:13.5px;flex-wrap:wrap;min-width:0}
         .sp-s8-res-row .ri-act{margin-left:auto}
         @keyframes spS8Spin{to{--sp-s8-a:360deg}}
         @keyframes spS8In{from{opacity:0;transform:translateX(60px) rotateY(-18deg) scale(.92)}to{opacity:1;transform:none}}
@@ -1842,7 +1901,15 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         ? <video src={p.generatedVideo} controls style={{ width: '100%', maxHeight: 420, display: 'block', backgroundColor: '#000' }} />
                         : <img src={p.generatedImage} alt="AI generated visual" style={{ width: '100%', maxHeight: 420, objectFit: 'contain', display: 'block', backgroundColor: '#0F172A' }} />}
                       <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 8 }}>
-                        <button onClick={downloadGeneratedMedia} title="Download" aria-label="Download generated image" style={{ minWidth: 38, height: 38, padding: '0 10px', borderRadius: 10, fontSize: 15, fontWeight: 800, border: '1px solid #E2E8F0', background: 'rgba(255,255,255,0.94)', color: '#0F172A', cursor: 'pointer', fontFamily: 'inherit', backdropFilter: 'blur(6px)', boxShadow: '0 4px 14px rgba(15,23,42,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⬇</button>
+                        <button
+                          onClick={downloadGeneratedMedia}
+                          disabled={downloadState === 'loading'}
+                          title={downloadState === 'error' ? (downloadErrorMsg || 'Download failed — try again') : 'Download'}
+                          aria-label="Download generated image"
+                          style={{ minWidth: 38, height: 38, padding: '0 10px', borderRadius: 10, fontSize: 15, fontWeight: 800, border: `1px solid ${downloadState === 'error' ? '#FCA5A5' : '#E2E8F0'}`, background: 'rgba(255,255,255,0.94)', color: downloadState === 'error' ? '#B91C1C' : '#0F172A', cursor: downloadState === 'loading' ? 'wait' : 'pointer', fontFamily: 'inherit', backdropFilter: 'blur(6px)', boxShadow: '0 4px 14px rgba(15,23,42,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: downloadState === 'loading' ? 0.7 : 1 }}
+                        >
+                          {downloadState === 'loading' ? '…' : downloadState === 'done' ? '✓' : downloadState === 'error' ? '⚠' : '⬇'}
+                        </button>
                         {!p.generatedVideo && (
                           <button onClick={() => p.clearGeneratedImage()} title="Remove" aria-label="Remove generated image" style={{ minWidth: 38, height: 38, padding: '0 10px', borderRadius: 10, fontSize: 15, fontWeight: 800, border: '1px solid #E2E8F0', background: 'rgba(255,255,255,0.94)', color: '#475569', cursor: 'pointer', fontFamily: 'inherit', backdropFilter: 'blur(6px)', boxShadow: '0 4px 14px rgba(15,23,42,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.16s' }} onMouseEnter={e => { e.currentTarget.style.background = '#FECACA'; e.currentTarget.style.color = '#B91C1C'; e.currentTarget.style.borderColor = '#FCA5A5'; }} onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.94)'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.borderColor = '#E2E8F0'; }}>🗑</button>
                         )}
@@ -3188,16 +3255,50 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
 
                     {p.selectedPlatforms.includes('instagram') && (
                       <div className="sp-s8-collab sp-s8-collab-hl">
-                        <label htmlFor="sp-collab">Instagram Collaborator (Optional)</label>
-                        <input
-                          id="sp-collab"
-                          value={p.collaborator}
-                          onChange={e => p.setCollaborator(e.target.value.replace(/^@+/, '').slice(0, 40))}
-                          placeholder="Username without @"
-                          autoComplete="off"
-                          aria-describedby="sp-collab-help"
-                        />
-                        <small id="sp-collab-help">Instagram will send the collaborator invitation. The collaborator must accept it before the collaboration appears on the post.</small>
+                        <label>Instagram Collaborators (Optional)</label>
+                        {p.collaborators.map((c, i) => {
+                          const published = p.publishStatuses?.instagram?.state === 'success';
+                          return (
+                            <div key={i} className="sp-s8-collab-row">
+                              <input
+                                value={c.username}
+                                onChange={e => p.updateCollaboratorField(i, { username: e.target.value.replace(/^@+/, '').slice(0, 40) })}
+                                placeholder="Username without @"
+                                autoComplete="off"
+                              />
+                              <select value={c.type} onChange={e => p.updateCollaboratorField(i, { type: e.target.value as 'professional' | 'private' })}>
+                                <option value="professional">Professional (Business/Creator)</option>
+                                <option value="private">Private (Personal)</option>
+                              </select>
+                              <span className="sp-s8-collab-badge" data-status={c.status}>{c.status}</span>
+                              <button type="button" className="sp-s8-collab-action" onClick={() => p.removeCollaborator(i)} aria-label="Remove collaborator">✕</button>
+
+                              {c.type === 'private' && published && c.status === 'Ready' && (
+                                <div className="sp-s8-collab-manual">
+                                  <a href={p.instagramPostUrl || 'https://instagram.com'} target="_blank" rel="noreferrer" className="sp-s8-btn ghost">{p.instagramPostUrl ? 'Open This Post' : 'Open Instagram'}</a>
+                                  <small>Instagram does not support inviting personal accounts automatically. Open {p.instagramPostUrl ? 'the post' : 'Instagram'}, and manually add @{c.username || 'this user'} as a collaborator from the post&apos;s options.</small>
+                                  <label><input type="checkbox" onChange={e => e.target.checked && p.markCollaboratorSent(i)} /> I&apos;ve sent the manual invite</label>
+                                </div>
+                              )}
+                              {c.type === 'private' && c.status === 'Manual Action Required' && (
+                                <button type="button" className="sp-s8-collab-action" onClick={() => p.markCollaboratorPending(i)}>Mark as Pending Acceptance</button>
+                              )}
+                              {c.status === 'Pending Acceptance' && (
+                                <div className="sp-s8-collab-manual">
+                                  <small>Self-reported only — Instagram&apos;s API does not confirm acceptance.</small>
+                                  <span style={{ display: 'flex', gap: 8 }}>
+                                    <button type="button" className="sp-s8-collab-action" onClick={() => p.markCollaboratorResolved(i, 'Accepted')}>Mark Accepted</button>
+                                    <button type="button" className="sp-s8-collab-action" onClick={() => p.markCollaboratorResolved(i, 'Declined')}>Mark Declined</button>
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {p.collaborators.length < 3 && (
+                          <button type="button" className="sp-s8-collab-action" onClick={p.addCollaborator} style={{ marginTop: 10, display: 'block' }}>+ Add collaborator</button>
+                        )}
+                        <small id="sp-collab-help">Professional (Business/Creator) accounts receive an automatic Instagram invite. Personal accounts can&apos;t be invited through the API — you&apos;ll complete that step manually in the Instagram app after publishing.</small>
                       </div>
                     )}
 
@@ -3255,7 +3356,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                             <span style={{ color: st.state === 'success' ? '#0f9d6b' : st.state === 'failed' ? '#d97706' : '#5b6475' }}>
                               {st.state === 'success' ? 'Published' : st.state === 'pending' ? 'Publishing…' : 'Failed'}
                             </span>
-                            {st.state === 'failed' && st.message && <span style={{ fontSize: 12, color: '#5b6475', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>— {st.message}</span>}
+                            {st.state === 'failed' && st.message && <span style={{ fontSize: 12, color: '#5b6475', flexBasis: '100%', whiteSpace: 'normal', wordBreak: 'break-word' }}>— {st.message}</span>}
                           </div>
                         ))}
                         {Object.values(p.publishStatuses).some(v => v.state === 'failed') && (

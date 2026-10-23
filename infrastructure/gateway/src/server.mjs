@@ -57,6 +57,14 @@ const SERVICE_TIMEOUT_MS = 15000;
 // nothing gets slower by raising the bound.
 const AI_LONG_TIMEOUT_MS = 90000;
 
+// Publishing routes are synchronous multi-step Meta calls: Instagram
+// container creation + waitForContainer polling (up to 12x3s) + media_publish
+// routinely exceeds 15s. At 15s the gateway aborted first (503
+// PUBLISHING_UNAVAILABLE) while publishing-service kept going and actually
+// published — a false "Failed" for a live post. 75s stays under Cloudflare's
+// 100s proxy abort, same reasoning as AI_LONG_TIMEOUT_MS above.
+const PUBLISH_TIMEOUT_MS = 75000;
+
 const log = createLogger('gateway');
 
 // --- minimal circuit breaker, one instance per upstream service ---
@@ -631,6 +639,7 @@ const server = http.createServer(async (req, res) => {
       name: 'publishing', baseUrl: PUBLISHING_SERVICE_URL, breaker: publishingBreaker,
       targetPath: PUBLISH_ROUTES.get(pathnameOnly), forwardCookie: false,
       unavailableCode: 'PUBLISHING_UNAVAILABLE', unavailableMessage: 'Publishing is temporarily unavailable.',
+      timeoutMs: PUBLISH_TIMEOUT_MS,
     });
   }
 
@@ -648,6 +657,18 @@ const server = http.createServer(async (req, res) => {
       name: 'media', baseUrl: MEDIA_SERVICE_URL, breaker: mediaBreaker,
       prefix: /^\/api/, forwardCookie: false,
       unavailableCode: 'MEDIA_UNAVAILABLE', unavailableMessage: 'Media service is temporarily unavailable.',
+    });
+  }
+
+  // GET /api/moderation/incidents/:id — a signed-in user's OWN warning
+  // detail. Forwards to user-service's actor-scoped /self route, never the
+  // admin-only /internal/moderation/incidents/:id (no ownership check).
+  const myIncidentMatch = pathnameOnly.match(/^\/api\/moderation\/incidents\/([^/]+)$/);
+  if (myIncidentMatch && req.method === 'GET') {
+    return proxyToService(req, res, requestId, {
+      name: 'user', baseUrl: USER_SERVICE_URL, breaker: userBreaker,
+      targetPath: `/moderation/incidents/${myIncidentMatch[1]}/self`, forwardCookie: false,
+      unavailableCode: 'USER_SERVICE_UNAVAILABLE', unavailableMessage: 'Moderation service is temporarily unavailable.',
     });
   }
 

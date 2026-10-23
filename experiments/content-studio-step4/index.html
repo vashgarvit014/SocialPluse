@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SocialPulse — Step 4 Image Generation (local prototype)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --pri:#7C3AED; --pri2:#8B5CF6; --priDark:#6D28D9;
+    --ink:#0F1720; --muted:#64748B; --faint:#94A3B8;
+    --bg:#F4F5FA; --card:#fff; --bd:#E8EAF1;
+    --ok:#059669; --okbg:#ECFDF5; --okbd:#A7F3D0;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  html{overflow-x:hidden}
+  body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);font-size:14px;overflow-x:hidden}
+  .shell{display:flex;min-height:100vh}
+  .side{width:220px;flex-shrink:0;background:linear-gradient(180deg,#0D1024 0%,#090B15 100%);color:#CBD5E1;padding:22px 14px;display:flex;flex-direction:column;gap:4px}
+  .side .brand{display:flex;align-items:center;gap:10px;padding:4px 10px 18px;color:#fff;font-weight:800;font-size:17px}
+  .side .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#5b6cff,#9b5cf6);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff}
+  .side a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:#94A3B8;text-decoration:none;font-size:13.5px;font-weight:600;cursor:default}
+  .side a.on{background:rgba(124,58,237,.22);color:#fff;box-shadow:inset 0 0 0 1px rgba(139,92,246,.35)}
+  .side .tag{margin-top:auto;padding:10px 12px;font-size:11px;color:#64748B;border-top:1px solid rgba(148,163,184,.15);line-height:1.5}
+  .main{flex:1;min-width:0;max-width:100%;padding:26px 28px 60px}
+  .wrap{width:min(100%,1180px);margin:0 auto;min-width:0}
+  .sp-stepper{display:flex;align-items:center;gap:12px;padding:18px 24px 14px;min-height:118px;border-radius:999px;background:linear-gradient(180deg,#111321 0%,#090B15 100%);border:1px solid rgba(139,92,246,.18);box-shadow:0 12px 40px rgba(15,23,42,.18),0 0 24px rgba(124,58,237,.10);min-width:0;max-width:100%}
+  .sp-rail{display:flex;align-items:center;overflow-x:auto;overflow-y:hidden;white-space:nowrap;scroll-behavior:smooth;padding:6px 2px 2px;scrollbar-width:none;scroll-snap-type:x proximity}
+  .sp-rail::-webkit-scrollbar{display:none}
+  .sp-arrow{width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;background:rgba(255,255,255,.06);border:1px solid rgba(139,92,246,.28);cursor:pointer;font-family:inherit}
+  .sp-arrow:disabled{opacity:.3;cursor:default}
+  .sp-item{background:none;border:none;border-radius:18px;padding:8px 10px;display:flex;align-items:center;gap:10px;font-family:inherit;white-space:nowrap}
+  .sp-item.on{background:rgba(124,58,237,.10);box-shadow:0 0 20px rgba(139,92,246,.16)}
+  .sp-circle{width:42px;height:42px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px}
+  .sp-label{font-size:clamp(11px,1vw,14px);font-weight:600;white-space:nowrap}
+  .cols{display:grid;gap:clamp(10px,1.5vw,18px);align-items:start;margin-top:20px;grid-template-columns:minmax(0,1fr)}
+  @media(min-width:900px){.cols{grid-template-columns:minmax(0,1.8fr) minmax(240px,0.8fr)}}
+  @media(min-width:1200px){.cols{grid-template-columns:minmax(0,2.2fr) minmax(260px,0.8fr)}}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:20px;padding:clamp(16px,2.5vw,28px) clamp(14px,2vw,28px);box-shadow:0 1px 2px rgba(15,23,42,.04),0 12px 36px rgba(15,23,42,.08);min-width:0;max-width:100%}
+  .head{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+  .head .ic{width:48px;height:48px;border-radius:14px;background:#EDE9FE;border:1px solid #DDD6FE;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+  .head h2{font-size:clamp(18px,2vw,21px);font-weight:800;letter-spacing:-.02em;margin:0}
+  .head p{font-size:clamp(12px,1.2vw,13px);color:var(--muted);margin:4px 0 0}
+  .sec-t{font-size:13px;font-weight:800;letter-spacing:.04em;margin:22px 0 4px}
+  .sec-s{font-size:12px;color:var(--muted);margin:0 0 12px}
+  .opts{display:grid;gap:10px;grid-template-columns:repeat(3,minmax(0,1fr))}
+  @media(max-width:640px){.opts{grid-template-columns:minmax(0,1fr)}}
+  .opt{position:relative;border:1.5px solid var(--bd);border-radius:16px;padding:16px 14px 14px;background:#fff;cursor:pointer;text-align:left;font-family:inherit;transition:border-color .16s,background-color .16s,box-shadow .16s}
+  .opt .em{font-size:24px}
+  .opt b{display:block;font-size:13px;margin-top:8px}
+  .opt small{color:var(--muted);font-size:11px;line-height:1.5;display:block;margin-top:2px}
+  .opt .ck{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;border:1.5px solid #CBD5E1;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
+  .opt.on{border:2px solid var(--pri);background:linear-gradient(180deg,#F6F1FF,#EDE9FE);box-shadow:0 6px 20px rgba(124,58,237,.18)}
+  .opt.on .ck{background:var(--pri);border-color:var(--pri)}
+  textarea.ta{width:100%;max-width:100%;min-height:120px;border:1.5px solid var(--bd);border-radius:14px;padding:14px 16px;font-size:13.5px;line-height:1.7;font-family:inherit;resize:vertical;color:var(--ink);background:#FCFCFE;outline:none;transition:border-color .18s,box-shadow .18s}
+  textarea.ta:focus{border-color:var(--pri);box-shadow:0 0 0 4px rgba(124,58,237,.14);background:#fff}
+  .ta-row{display:flex;align-items:center;gap:10px;margin-top:8px}
+  .count{font-size:11.5px;color:var(--faint);font-weight:600}
+  .reset{margin-left:auto;font-size:11.5px;font-weight:700;color:var(--priDark);background:none;border:none;cursor:pointer;font-family:inherit;padding:6px 4px}
+  .reset:hover{text-decoration:underline}
+  .pills{display:flex;flex-wrap:wrap;gap:8px}
+  .style-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:2px}
+  .style-row .pills{flex:1 1 280px;margin:0}
+  .style-row .gen-btn{margin-top:0;white-space:nowrap;flex-shrink:0}
+  .pill{border-radius:999px;padding:9px 18px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;transition:all .16s;background:#fff;border:1.5px solid var(--bd);color:var(--muted)}
+  .pill.on{border:2px solid var(--pri);background:#F1EBFF;color:var(--priDark);box-shadow:0 3px 12px rgba(124,58,237,.16)}
+  .ratio-grid{display:grid;gap:10px;grid-template-columns:repeat(4,minmax(0,1fr))}
+  @media(max-width:560px){.ratio-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .ratio{border-radius:12px;padding:12px 8px;background:#fff;border:1.5px solid var(--bd);cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:6px;transition:all .16s}
+  .ratio .shape{border:2.5px solid #CBD5E1;border-radius:6px;background:#F8FAFC;display:block}
+  .ratio b{font-size:12px}
+  .ratio.on{border:2px solid var(--pri);background:#F1EBFF;box-shadow:0 3px 12px rgba(124,58,237,.16)}
+  .ratio.on b{color:var(--priDark)}
+  .ratio.on .shape{border-color:var(--pri);background:#fff}
+  .gen-btn{display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;min-height:50px;padding:14px 34px;font-size:14.5px;font-weight:800;cursor:pointer;font-family:inherit;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;box-shadow:0 6px 22px rgba(124,58,237,.42);margin-top:20px;transition:transform .15s,box-shadow .15s}
+  .gen-btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 28px rgba(124,58,237,.5)}
+  .gen-btn:disabled{background:#DDD6FE;box-shadow:none;cursor:not-allowed}
+  .gal{margin-top:22px}
+  .gal-grid{display:grid;gap:12px;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:12px}
+  @media(max-width:900px){.gal-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:420px){.gal-grid{grid-template-columns:minmax(0,1fr)}}
+  .gcard{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--bd);background:#0F172A;min-width:0}
+  .gcard img{width:100%;height:100%;object-fit:cover;display:block}
+  .gcard .dl{position:absolute;top:8px;right:8px;min-width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.94);border:1px solid #E2E8F0;color:#0F172A;font-size:14px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;text-decoration:none;padding:0 8px}
+  .empty{margin-top:12px;border:2px dashed #C4B5FD;border-radius:16px;background:#FAF8FF;padding:34px 20px;text-align:center;color:var(--muted)}
+  .empty .big{font-size:30px}
+  .empty b{display:block;color:var(--ink);font-size:13.5px;margin-top:8px}
+  .empty p{font-size:12px;margin:6px 0 0}
+  .spin{display:inline-block;width:16px;height:16px;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:rot .8s linear infinite;vertical-align:-3px}
+  @keyframes rot{to{transform:rotate(360deg)}}
+  .nav{display:flex;gap:10px;margin-top:26px;padding-top:20px;border-top:1px solid #F1F3F9;align-items:center;flex-wrap:wrap}
+  .nav .sp{flex:1}
+  .cta{display:inline-flex;align-items:center;border:none;border-radius:12px;min-height:50px;padding:14px 34px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;box-shadow:0 6px 22px rgba(124,58,237,.42)}
+  .cta.sec{background:#fff;color:var(--priDark);border:1.5px solid var(--pri);box-shadow:none;min-height:42px;padding:10px 20px;font-size:13px}
+  @media(max-width:699px){.nav{flex-direction:column;align-items:stretch}.nav .cta{width:100%;justify-content:center}}
+  .helper{display:flex;flex-direction:column;gap:14px;min-width:0}
+  .inspire{position:relative;border-radius:20px;background:linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%);border:1px solid #E9D5FF;overflow:hidden;text-align:center;max-width:100%}
+  .inspire-visual{position:relative;overflow:hidden;height:212px;margin:0}
+  .soc{position:absolute;width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;transition:transform 180ms ease,box-shadow 180ms ease;cursor:default;will-change:transform}
+  .soc:hover{transform:scale(1.06)}
+  .soc-li{left:11%;top:16px;background:#0A66C2;box-shadow:0 4px 12px rgba(10,102,194,.4);animation:driftLi 6.5s ease-in-out infinite}
+  .soc-ig{right:11%;top:16px;background:linear-gradient(45deg,#F58529,#DD2A7B 45%,#8134AF 75%,#515BD4);box-shadow:0 4px 12px rgba(209,42,123,.4);animation:driftIg 7.2s ease-in-out infinite;animation-delay:.8s}
+  .soc-fb{left:15%;bottom:16px;background:#1877F2;box-shadow:0 4px 12px rgba(24,119,242,.4);animation:floatY 5.2s ease-in-out infinite;animation-delay:.3s}
+  .soc-wa{right:15%;bottom:16px;background:#25D366;box-shadow:0 4px 12px rgba(37,211,102,.42);animation:floatDiag 6s ease-in-out infinite;animation-delay:1.4s}
+  @keyframes driftLi{0%,100%{transform:translate(0,0) rotate(-3deg)}50%{transform:translate(9px,10px) rotate(3deg)}}
+  @keyframes driftIg{0%,100%{transform:translate(0,0) rotate(3deg)}50%{transform:translate(-9px,10px) rotate(-3deg)}}
+  @keyframes floatY{0%,100%{transform:translateY(-5px)}50%{transform:translateY(6px)}}
+  @keyframes floatDiag{0%,100%{transform:translate(-4px,-4px)}50%{transform:translate(6px,6px)}}
+  .robot{position:absolute;left:50%;top:50%;width:74px;height:74px;margin-left:-37px;margin-top:-37px;border-radius:24px;background:linear-gradient(135deg,#7C3AED,#A855F7);display:flex;align-items:center;justify-content:center;font-size:38px;box-shadow:0 10px 28px rgba(124,58,237,.45),inset 0 1px 0 rgba(255,255,255,.35);animation:breathe 5.5s ease-in-out infinite;z-index:2}
+  @keyframes breathe{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-5px) scale(1.03)}}
+  .orbit-ring{position:absolute;left:50%;top:50%;width:150px;height:150px;margin-left:-75px;margin-top:-75px;border:1.5px dashed rgba(124,58,237,.35);border-radius:50%;pointer-events:none}
+  .spark{position:absolute;font-size:13px;opacity:.7;pointer-events:none}
+  .inspire-text{padding:18px 20px 20px;border-top:1px solid rgba(233,213,255,.7)}
+  .inspire-text h3{margin:0;font-size:14.5px;font-weight:800}
+  .inspire-text p{margin:8px 0 0;font-size:12px;color:#475569;line-height:1.6}
+  .checks{margin:12px 0 0;padding:0;list-style:none;text-align:left}
+  .checks li{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#334155;padding:3px 0}
+  .checks .y{width:18px;height:18px;border-radius:50%;background:#ECFDF5;border:1px solid #A7F3D0;color:#059669;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .style-card{background:#fff;border:1px solid var(--bd);border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+  .style-card h4{margin:0 0 4px;font-size:13px;font-weight:800}
+  .style-card .row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;align-items:baseline}
+  .style-card .k{font-size:10.5px;font-weight:800;letter-spacing:.06em;color:var(--faint)}
+  .style-card .v{font-size:12.5px;font-weight:700;text-align:right}
+  .change{width:100%;margin-top:10px;border:1.5px solid var(--pri);background:#fff;color:var(--priDark);font-weight:800;font-size:12px;border-radius:10px;padding:10px;cursor:pointer;font-family:inherit}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0F172A;color:#fff;font-size:13px;font-weight:600;border-radius:12px;padding:12px 20px;box-shadow:0 12px 32px rgba(0,0,0,.3);display:none;z-index:50;max-width:calc(100vw - 32px);text-align:center}
+  @media(max-width:1023px){.side{display:none}.main{padding:16px 14px 50px}}
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation:none !important;transition:none !important}
+    .sp-rail{scroll-behavior:auto !important}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="side" aria-label="Mock navigation">
+    <div class="brand"><span class="logo">SP</span>SocialPulse</div>
+    <a>📊 Dashboard</a><a class="on">✏️ Content Studio</a><a>📅 Scheduler</a><a>📈 Analytics</a><a>🖼️ Asset Gallery</a><a>🔗 Connect Platforms</a>
+    <div class="tag">LOCAL PROTOTYPE — Step 4 only.<br>Mock images, no backend.<br>Safe to delete this folder.</div>
+  </nav>
+  <main class="main"><div class="wrap">
+    <div class="sp-stepper" role="navigation" aria-label="Content creation progress" id="stepper"></div>
+    <div class="cols">
+      <section class="card" aria-live="polite">
+        <div class="head"><div class="ic">🖼️</div><div><h2>Image Generation</h2><p>Create or select visuals for your post.</p></div></div>
+        <div class="sec-t" style="margin-top:6px">CHOOSE YOUR MEDIA</div>
+        <div class="opts" id="mediaOpts"></div>
+        <div id="aiPanel">
+          <div class="sec-t">DESCRIBE YOUR VISUAL</div>
+          <p class="sec-s">Tell AI what you want the image to look like. You can edit this anytime.</p>
+          <textarea class="ta" id="promptBox" maxlength="500" aria-label="Describe your visual"></textarea>
+          <div class="ta-row"><span class="count" id="charCount">0 / 500</span><button class="reset" id="resetBtn">Reset to AI suggestion</button></div>
+          <div class="sec-t">CHOOSE IMAGE SIZE</div>
+          <div class="ratio-grid" id="ratioGrid"></div>
+          <div class="sec-t">CHOOSE VISUAL STYLE</div>
+          <div class="style-row"><div class="pills" id="stylePills"></div><button class="gen-btn" id="genBtn">✨ Generate Image</button></div>
+          <div class="gal" id="galWrap">
+            <div class="sec-t" id="galTitle" style="display:none">GENERATED IMAGES <span id="readyBadge" style="display:none;font-size:10.5px;font-weight:800;color:#059669;background:#ECFDF5;border:1px solid #A7F3D0;padding:4px 10px;border-radius:999px;vertical-align:2px;letter-spacing:.02em">✓ AI image ready</span></div>
+            <p class="sec-s" id="galSub" style="display:none">Your AI-generated visuals based on your description.</p>
+            <div class="empty" id="galEmpty"><div class="big">✨</div><b>Your AI-generated visual will appear here</b><p>Describe your visual above and click Generate Image.</p></div>
+            <div class="gal-grid" id="galGrid"></div>
+          </div>
+        </div>
+        <div id="upPanel" style="display:none">
+          <div class="sec-t">UPLOAD MEDIA</div>
+          <p class="sec-s">Files stay in this browser tab only (prototype).</p>
+          <div class="empty" id="upDrop" role="button" tabindex="0" style="cursor:pointer"><div class="big">📁</div><b>Click to browse or drop images here</b><p>JPG, PNG, WEBP — shown locally only</p></div>
+          <input type="file" id="upFile" accept="image/*" multiple style="display:none">
+          <div class="gal-grid" id="upGrid" style="margin-top:12px"></div>
+        </div>
+        <div id="libPanel" style="display:none">
+          <div class="sec-t">ASSET GALLERY</div>
+          <div class="empty"><div class="big">🖼️</div><b>No saved assets in this prototype</b><p>Generate with AI or upload to see visuals here.</p></div>
+        </div>
+        <div class="nav"><button class="cta sec" id="backBtn">← Back</button><span class="sp"></span><button class="cta" id="nextBtn">Next →</button></div>
+      </section>
+      <aside class="helper">
+        <div class="inspire">
+          <div class="inspire-visual" aria-hidden="true">
+            <span class="orbit-ring"></span>
+            <span class="spark" style="left:42%;top:12px">✨</span>
+            <span class="spark" style="right:36%;top:26px">💡</span>
+            <span class="soc soc-li" title="LinkedIn">in</span>
+            <span class="soc soc-ig" title="Instagram">◉</span>
+            <span class="soc soc-fb" title="Facebook">f</span>
+            <span class="soc soc-wa" title="WhatsApp">✆</span>
+            <span class="robot">🤖</span>
+          </div>
+          <div class="inspire-text"><h3>Bring Your Visual To Life ✨</h3><p>AI turns your content into a visual that matches your tone, platform and style.</p>
+            <ul class="checks"><li><span class="y">✓</span>Content understood</li><li><span class="y">✓</span>Style selected</li><li><span class="y">✓</span>Ready to generate</li></ul>
+          </div>
+        </div>
+        <div class="style-card" id="styleCard"></div>
+      </aside>
+    </div>
+  </div></main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script>
+(function(){
+"use strict";
+var STEPS=['Idea','Settings','Content','Media','Design','Branding','Preview','Publish'];
+var RATIOS=[['1:1','Square','Best for Instagram',30,30],['9:16','Portrait','Best for Stories & Reels',20,32],['16:9','Wide','Best for LinkedIn & Facebook',38,22],['4:3','Standard','Good for general posts',34,26]];
+var STYLES=[['Photographic','📷','Real Photo','Natural and realistic'],['Digital Art','🎨','Creative Art','Designed and illustrated'],['Cinematic','🎬','Cinematic','Dramatic and polished'],['Anime','🖌','Illustration','Stylized and artistic']];
+var AI_SUGGESTION='photorealistic, high detail, professional scene about "iphone", no sexualization, 4K';
+var state={step:4,tab:'ai',prompt:AI_SUGGESTION,ratio:'',style:'',busy:false,shots:[]};
+function $(s){return document.querySelector(s);}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function toast(m){var t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(function(){t.style.display='none';},2200);}
+/* stepper */
+(function(){
+  var pct=Math.round(((state.step-1)/(STEPS.length-1))*100), items='';
+  for(var i=0;i<STEPS.length;i++){
+    var n=i+1, done=n<state.step, act=n===state.step;
+    var bg=done||act?'linear-gradient(135deg,#7C3AED,#A855F7)':'#1E2436';
+    var fg=done||act?'#fff':'rgba(226,232,240,.55)';
+    items+='<div style="display:flex;align-items:center;flex-shrink:0"><span class="sp-item'+(act?' on':'')+'"><span class="sp-circle" style="background:'+bg+';color:'+fg+'">'+(done?'✓':n)+'</span><span class="sp-label" style="color:'+((done||act)?'#F8FAFC':'rgba(226,232,240,.65)')+'">'+STEPS[i]+'</span></span></div>';
+    if(i<STEPS.length-1) items+='<span style="flex-shrink:0;width:clamp(18px,2.6vw,40px);height:3px;border-radius:3px;margin:0 8px;background:#2A3044;overflow:hidden;position:relative"><span style="position:absolute;inset:0;background:linear-gradient(90deg,#7C3AED,#A855F7);transform:scaleX('+(n<state.step?1:0)+')"></span></span>';
+  }
+  $('#stepper').innerHTML='<button class="sp-arrow" disabled>‹</button><div style="flex:1;min-width:0"><div class="sp-rail">'+items+'</div><div style="position:relative;height:5px;border-radius:999px;background:#232839;margin:10px 2px 0"><div style="position:absolute;left:0;top:0;bottom:0;width:'+pct+'%;border-radius:999px;background:linear-gradient(90deg,#6D28D9,#8B5CF6,#D946EF)"></div></div></div><button class="sp-arrow">›</button>';
+})();
+/* media tabs */
+var TABS=[['ai','✨','Generate with AI','Create a custom visual from your content'],['upload','📁','Upload Media','Use your own image or video'],['library','🖼️','Asset Gallery','Choose from your existing assets']];
+function renderTabs(){
+  $('#mediaOpts').innerHTML=TABS.map(function(t){
+    var on=state.tab===t[0];
+    return '<button class="opt'+(on?' on':'')+'" data-t="'+t[0]+'"><span class="ck">'+(on?'✓':'')+'</span><span class="em">'+t[1]+'</span><b>'+t[2]+'</b><small>'+t[3]+'</small></button>';
+  }).join('');
+  Array.prototype.forEach.call(document.querySelectorAll('#mediaOpts .opt'),function(b){
+    b.addEventListener('click',function(){state.tab=b.getAttribute('data-t');syncPanels();renderTabs();});
+  });
+}
+function syncPanels(){
+  $('#aiPanel').style.display=state.tab==='ai'?'':'none';
+  $('#upPanel').style.display=state.tab==='upload'?'':'none';
+  $('#libPanel').style.display=state.tab==='library'?'':'none';
+}
+/* prompt */
+function renderCta(){
+  var v=$('#promptBox').value.trim();
+  var g=$('#genBtn'), label, dis;
+  if(state.busy){label='<span class="spin"></span> Generating…';dis=true;}
+  else if(!v){label='Enter a Visual Description First';dis=true;}
+  else if(!state.ratio){label='Select Aspect Ratio First';dis=true;}
+  else if(!state.style){label='Choose Image Style First';dis=true;}
+  else if(state.shots.length){label='🔁 Regenerate Image';dis=false;}
+  else{label='✨ Generate Image';dis=false;}
+  g.innerHTML=label;g.disabled=dis;g.setAttribute('aria-disabled',dis);
+  g.title=dis?'Complete the missing step above first':'Generate AI image';
+}
+function renderPrompt(countOnly){
+  var box=$('#promptBox');
+  if(!countOnly && document.activeElement!==box) box.value=state.prompt;
+  $('#charCount').textContent=box.value.length+' / 500';
+  renderCta();
+}
+$('#promptBox').addEventListener('input',function(e){state.prompt=e.target.value.slice(0,500);renderPrompt(true);});
+$('#resetBtn').addEventListener('click',function(){state.prompt=AI_SUGGESTION;renderPrompt();toast('Prompt reset to AI suggestion');});
+/* ratios + styles */
+function renderRatios(){
+  $('#ratioGrid').innerHTML=RATIOS.map(function(r){
+    var on=state.ratio===r[0];
+    return '<button class="ratio'+(on?' on':'')+'" data-r="'+r[0]+'" aria-pressed="'+on+'" title="'+r[1]+' ('+r[0]+') — '+r[2]+'"><span class="shape" style="width:'+r[3]+'px;height:'+r[4]+'px"></span><b>'+r[1]+'</b><span style="font-size:12px;font-weight:700;color:'+(on?'#6D28D9':'#64748B')+'">'+r[0]+'</span><small>'+r[2]+'</small></button>';
+  }).join('');
+  Array.prototype.forEach.call(document.querySelectorAll('#ratioGrid .ratio'),function(b){
+    b.addEventListener('click',function(){state.ratio=b.getAttribute('data-r');renderRatios();renderStyleCard();renderCta();});
+  });
+}
+function renderStyles(){
+  $('#stylePills').innerHTML=STYLES.map(function(s){
+    var on=state.style===s[0];
+    return '<button class="pill'+(on?' on':'')+'" data-s="'+s[0]+'" aria-pressed="'+on+'" title="'+s[2]+' — '+s[3]+'">'+s[1]+' '+s[2]+'</button>';
+  }).join('');
+  Array.prototype.forEach.call(document.querySelectorAll('#stylePills .pill'),function(b){
+    b.addEventListener('click',function(){state.style=b.getAttribute('data-s');renderStyles();renderStyleCard();renderCta();});
+  });
+}
+function renderStyleCard(){
+  $('#styleCard').innerHTML='<h4>Current Style</h4>'
+    +'<div class="row"><span class="k">TONE</span><span class="v">Professional</span></div>'
+    +'<div class="row"><span class="k">IMAGE STYLE</span><span class="v">'+esc(state.style||'—')+'</span></div>'
+    +'<div class="row"><span class="k">ASPECT RATIO</span><span class="v">'+esc(state.ratio||'—')+'</span></div>'
+    +'<button class="change" id="chgBtn">Change Settings →</button>';
+  $('#chgBtn').addEventListener('click',function(){window.scrollTo({top:0,behavior:'smooth'});});
+}
+/* mock generation: local SVG placeholders only */
+function ratioDims(){
+  return state.ratio==='9:16'?[540,960]:state.ratio==='16:9'?[960,540]:state.ratio==='4:3'?[800,600]:[800,800];
+}
+function mockShot(i){
+  var d=ratioDims();
+  var hues=[['124,58,237','168,85,247'],['236,72,153','251,146,60'],['34,211,238','59,130,246'],['16,185,129','52,211,153']];
+  var h=hues[i%4];
+  var svg="<svg xmlns='http://www.w3.org/2000/svg' width='"+d[0]+"' height='"+d[1]+"'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='rgb("+h[0]+")'/><stop offset='1' stop-color='rgb("+h[1]+")'/></linearGradient></defs><rect width='100%' height='100%' fill='url(#g)'/><circle cx='"+(d[0]*0.5)+"' cy='"+(d[1]*0.42)+"' r='"+(Math.min(d[0],d[1])*0.20)+"' fill='rgba(255,255,255,.25)'/><text x='50%' y='"+(d[1]*0.72)+"%' text-anchor='middle' font-family='sans-serif' font-size='42' font-weight='800' fill='rgba(255,255,255,.92)'>"+esc(state.style)+"</text><text x='50%' y='"+(d[1]*0.72+52)+"%' text-anchor='middle' font-family='sans-serif' font-size='26' fill='rgba(255,255,255,.75)'>"+esc(state.ratio)+' · mock visual '+(i+1)+"</text></svg>";
+  return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+}
+$('#genBtn').addEventListener('click',function(){
+  if(state.busy) return;
+  var v=$('#promptBox').value.trim();
+  if(!v||!state.ratio||!state.style){renderCta();return;}
+  state.prompt=v; state.busy=true; renderCta();
+  var reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  setTimeout(function(){
+    state.busy=false;
+    var n=1+Math.floor(Math.random()*3);
+    state.shots=[];
+    for(var i=0;i<n;i++) state.shots.push({url:mockShot(i),label:state.style+' '+state.ratio+' #'+(i+1)});
+    renderGallery(); renderCta();
+    toast(n+' visual'+(n>1?'s':'')+' ready (mock)');
+  },reduced?400:3500);
+});
+function renderGallery(){
+  var has=state.shots.length>0;
+  $('#galTitle').style.display=has?'':'none';
+  $('#galSub').style.display=has?'':'none';
+  $('#readyBadge').style.display=has?'':'none';
+  $('#galEmpty').style.display=has?'none':'';
+  $('#galGrid').innerHTML=state.shots.map(function(s,i){
+    var ar=state.ratio==='9:16'?'9/16':state.ratio==='16:9'?'16/9':state.ratio==='4:3'?'4/3':'1/1';
+    return '<div class="gcard" style="aspect-ratio:'+ar+'"><img src="'+s.url+'" alt="'+esc(s.label)+'"><a class="dl" href="'+s.url+'" download="socialpulse-visual-'+(i+1)+'.svg" title="Download">⤓</a></div>';
+  }).join('');
+}
+/* upload tab: local preview only */
+(function(){
+  var drop=$('#upDrop'), file=$('#upFile');
+  function add(f){
+    if(!f.type.startsWith('image/')){toast('Images only in this prototype');return;}
+    var url=URL.createObjectURL(f);
+    var d=document.createElement('div');d.className='gcard';d.style.aspectRatio='1';
+    d.innerHTML='<img alt="'+esc(f.name)+'"><button class="dl" title="Remove">×</button>';
+    d.querySelector('img').src=url;
+    d.querySelector('button').addEventListener('click',function(){URL.revokeObjectURL(url);d.remove();});
+    $('#upGrid').appendChild(d);
+  }
+  drop.addEventListener('click',function(){file.click();});
+  drop.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();file.click();}});
+  file.addEventListener('change',function(e){Array.prototype.forEach.call(e.target.files,add);e.target.value='';});
+  ['dragenter','dragover'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();});});
+  drop.addEventListener('drop',function(e){e.preventDefault();if(e.dataTransfer&&e.dataTransfer.files)Array.prototype.forEach.call(e.dataTransfer.files,add);});
+})();
+/* nav */
+$('#backBtn').addEventListener('click',function(){state.step=3;toast('Prototype: back to Step 3');});
+$('#nextBtn').addEventListener('click',function(){state.step=5;toast('Prototype: continue to Step 5');});
+renderTabs();syncPanels();renderPrompt();renderRatios();renderStyles();renderStyleCard();renderGallery();
+})();
+</script>
+</body>
+</html>

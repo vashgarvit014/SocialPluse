@@ -38,6 +38,23 @@ function stripAllHashtags(s) {
   return s.replace(/#[A-Za-z0-9_]+/g, ' ').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+// Plain-JS mirror of apps/web/src/lib/posts.ts's normalizeLegacyCollaborator
+// — kept in sync by hand, same pattern as stripAllHashtags being duplicated
+// across services. Reads either the current `collaborators` array or a
+// pre-migration `collaborator` string, and strips UI-only fields
+// (status/lastUpdatedAt/note) before sending to publishing-service, which
+// only needs {username, type}.
+function collaboratorsForPublish(post) {
+  const current = post.collaborators || post.editorState?.collaborators;
+  if (Array.isArray(current) && current.length) {
+    return current.map((c) => ({ username: c.username, type: c.type === 'private' ? 'private' : 'professional' }));
+  }
+  const legacy = post.collaborator || post.editorState?.collaborator;
+  if (typeof legacy !== 'string' || !legacy.trim()) return undefined;
+  const usernames = legacy.split(/[,\s]+/).map((c) => c.trim().replace(/^@+/, '')).filter(Boolean).slice(0, 3);
+  return usernames.length ? usernames.map((username) => ({ username, type: 'professional' })) : undefined;
+}
+
 export function createWorker({
   store, platformStore, connections, notifier, log,
   publishingServiceUrl, internalSecret, workerId, pollIntervalMs = 15_000,
@@ -70,11 +87,12 @@ export function createWorker({
       mediaList,
       isCarousel: post.isCarousel === true || undefined,
       trialReel: post.trialReel === true ? true : undefined,
-      collaborator: post.collaborator || post.editorState?.collaborator || undefined,
+      collaborators: collaboratorsForPublish(post),
       pageId: account?.pageId,
       // Whapi uses groupId, not pageId/userId.
       groupId: isWhapp ? (account?.pageId || account?.userId) : undefined,
       attemptId: `sched:${post.id}:${platform}`,
+      origin: 'SCHEDULED',
     };
   }
 
@@ -93,7 +111,7 @@ export function createWorker({
         signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.success) return { ok: true, externalPostId: data.postId || null };
+      if (res.ok && data.success) return { ok: true, externalPostId: data.postId || null, collaboratorResults: data.collaborators, postUrl: data.postUrl };
 
       // A duplicate-claim response means a prior attempt already claimed this
       // exact post+platform attemptId — but that prior attempt could itself
@@ -104,11 +122,37 @@ export function createWorker({
         if (outcome?.status === 'SUCCESS') return { ok: true, externalPostId: outcome.providerPostId || null, duplicate: true };
         return { ok: false, code: data.code || 'PUBLISH_FAILED', message: 'A prior attempt for this post already failed; it was not published.' };
       }
-      return { ok: false, code: data.code || 'PUBLISH_FAILED', message: data.message || 'Publish failed.' };
+      return { ok: false, code: data.code || 'PUBLISH_FAILED', message: data.message || 'Publish failed.', collaboratorResults: data.collaborators };
     } catch (e) {
       return { ok: false, code: 'PUBLISH_FAILED', message: e instanceof Error ? e.message : 'Network error' };
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  // Merges a publishing-service collaboratorResults response into the post's
+  // persisted collaborators array and writes it back. This is the only path
+  // that updates collaborator status for a scheduled (non-instant) publish —
+  // there's no browser present to do it the way the instant-publish path
+  // does. Informational only: called after finishPlatform(), so a failure or
+  // crash here never affects the authoritative per-platform delivery row.
+  async function persistCollaboratorResults(post, collaboratorResults, postUrl) {
+    const hasResults = Array.isArray(collaboratorResults) && collaboratorResults.length && Array.isArray(post.collaborators) && post.collaborators.length;
+    if (!hasResults && !postUrl) return;
+    try {
+      await store.updateUserPost(post.userId, post.id, (current) => {
+        let collaborators = current.collaborators;
+        if (hasResults) {
+          const results = new Map(collaboratorResults.map((r) => [r.username, r]));
+          collaborators = (current.collaborators || []).map((c) => {
+            const r = results.get(c.username);
+            return r ? { ...c, status: r.status, lastUpdatedAt: new Date().toISOString() } : c;
+          });
+        }
+        return { ...current, collaborators, instagramPostUrl: postUrl || current.instagramPostUrl };
+      });
+    } catch (e) {
+      log.warn({ userId: post.userId, scheduledPostId: post.id, event: 'COLLABORATOR_STATUS_PERSIST_FAILED', message: e instanceof Error ? e.message : 'unknown' });
     }
   }
 
@@ -164,6 +208,7 @@ export function createWorker({
         status: PLATFORM_STATUS.PUBLISHED, externalPostId: result.externalPostId,
       });
       log.info({ ...logBase, event: 'PLATFORM_PUBLISH_SUCCESS', externalPostId: result.externalPostId || null });
+      if (platform === 'instagram') await persistCollaboratorResults(post, result.collaboratorResults, result.postUrl);
       return { platform, ok: true, externalPostId: result.externalPostId };
     }
 
@@ -172,6 +217,7 @@ export function createWorker({
     await platformStore.finishPlatform(post.id, userId, platform, {
       status, errorCode: result.code, errorMessage: result.message,
     });
+    if (platform === 'instagram') await persistCollaboratorResults(post, result.collaboratorResults);
     log.warn({ ...logBase, event: connectionFailed ? 'PLATFORM_CONNECTION_REQUIRED' : 'PLATFORM_PUBLISH_FAILED', errorCode: result.code });
     if (connectionFailed) {
       await notifier?.notify({

@@ -8,7 +8,7 @@
 # /socialpulse-db is already in use", and it strands an orphan plusing20_default
 # network. Pinning it means the flag can never be forgotten, and the -p form
 # still works as long as it matches.
-name: social-media-manager
+name: socialpulse
 
 # Cloudflare Tunnel runs as its own container on the compose network and forwards
 # straight to the app container by service name:
@@ -165,12 +165,16 @@ services:
       USER_SERVICE_URL: http://user-service:4010
       AUTH_SERVICE_URL: http://auth-service:4011
       SCHEDULER_SERVICE_URL: http://scheduler-service:4007
+      MEDIA_SERVICE_URL: http://media-service:4004
+      ADMIN_MEDIA_SIGNING_SECRET: ${ADMIN_MEDIA_SIGNING_SECRET}
     depends_on:
       db:
         condition: service_healthy
       user-service:
         condition: service_started
       auth-service:
+        condition: service_started
+      media-service:
         condition: service_started
       scheduler-service:
         condition: service_started
@@ -311,18 +315,28 @@ services:
         condition: service_started
 
   # Repository restructure — new, independent Next.js app for the
-  # Superadmin console (see MIGRATION-NOTES.md). Deliberately NOT exposed
-  # to the host and NOT referenced by either cloudflared tunnel yet — it
-  # is built/tested standalone over the internal Docker network only.
-  # supersocialpulse.dotstark.tech's tunnel still points at
-  # http://socialpulse:3000 (apps/web's copy of the Superadmin pages,
-  # unchanged) until an explicit, separate cutover.
+  # Superadmin console (see MIGRATION-NOTES.md, Phase 14). It listens on
+  # internal port 3002 and IS the live ingress target for the Superadmin
+  # tunnel: supersocialpulse.dotstark.tech -> http://socialpulse-superadmin-app:3002
+  #
+  # Port 3000 on the host belongs to the `socialpulse` service (apps/web) —
+  # the main site, reached via socialpulse.dotstark.tech. The two never
+  # collide.
+  #
+  # The old Superadmin routes were removed from apps/web in Phase 14.
   socialpulse-superadmin-app:
     build:
       context: ./apps/superadmin
       dockerfile: Dockerfile
     container_name: socialpulse-superadmin-app
     restart: unless-stopped
+    ports:
+      # Loopback-only: reachable from the host at http://127.0.0.1:3003 for
+      # local admin work, but bound to 127.0.0.1 so it is never exposed to
+      # the LAN or the internet. Deliberately NOT 3000 (that is apps/web) and
+      # NOT 3002 (that is the internal port, and `npm run dev` in
+      # apps/superadmin also uses 3002 on the host).
+      - "127.0.0.1:${SUPERADMIN_HOST_PORT:-3003}:3002"
     environment:
       PORT: 3002
       GATEWAY_URL: http://gateway:8080
@@ -417,14 +431,12 @@ volumes:
   # volume is a deliberate later step, not a side effect of this extraction.
   media_data:
 
-# Deliberately NOT renaming the default network to "socialpulse-internal"
-# here, even though that's the name the migration plan calls for: every
-# existing service (including both cloudflared tunnels) already has a live
-# container attached to "social-media-manager_default", and a network rename
-# forces Compose to recreate every container on it to reconnect — i.e. it
-# would restart the live tunnels, which "no Cloudflare changes" rules out.
+# The default network is "socialpulse_default" (derived from the `name:`
+# pin at the top of this file). It was renamed from "social-media-manager"
+# during a maintenance window with the whole stack down, specifically to
+# avoid the risk called out below: renaming the project forces Compose to
+# recreate every container on the network to reconnect it, which would have
+# restarted live Cloudflare tunnels had the stack been running at the time.
 # analytics-service and gateway still get Docker DNS resolution of db/
 # socialpulse for free by joining this same implicit default network (no
-# `networks:` key set on either service above) — only the network's literal
-# name differs from the plan's proposed one. Revisit the rename in a
-# maintenance window if the literal name ever matters.
+# `networks:` key set on either service above).

@@ -170,6 +170,20 @@ export function createMediaAssetsStore(pool, root) {
     return rows[0] ? hydrate(rows[0]) : null;
   }
 
+  // Owner-UNSCOPED lookup — internal-secret-gated callers only (Content
+  // Violation Monitoring's Super Admin media viewer). Never reachable from a
+  // browser directly; the owner check that every other read here enforces
+  // is replaced by the caller (admin-service) having already verified a
+  // short-lived signed token for this exact asset id.
+  async function getMediaAssetById(id, opts = {}) {
+    if (!UUID_RE.test(id)) return null;
+    const { rows } = await pool.query(
+      `SELECT ${COLUMNS} FROM media_assets WHERE id = $1 AND deleted_at IS NULL AND ($2::boolean OR expires_at > $3)`,
+      [id, !!opts.includeExpired, new Date().toISOString()],
+    );
+    return rows[0] ? hydrate(rows[0]) : null;
+  }
+
   async function readMediaAssetBytes(asset) {
     const absolute = storagePathFor(asset.storageKey);
     if (!absolute) return null;
@@ -252,5 +266,5 @@ export function createMediaAssetsStore(pool, root) {
     return summary;
   }
 
-  return { validateUpload, sanitizeFilename, saveMediaAsset, listMediaAssets, getMediaAsset, readMediaAssetBytes, deleteMediaAsset, toPublicAsset, cleanupExpired };
+  return { validateUpload, sanitizeFilename, saveMediaAsset, listMediaAssets, getMediaAsset, getMediaAssetById, readMediaAssetBytes, deleteMediaAsset, toPublicAsset, cleanupExpired };
 }

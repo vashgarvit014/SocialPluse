@@ -6,11 +6,22 @@ import AIGenerationModal from './ai-generation-modal';
 import SchedulerCalendar from './scheduler-calendar';
 import ConnectPlatforms from './connect-platforms';
 import AssetLibrary from './asset-library';
-import { newestDrafts, postMedia, type PostRecord } from '@/lib/posts';
+import { newestDrafts, postMedia, normalizeLegacyCollaborator, type PostRecord, type Collaborator } from '@/lib/posts';
 import { carouselMediaIssue } from '@/lib/carousel-rules';
+import {
+  addCollaborator as addCollaboratorHelper,
+  removeCollaborator as removeCollaboratorHelper,
+  updateCollaboratorField as updateCollaboratorFieldHelper,
+  markCollaboratorSent as markCollaboratorSentHelper,
+  markCollaboratorPending as markCollaboratorPendingHelper,
+  markCollaboratorResolved as markCollaboratorResolvedHelper,
+  mergeCollaboratorResults,
+  collaboratorsForPublish,
+} from '@/lib/collaborators';
 import { returnStore } from '@/lib/editor-return';
 import { clearAllUserState, identityChanged, purgeForeignUserState, userScopedKey } from '@/lib/client-identity';
 import { SP_LOGO, STUDIO_MARK } from './brand-assets';
+import NotificationBell from '@/components/notifications/NotificationBell';
 import { SpIcon } from './sp-icons';
 import { DashboardHeroCoin } from './dashboard-hero-coin';
 
@@ -217,7 +228,14 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   // moment the post stops being an Instagram Reel. Never silently posted as
   // a normal Reel — the publish route diverts trial posts to the trial seam.
   const [trialReel, setTrialReel] = useState(false);
-  const [collaborator, setCollaborator] = useState<string>('');
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [instagramPostUrl, setInstagramPostUrl] = useState<string>('');
+  const addCollaboratorEntry = () => setCollaborators(cs => addCollaboratorHelper(cs));
+  const removeCollaboratorEntry = (index: number) => setCollaborators(cs => removeCollaboratorHelper(cs, index));
+  const updateCollaboratorEntry = (index: number, patch: Partial<Collaborator>) => setCollaborators(cs => updateCollaboratorFieldHelper(cs, index, patch));
+  const markCollaboratorEntrySent = (index: number) => setCollaborators(cs => markCollaboratorSentHelper(cs, index));
+  const markCollaboratorEntryPending = (index: number) => setCollaborators(cs => markCollaboratorPendingHelper(cs, index));
+  const markCollaboratorEntryResolved = (index: number, outcome: 'Accepted' | 'Declined') => setCollaborators(cs => markCollaboratorResolvedHelper(cs, index, outcome));
   const [carouselSlideCount, setCarouselSlideCount] = useState(4); // Generate-N-slides helper size
   const [isGeneratingCarousel, setIsGeneratingCarousel] = useState(false);
   const [topicDragOver, setTopicDragOver] = useState(false);
@@ -538,7 +556,7 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
     mediaSkipped?: boolean; savedAt: number;
     wizardState?: Record<string, unknown>; activeTab?: typeof activeTab; draftId?: string;
     isCarousel?: boolean; carouselSlideIds?: string[]; carouselSlideCount?: number;
-    trialReel?: boolean; collaborator?: string;
+    trialReel?: boolean; collaborators?: Collaborator[]; collaborator?: string; instagramPostUrl?: string;
     scheduleDate?: string; scheduleTime?: string; editorTab?: 'edit' | 'preview';
     canvaReadyId?: string; canvaSession?: CanvaSession | null; canvaLastImportedReadyId?: string; path?: string;
   }
@@ -547,7 +565,7 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
     activePreviewPlatform, selectedPlatforms, mediaItems, topicMediaItems,
     generatedImage, generatedVideo, mediaType, originals: originalMediaRef.current,
     burnedLogoIds, logoImage, logoPosition, logoScale, logoOpacity, savedAt: Date.now(),
-wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCount, trialReel, collaborator,
+wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCount, trialReel, collaborators, instagramPostUrl,
     scheduleDate, scheduleTime, editorTab, canvaReadyId, canvaSession, canvaLastImportedReadyId,
     path: window.location.pathname + window.location.search + window.location.hash,
   });
@@ -669,7 +687,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       setWizardState(d.wizardState || {}); setDraftId(d.draftId);
       setActiveTab(d.activeTab || 'studio'); setIsCarousel(!!d.isCarousel);
       setCarouselSlideIds(d.carouselSlideIds || []); setCarouselSlideCount(d.carouselSlideCount || 4);
-      setTrialReel(!!d.trialReel); setCollaborator(d.collaborator || '');
+      setTrialReel(!!d.trialReel); setCollaborators(normalizeLegacyCollaborator(d) || []); setInstagramPostUrl(d.instagramPostUrl || '');
       setScheduleDate(d.scheduleDate || ''); setScheduleTime(d.scheduleTime || '');
       setEditorTab(d.editorTab || 'preview'); setCanvaReadyId(d.canvaReadyId || '');
       setCanvaSession(d.canvaSession || null); setCanvaLastImportedReadyId(d.canvaLastImportedReadyId || '');
@@ -1557,7 +1575,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           mediaList: publishMediaList,
           isCarousel: isCarousel && carouselValidation.valid ? true : undefined,
           trialReel: trialReel && instagramReelReady ? true : undefined,
-          collaborator: collaborator.trim() ? collaborator.trim() : undefined,
+          collaborators: collaborators.length ? collaborators : undefined,
+          instagramPostUrl: instagramPostUrl || undefined,
           platforms: connectedSelected,
           accounts: accountsData,
           scheduledAt,
@@ -1653,7 +1672,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         imageUrl: generatedImage, videoUrl: generatedVideo, mediaList: publishMediaList,
         mediaUrls: publishMediaList.map(m => m.url), isCarousel, platformContent,
         trialReel: trialReel && instagramReelReady ? true : undefined,
-        collaborator: collaborator.trim() ? collaborator.trim() : undefined,
+        collaborators: collaborators.length ? collaborators : undefined,
+        instagramPostUrl: instagramPostUrl || undefined,
         source: mediaItems.some(m => m.name === 'generated') ? 'AI Generated' : 'Manual Draft',
         editorState: captureEditor(),
       }) });
@@ -1677,7 +1697,11 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       generatedImage: post.imageUrl || '', generatedVideo: post.videoUrl || '',
       isCarousel: !!post.isCarousel, carouselSlideIds: (post.editorState?.carouselSlideIds as string[]) || media.map(m => m.id),
       trialReel: (post as PostRecord).trialReel === true,
-      collaborator: (post as PostRecord).collaborator || (post.editorState?.collaborator as string) || '',
+      collaborators: normalizeLegacyCollaborator({
+        collaborators: (post as PostRecord).collaborators || (post.editorState?.collaborators as Collaborator[] | undefined),
+        collaborator: (post as PostRecord).collaborator || (post.editorState?.collaborator as string | undefined),
+      }) || [],
+      instagramPostUrl: (post as PostRecord).instagramPostUrl || (post.editorState?.instagramPostUrl as string | undefined) || '',
       draftId: post.id.startsWith('legacy:') ? undefined : post.id,
             activeTab: 'studio', wizardState: { ...((post.editorState?.wizardState as Record<string, unknown>) || {}), currentStep: schedule ? 8 : 3 },
       scheduleDate: post.scheduledAt ? localDateKey(new Date(post.scheduledAt)) : '',
@@ -3360,7 +3384,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               mediaList: publishMediaList,
               isCarousel: isCarousel && carouselValidation.valid ? true : undefined,
               trialReel: platform === 'instagram' && trialReel && instagramReelReady ? true : undefined,
-              collaborator: platform === 'instagram' && collaborator.trim() ? collaborator.trim() : undefined,
+              collaborators: platform === 'instagram' ? collaboratorsForPublish(collaborators) : undefined,
               userId: account.userId,
               pageId: account.pageId || undefined,
               attemptId,
@@ -3370,12 +3394,23 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           if (res.ok) {
             results.push(`${label}: Success`);
             markPlatform(platform, 'success');
+            if (platform === 'instagram') {
+              const data = await readPublishResponse(res);
+              const collabResults = Array.isArray(data.collaborators) ? data.collaborators as Parameters<typeof mergeCollaboratorResults>[1] : undefined;
+              const postUrl = typeof data.postUrl === 'string' ? data.postUrl : undefined;
+              if (postUrl) setInstagramPostUrl(postUrl);
+              if (collabResults?.length || postUrl) { setCollaborators(cs => mergeCollaboratorResults(cs, collabResults)); void saveFullDraft(); }
+            }
           } else {
             const err = await readPublishResponse(res);
             const reason = publishErrorText(typeof err.code === 'string' ? err.code : undefined, typeof err.message === 'string' ? err.message : undefined);
             results.push(`${label}: ${reason === 'Publish failed. Please try again.' ? publishReason(err, res, 'Publish failed') : reason}`);
             markPlatform(platform, 'failed', reason);
             hasError = true;
+            if (platform === 'instagram') {
+              const collabResults = Array.isArray(err.collaborators) ? err.collaborators as Parameters<typeof mergeCollaboratorResults>[1] : undefined;
+              if (collabResults?.length) { setCollaborators(cs => mergeCollaboratorResults(cs, collabResults)); void saveFullDraft(); }
+            }
           }
         } catch {
           results.push(`${label}: Network error — no retry was attempted`);
@@ -3716,12 +3751,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               <SpIcon name="calendar" size={15} />
               <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
             </div>
-            <div style={{ position: 'relative' }}>
-              <button type="button" className="sp-btn sp-btn-ghost" aria-label="Notifications" style={{ width: '44px', height: '44px', display: 'grid', placeItems: 'center', borderRadius: '13px', border: '1px solid rgba(150,242,255,.18)', color: '#C9CDEB' }}>
-                <SpIcon name="bell" size={19} />
-              </button>
-              {pendingPosts.length > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '18px', height: '18px', borderRadius: '50%', background: 'linear-gradient(135deg, #6483FD, #5DAAF5)', color: '#fff', fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 10px rgba(110,220,255,.8)' }}>{pendingPosts.length}</span>}
-            </div>
+            <NotificationBell />
             <button type="button" className="sp-btn sp-display" aria-label="Account" onClick={() => setProfileMenuOpen(v => !v)} style={{ width: '44px', height: '44px', display: 'grid', placeItems: 'center', borderRadius: '50%', fontSize: '16px', fontWeight: 700, color: '#FFFFFF', background: 'linear-gradient(#141A3C, #141A3C) padding-box, linear-gradient(135deg, #6483FD, #5DAAF5) border-box', border: '2px solid transparent', boxShadow: '0 0 22px rgba(98,224,255,.35)' }}>
               {(currentUser?.name || '?').charAt(0).toUpperCase()}
             </button>
@@ -3757,7 +3787,11 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             removeMediaItem={removeMediaItem} clearAllMedia={clearAllMedia} moveMedia={moveMedia}
             handleUploadImage={handleUploadImage} handleDrop={handleDrop}
             isCarousel={isCarousel} setIsCarousel={setIsCarousel}
-            trialReel={trialReel} setTrialReel={setTrialReel} instagramReelReady={instagramReelReady} collaborator={collaborator} setCollaborator={setCollaborator}
+            trialReel={trialReel} setTrialReel={setTrialReel} instagramReelReady={instagramReelReady}
+            collaborators={collaborators} addCollaborator={addCollaboratorEntry} removeCollaborator={removeCollaboratorEntry}
+            updateCollaboratorField={updateCollaboratorEntry} markCollaboratorSent={markCollaboratorEntrySent}
+            markCollaboratorPending={markCollaboratorEntryPending} markCollaboratorResolved={markCollaboratorEntryResolved}
+            instagramPostUrl={instagramPostUrl}
             carouselSlides={carouselSlides} carouselValidation={carouselValidation}
             toggleCarouselSlide={toggleCarouselSlide} moveCarouselSlide={moveCarouselSlide} removeCarouselSlide={removeCarouselSlide}
             reorderCarouselSlide={reorderCarouselSlide} setMediaCover={setMediaCover}
@@ -4749,16 +4783,32 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               )}
 
               {selectedPlatforms.includes('instagram') && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label htmlFor="sp-collab-sched" style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>Instagram collaborator (optional)</label>
-                  <input
-                    id="sp-collab-sched"
-                    value={collaborator}
-                    onChange={e => setCollaborator(e.target.value.replace(/^@+/, '').slice(0, 30))}
-                    placeholder="username (without @)"
-                    autoComplete="off"
-                    style={{ width: '100%', padding: '11px 13px', borderRadius: '10px', border: `1.5px solid ${collaborator ? '#6366f1' : '#e2e8f0'}`, backgroundColor: '#fff', color: '#0f172a', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }}
-                  />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>Instagram collaborators (optional)</label>
+                  {collaborators.map((c, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <input
+                        value={c.username}
+                        onChange={e => updateCollaboratorEntry(i, { username: e.target.value.replace(/^@+/, '').slice(0, 30) })}
+                        placeholder="username (without @)"
+                        autoComplete="off"
+                        style={{ flex: '1 1 160px', minWidth: 0, padding: '11px 13px', borderRadius: '10px', border: `1.5px solid ${c.username ? '#6366f1' : '#e2e8f0'}`, backgroundColor: '#fff', color: '#0f172a', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }}
+                      />
+                      <select
+                        value={c.type}
+                        onChange={e => updateCollaboratorEntry(i, { type: e.target.value as 'professional' | 'private' })}
+                        style={{ padding: '9px 10px', borderRadius: '10px', border: '1.5px solid #e2e8f0', fontFamily: 'inherit', fontSize: '13px' }}
+                      >
+                        <option value="professional">Professional (Business/Creator)</option>
+                        <option value="private">Private (Personal)</option>
+                      </select>
+                      <button type="button" onClick={() => removeCollaboratorEntry(i)} aria-label="Remove collaborator" style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '15px', color: '#64748b' }}>✕</button>
+                    </div>
+                  ))}
+                  {collaborators.length < 3 && (
+                    <button type="button" onClick={addCollaboratorEntry} style={{ alignSelf: 'flex-start', border: '1px dashed #cbd5e1', background: 'transparent', borderRadius: '8px', padding: '6px 12px', fontSize: '12.5px', fontWeight: 700, color: '#4338ca', cursor: 'pointer', fontFamily: 'inherit' }}>+ Add collaborator</button>
+                  )}
+                  <small style={{ fontSize: '11px', color: '#64748b' }}>Professional accounts receive an automatic Instagram invite. Personal accounts can't be invited through the API — you'll complete that step manually in the Instagram app after publishing.</small>
                 </div>
               )}
 

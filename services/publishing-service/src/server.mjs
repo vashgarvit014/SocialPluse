@@ -14,6 +14,13 @@ import { publishToInstagram } from '../providers/instagram.mjs';
 import { publishToWhapi } from '../providers/whapi.mjs';
 import { createInstagramMediaStager } from '../providers/instagram-media.mjs';
 import { createWhapiMediaStager } from '../providers/whapi-media.mjs';
+import { assertContentAllowed } from './pre-publish-check.mjs';
+
+// 'SCHEDULED' is set by scheduler-service's worker.mjs callPublish(); omitted
+// (or anything else) means an instant, browser-triggered publish.
+function sourceFor(body) {
+  return body.origin === 'SCHEDULED' ? 'SCHEDULED_PUBLISH' : 'DIRECT_PUBLISH';
+}
 
 // publishing-service — owns actual outbound publishing (provider payload
 // creation, provider API calls, result normalization, durable idempotency,
@@ -39,7 +46,12 @@ const WHAPI_MEDIA_ROOT = process.env.WHAPI_MEDIA_ROOT || '/app/.whapi-media';
 const APP_ORIGIN = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001';
 const WHAPI_API_BASE = process.env.WHAPI_API_BASE || 'https://gate.whapi.cloud';
 const WHAPI_API_TOKEN = process.env.WHAPI_API_TOKEN || '';
-const PROVIDER_TIMEOUT_MS = 30_000;
+// Instagram waitForContainer polls up to 12x3s (~36s) plus container creation
+// + publish calls. At 30s the race fired first and returned 502 while Meta
+// still published — same false-negative as the gateway's old 15s bound.
+// 60s covers the full poll window with headroom, still well under the
+// gateway's 75s publishing timeout above so the service answers first.
+const PROVIDER_TIMEOUT_MS = 60_000;
 const log = createLogger('publishing-service');
 
 let pool = null;
@@ -61,8 +73,8 @@ function send(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json' });
   res.end(JSON.stringify(body));
 }
-function err(res, code, message, status, attemptId) {
-  send(res, status, { success: false, code, message, attemptId });
+function err(res, code, message, status, attemptId, extra) {
+  send(res, status, { success: false, code, message, attemptId, ...extra });
 }
 function requireActor(req) {
   const userId = req.headers['x-actor-user-id'];
@@ -79,6 +91,18 @@ function withTimeout(promise, ms) {
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error('Provider request timed out')), ms)),
   ]);
+}
+// On a duplicate claim with the SAME attemptId, return the real prior
+// outcome: if the first attempt actually succeeded (e.g. the caller timed
+// out waiting but Meta published), answer 200 with that postId instead of a
+// blind 409 that the UI would render as Failed. A prior FAILED stays 409.
+async function handleDuplicateClaim(res, platform, attempt, duplicateCode) {
+  const outcome = await idempotency.getAttemptOutcome(platform, attempt);
+  if (outcome?.status === 'SUCCESS') {
+    log.info({ event: 'duplicate_success_replay', platform, attemptId: attempt, postId: outcome.providerPostId });
+    return send(res, 200, { success: true, postId: outcome.providerPostId || null, attemptId: attempt, duplicate: true });
+  }
+  return err(res, duplicateCode, 'Duplicate publish request ignored — this post is already being published.', 409, attempt);
 }
 const WHAPI_MEDIA_CONTENT_TYPE = {
   png: 'image/png',
@@ -143,8 +167,11 @@ async function handleLinkedIn(req, res, requestId) {
   const carouselErr = carouselMediaError(body);
   if (carouselErr) return err(res, carouselErr.code, carouselErr.message, 400, attempt);
 
+  const modCheck = await assertContentAllowed({ userId, content, platform: 'linkedin', source: sourceFor(body), attemptId: attempt });
+  if (!modCheck.allowed) return send(res, modCheck.status, modCheck.body);
+
   const claim = await idempotency.claimAttempt({ attemptId: attempt, platform: 'linkedin', userId });
-  if (claim.duplicate) return err(res, 'DUPLICATE_PUBLISH_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attempt);
+  if (claim.duplicate) return await handleDuplicateClaim(res, 'linkedin', attempt, 'DUPLICATE_PUBLISH_REQUEST');
 
   const auth = await credentials.getLinkedInAuth(userId);
   if (!auth) {
@@ -176,8 +203,11 @@ async function handleFacebook(req, res, requestId) {
   const carouselErr = carouselMediaError(body);
   if (carouselErr) return err(res, carouselErr.code, carouselErr.message, 400, attempt);
 
+  const modCheck = await assertContentAllowed({ userId, content, platform: 'facebook', source: sourceFor(body), attemptId: attempt });
+  if (!modCheck.allowed) return send(res, modCheck.status, modCheck.body);
+
   const claim = await idempotency.claimAttempt({ attemptId: attempt, platform: 'facebook', userId, destination: pageId });
-  if (claim.duplicate) return err(res, 'DUPLICATE_PUBLISH_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attempt);
+  if (claim.duplicate) return await handleDuplicateClaim(res, 'facebook', attempt, 'DUPLICATE_PUBLISH_REQUEST');
 
   const resolved = await credentials.getFacebookPageToken(userId, typeof pageId === 'string' ? pageId : undefined);
   if (!resolved) {
@@ -208,8 +238,11 @@ async function handleInstagram(req, res, requestId) {
   const carouselErr = carouselMediaError(body);
   if (carouselErr) return err(res, carouselErr.code, carouselErr.message, 400, attempt);
 
+  const modCheck = await assertContentAllowed({ userId, content: body.content, platform: 'instagram', source: sourceFor(body), attemptId: attempt });
+  if (!modCheck.allowed) return send(res, modCheck.status, modCheck.body);
+
   const claim = await idempotency.claimAttempt({ attemptId: attempt, platform: 'instagram', userId, destination: pageId });
-  if (claim.duplicate) return err(res, 'DUPLICATE_PUBLISH_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attempt);
+  if (claim.duplicate) return await handleDuplicateClaim(res, 'instagram', attempt, 'DUPLICATE_PUBLISH_REQUEST');
 
   const ig = await credentials.getInstagramAccount(userId, typeof pageId === 'string' ? pageId : undefined);
   if (!ig) {
@@ -220,9 +253,9 @@ async function handleInstagram(req, res, requestId) {
   try {
     const result = await withTimeout(publishToInstagram({ ig, ...body, attempt, prepareInstagramMedia }), PROVIDER_TIMEOUT_MS);
     await idempotency.recordResult(claim.id, result.ok ? { status: 'SUCCESS', providerPostId: result.postId } : { status: 'FAILED', errorCode: result.code });
-    if (!result.ok) return err(res, result.code, result.message, result.status, attempt);
+    if (!result.ok) return err(res, result.code, result.message, result.status, attempt, { collaborators: result.collaboratorResults });
     log.info({ requestId, event: 'publish_success', platform: 'instagram', userId, postId: result.postId });
-    return send(res, 200, { success: true, postId: result.postId, attemptId: attempt, mock: result.mock === true, message: result.message });
+    return send(res, 200, { success: true, postId: result.postId, attemptId: attempt, mock: result.mock === true, message: result.message, collaborators: result.collaboratorResults, postUrl: result.postUrl });
   } catch (e) {
     await idempotency.recordResult(claim.id, { status: 'FAILED', errorCode: 'PUBLISH_FAILED' });
     log.error({ requestId, event: 'publish_error', platform: 'instagram', userId, message: e instanceof Error ? e.message : 'unknown' });
@@ -240,8 +273,11 @@ async function handleWhapi(req, res, requestId) {
   const carouselErr = carouselMediaError(body);
   if (carouselErr) return err(res, carouselErr.code, carouselErr.message, 400, attempt);
 
+  const modCheck = await assertContentAllowed({ userId, content: body.text, platform: 'whatsapp', source: sourceFor(body), attemptId: attempt });
+  if (!modCheck.allowed) return send(res, modCheck.status, modCheck.body);
+
   const claim = await idempotency.claimAttempt({ attemptId: attempt, platform: 'whapi', userId, destination: groupId });
-  if (claim.duplicate) return err(res, 'WHAPI_DUPLICATE_REQUEST', 'Duplicate publish request ignored — this post is already being published.', 409, attempt);
+  if (claim.duplicate) return await handleDuplicateClaim(res, 'whapi', attempt, 'WHAPI_DUPLICATE_REQUEST');
 
   if (!WHAPI_API_TOKEN) {
     await idempotency.recordResult(claim.id, { status: 'FAILED', errorCode: 'WHAPI_NOT_CONFIGURED' });

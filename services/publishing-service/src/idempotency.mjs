@@ -41,5 +41,18 @@ export function createIdempotencyStore(pool) {
         [id, status, providerPostId || null, errorCode || null],
       );
     },
+
+    // Resolves what a prior attempt at (platform, attemptId) ACTUALLY
+    // recorded — used on a duplicate claim so a retry with the SAME attemptId
+    // (e.g. after a gateway timeout) reflects the real outcome instead of a
+    // blind 409. Same pattern scheduler-service's worker uses client-side.
+    async getAttemptOutcome(platform, attemptId) {
+      const { rows } = await pool.query(
+        'SELECT status, provider_post_id FROM publish_attempts WHERE platform = $1 AND attempt_id = $2',
+        [platform, attemptId],
+      );
+      if (!rows[0]) return null;
+      return { status: rows[0].status, providerPostId: rows[0].provider_post_id };
+    },
   };
 }

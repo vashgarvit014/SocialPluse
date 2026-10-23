@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SocialPulse — Step 3 Generated Content (local prototype)</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --pri:#7C3AED; --pri2:#8B5CF6; --priDark:#6D28D9; --pink:#EC4899; --cyan:#22D3EE;
+    --ink:#0F1720; --muted:#64748B; --faint:#94A3B8;
+    --bg:#F4F5FA; --card:#fff; --bd:#E8EAF1;
+    --ok:#059669; --okbg:#ECFDF5; --okbd:#A7F3D0;
+    --err:#B91C1C; --errbg:#FEF2F2; --errbd:#FECACA;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  html{overflow-x:hidden}
+  body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);font-size:14px;overflow-x:hidden}
+  .shell{display:flex;min-height:100vh}
+  .side{width:220px;flex-shrink:0;background:linear-gradient(180deg,#0D1024 0%,#090B15 100%);color:#CBD5E1;padding:22px 14px;display:flex;flex-direction:column;gap:4px}
+  .side .brand{display:flex;align-items:center;gap:10px;padding:4px 10px 18px;color:#fff;font-weight:800;font-size:17px}
+  .side .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#5b6cff,#9b5cf6);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff}
+  .side a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:#94A3B8;text-decoration:none;font-size:13.5px;font-weight:600;cursor:default}
+  .side a.on{background:rgba(124,58,237,.22);color:#fff;box-shadow:inset 0 0 0 1px rgba(139,92,246,.35)}
+  .side .tag{margin-top:auto;padding:10px 12px;font-size:11px;color:#64748B;border-top:1px solid rgba(148,163,184,.15);line-height:1.5}
+  .main{flex:1;min-width:0;max-width:100%;padding:26px 28px 60px}
+  .wrap{width:min(100%,1180px);margin:0 auto;min-width:0}
+  /* stepper */
+  .sp-stepper{display:flex;align-items:center;gap:12px;padding:18px 24px 14px;min-height:118px;border-radius:999px;background:linear-gradient(180deg,#111321 0%,#090B15 100%);border:1px solid rgba(139,92,246,.18);box-shadow:0 12px 40px rgba(15,23,42,.18),0 0 24px rgba(124,58,237,.10);min-width:0;max-width:100%}
+  .sp-rail{display:flex;align-items:center;overflow-x:auto;overflow-y:hidden;white-space:nowrap;scroll-behavior:smooth;padding:6px 2px 2px;scrollbar-width:none;scroll-snap-type:x proximity}
+  .sp-rail::-webkit-scrollbar{display:none}
+  .sp-rail>div{scroll-snap-align:center}
+  .sp-arrow{width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;background:rgba(255,255,255,.06);border:1px solid rgba(139,92,246,.28);cursor:pointer;font-family:inherit}
+  .sp-arrow:disabled{opacity:.3;cursor:default}
+  .sp-item{background:none;border:none;border-radius:18px;padding:8px 10px;display:flex;align-items:center;gap:10px;font-family:inherit;white-space:nowrap}
+  .sp-item.on{background:rgba(124,58,237,.10);box-shadow:0 0 20px rgba(139,92,246,.16)}
+  .sp-circle{width:42px;height:42px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px}
+  .sp-label{font-size:clamp(11px,1vw,14px);font-weight:600;white-space:nowrap}
+  /* layout */
+  .cols{display:grid;gap:clamp(10px,1.5vw,18px);align-items:start;margin-top:20px;grid-template-columns:minmax(0,1fr)}
+  @media(min-width:900px){.cols{grid-template-columns:minmax(0,1.8fr) minmax(240px,0.8fr)}}
+  @media(min-width:1200px){.cols{grid-template-columns:minmax(0,2.2fr) minmax(260px,0.8fr)}}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:20px;padding:clamp(16px,2.5vw,28px) clamp(14px,2vw,28px);box-shadow:0 1px 2px rgba(15,23,42,.04),0 12px 36px rgba(15,23,42,.08);min-width:0;max-width:100%}
+  .head{display:flex;align-items:flex-start;gap:14px;margin-bottom:6px}
+  .head .ic{width:48px;height:48px;border-radius:14px;background:#EDE9FE;border:1px solid #DDD6FE;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+  .head h2{font-size:clamp(18px,2vw,21px);font-weight:800;letter-spacing:-.02em;margin:0}
+  .head p{font-size:clamp(12px,1.2vw,13px);color:var(--muted);margin:4px 0 0}
+  .toolbar{display:flex;gap:8px;margin:16px 0 4px;flex-wrap:wrap;align-items:center}
+  .btn{border-radius:11px;padding:10px 18px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;transition:all .18s;min-height:42px}
+  .btn-g{background:#fff;border:1.5px solid var(--bd);color:#334155}
+  .btn-g:hover{border-color:var(--pri2)}
+  .btn-pv{margin-left:auto;border:1.5px solid #C4B5FD;background:#F1EBFF;color:var(--priDark)}
+  /* generation panel (light adaptation of reference) */
+  .gen{border:1.5px solid #E4DBFF;border-radius:16px;background:linear-gradient(180deg,#FBFAFF,#F6F1FF);padding:18px 20px;margin:14px 0 6px;overflow:hidden;position:relative}
+  .gen.hide{display:none}
+  .gen-top{display:flex;align-items:center;gap:14px}
+  .orb{width:54px;height:54px;border-radius:50%;flex-shrink:0;position:relative;background:conic-gradient(from 0deg,var(--pri2),var(--pink),var(--cyan),var(--pri2));box-shadow:0 0 28px rgba(139,92,246,.45),0 0 60px rgba(34,211,238,.14);animation:orbFloat 2.5s ease-in-out infinite}
+  .orb::after{content:"";position:absolute;inset:6px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#2A2140,#120E24 70%)}
+  @keyframes orbFloat{50%{transform:translateY(-4px) scale(1.04)}}
+  .sparks{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  .spark{position:absolute;width:5px;height:5px;border-radius:50%;background:var(--cyan);opacity:0;animation:spark 2.2s infinite}
+  .spark:nth-child(1){left:20%;top:30%;animation-delay:.1s}.spark:nth-child(2){left:45%;top:70%;animation-delay:.7s}
+  .spark:nth-child(3){left:68%;top:25%;animation-delay:1.1s}.spark:nth-child(4){left:86%;top:65%;animation-delay:1.6s}
+  @keyframes spark{0%,100%{opacity:0;transform:translateY(6px) scale(.4)}45%{opacity:.9;transform:translateY(-4px) scale(1)}}
+  .gen-copy b{display:block;font-size:14.5px}
+  .gen-copy span{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+  .gen-pct{margin-left:auto;font-size:13px;font-weight:800;color:var(--priDark);flex-shrink:0}
+  .pbar{height:7px;border-radius:99px;background:#E7E0FA;overflow:hidden;margin-top:14px}
+  .pbar>div{height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--pri),var(--pink),var(--cyan));transition:width .25s ease}
+  .stages{display:grid;gap:8px;margin-top:14px}
+  @media(min-width:640px){.stages{grid-template-columns:1fr 1fr}}
+  .stage{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;font-size:12.5px;font-weight:600;color:var(--faint);border:1.5px solid transparent;transition:all .3s}
+  .stage .dot{width:9px;height:9px;border-radius:50%;background:#CBD5E1;flex-shrink:0}
+  .stage.active{color:var(--ink);background:#fff;border-color:#DDD0FA;box-shadow:0 2px 10px rgba(124,58,237,.12)}
+  .stage.active .dot{background:var(--pri2);box-shadow:0 0 0 5px rgba(139,92,246,.14),0 0 14px rgba(139,92,246,.7);animation:pulse 1.2s infinite}
+  @keyframes pulse{50%{transform:scale(1.25);opacity:.75}}
+  .stage.done{color:var(--ok)}
+  .stage.done .dot{background:var(--ok)}
+  .skel{display:grid;gap:10px;margin-top:14px}
+  .sk{height:13px;border-radius:8px;background:linear-gradient(90deg,#ECE7FA 25%,#F7F3FF 37%,#ECE7FA 63%);background-size:400% 100%;animation:shimmer 1.3s infinite}
+  @keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+  .gen-err{display:none;margin-top:14px;font-size:12.5px;color:var(--err);background:var(--errbg);border:1px solid var(--errbd);border-radius:10px;padding:10px 12px;font-weight:600}
+  .simfail{margin-top:10px;font-size:11px;color:var(--faint);background:none;border:none;cursor:pointer;font-family:inherit;text-decoration:underline;padding:0}
+  /* editor */
+  .editor{animation:fadeUp .35s ease}
+  .editor.hide{display:none}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .ready{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--ok);margin:12px 0 0}
+  .ready .ck{width:20px;height:20px;border-radius:50%;background:var(--okbg);border:1px solid var(--okbd);display:flex;align-items:center;justify-content:center;font-size:11px}
+  textarea.ta{width:100%;max-width:100%;min-height:200px;border:1.5px solid var(--bd);border-radius:14px;padding:16px 18px;font-size:14px;line-height:1.8;font-family:inherit;resize:vertical;color:var(--ink);background:#fff;outline:none;margin-top:12px}
+  textarea.ta:focus{border-color:var(--pri);box-shadow:0 0 0 4px rgba(124,58,237,.14)}
+  .counts{display:flex;gap:14px;margin-top:10px;font-size:11.5px;color:var(--muted);flex-wrap:wrap}
+  .counts b{color:var(--priDark)}
+  .rowbtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+  .tonepill{font-size:12.5px;font-weight:800;border:1.5px solid #FDE68A;background:#FFFBEB;color:#92400E;border-radius:10px;padding:10px 18px;min-height:42px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;background:#F1EBFF;color:var(--priDark);border:1.5px solid #C4B5FD;padding:7px 8px 7px 14px;border-radius:999px}
+  .chip button{border:none;background:var(--pri);color:#fff;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
+  .addtag{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .addtag input{flex:1;min-width:140px;border:1.5px solid var(--bd);border-radius:10px;padding:9px 12px;font-size:13px;font-family:inherit;color:var(--ink)}
+  .sec-t{font-size:13px;font-weight:800;margin:20px 0 4px}
+  .tabs{display:flex;gap:6px;margin:14px 0 4px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex-shrink:0;border:1.5px solid var(--bd);background:#fff;border-radius:999px;padding:8px 18px;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer;font-family:inherit;white-space:nowrap}
+  .tab.on{border-color:var(--pri);background:#F6F1FF;color:var(--priDark)}
+  .nav{display:flex;gap:10px;margin-top:24px;padding-top:20px;border-top:1px solid #F1F3F9;align-items:center}
+  .nav .sp{flex:1}
+  .cta{display:inline-flex;align-items:center;border:none;border-radius:12px;min-height:50px;padding:14px 34px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;box-shadow:0 6px 22px rgba(124,58,237,.42)}
+  .cta.sec{background:#fff;color:var(--priDark);border:1.5px solid var(--pri);box-shadow:none;min-height:42px;padding:10px 20px;font-size:13px}
+  @media(max-width:699px){.nav{flex-direction:column;align-items:stretch}.nav .cta{width:100%;justify-content:center}}
+  /* helper */
+  .helper{display:flex;flex-direction:column;gap:14px;min-width:0}
+  .inspire{position:relative;border-radius:20px;background:linear-gradient(135deg,#EDE9FE 0%,#FCE7F3 100%);border:1px solid #E9D5FF;overflow:hidden;text-align:center;max-width:100%}
+  .inspire-visual{position:relative;overflow:hidden;height:212px;margin:0}
+  .soc{position:absolute;width:52px;height:52px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;background:#fff;transition:transform 180ms ease,box-shadow 180ms ease;cursor:default;will-change:transform;box-shadow:0 4px 12px rgba(15,23,42,.18)}
+  .soc:hover{transform:scale(1.06)}
+  .soc-li{left:11%;top:16px;background:#0A66C2;animation:driftLi 6.5s ease-in-out infinite}
+  .soc-ig{right:11%;top:16px;background:linear-gradient(45deg,#F58529,#DD2A7B 45%,#8134AF 75%,#515BD4);animation:driftIg 7.2s ease-in-out infinite;animation-delay:.8s}
+  .soc-fb{left:15%;bottom:16px;background:#1877F2;animation:floatY 5.2s ease-in-out infinite;animation-delay:.3s}
+  .soc-wa{right:15%;bottom:16px;background:#25D366;animation:floatDiag 6s ease-in-out infinite;animation-delay:1.4s}
+  @keyframes driftLi{0%,100%{transform:translate(0,0) rotate(-3deg)}50%{transform:translate(9px,10px) rotate(3deg)}}
+  @keyframes driftIg{0%,100%{transform:translate(0,0) rotate(3deg)}50%{transform:translate(-9px,10px) rotate(-3deg)}}
+  @keyframes floatY{0%,100%{transform:translateY(-5px)}50%{transform:translateY(6px)}}
+  @keyframes floatDiag{0%,100%{transform:translate(-4px,-4px)}50%{transform:translate(6px,6px)}}
+  .robot{position:absolute;left:50%;top:50%;width:74px;height:74px;margin-left:-37px;margin-top:-37px;border-radius:24px;background:linear-gradient(135deg,#7C3AED,#A855F7);display:flex;align-items:center;justify-content:center;font-size:38px;box-shadow:0 10px 28px rgba(124,58,237,.45),inset 0 1px 0 rgba(255,255,255,.35);animation:breathe 5.5s ease-in-out infinite;z-index:2}
+  @keyframes breathe{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-5px) scale(1.03)}}
+  .robot{background:transparent;box-shadow:0 10px 28px rgba(15,23,42,.35);overflow:hidden}
+  .orb-img{width:54px;height:54px;border-radius:50%;object-fit:cover;flex-shrink:0;box-shadow:0 0 28px rgba(139,92,246,.45),0 0 60px rgba(34,211,238,.14);animation:orbFloat 2.5s ease-in-out infinite;display:block}
+  .side-logo{width:34px;height:34px;border-radius:10px;object-fit:cover;flex-shrink:0;box-shadow:0 4px 14px rgba(139,92,246,.5);display:block}
+  .robot img{width:100%;height:100%;object-fit:cover;border-radius:22px;display:block}
+  .orbit-ring{position:absolute;left:50%;top:50%;width:150px;height:150px;margin-left:-75px;margin-top:-75px;border:1.5px dashed rgba(124,58,237,.35);border-radius:50%;pointer-events:none}
+  .inspire-text{padding:18px 20px 20px;border-top:1px solid rgba(233,213,255,.7)}
+  .inspire-text h3{margin:0;font-size:14.5px;font-weight:800}
+  .inspire-text p{margin:8px 0 0;font-size:12px;color:#475569;line-height:1.6}
+  .checks{margin:12px 0 0;padding:0;list-style:none;text-align:left}
+  .checks li{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#334155;padding:3px 0}
+  .checks .y{width:18px;height:18px;border-radius:50%;background:#ECFDF5;border:1px solid #A7F3D0;color:#059669;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .summary{background:#fff;border:1px solid var(--bd);border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(15,23,42,.05);font-size:12.5px}
+  .summary h4{margin:0 0 10px;font-size:13px;font-weight:800}
+  .summary .row{display:flex;justify-content:space-between;gap:8px;padding:5px 0}
+  .summary .k{font-size:10.5px;font-weight:800;letter-spacing:.06em;color:var(--faint)}
+  .summary .v{font-size:12.5px;font-weight:700;text-align:right}
+  .v.ok{color:var(--ok)} .v.busy{color:var(--priDark)}
+  @media(max-width:1023px){.side{display:none}.main{padding:16px 14px 50px}}
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation:none !important;transition:none !important}
+    .sp-rail{scroll-behavior:auto !important}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="side" aria-label="Mock navigation">
+    <div class="brand"><img class="side-logo" src="sp-logo.png" alt="SocialPulse">SocialPulse</div>
+    <a>📊 Dashboard</a><a class="on">✏️ Content Studio</a><a>📅 Scheduler</a><a>📈 Analytics</a><a>🖼️ Asset Gallery</a><a>🔗 Connect Platforms</a>
+    <div class="tag">LOCAL PROTOTYPE — Step 3 only.<br>Mock generation, no backend.<br>Safe to delete this folder.</div>
+  </nav>
+  <main class="main"><div class="wrap">
+    <div class="sp-stepper" role="navigation" aria-label="Content creation progress" id="stepper"></div>
+    <div class="cols">
+      <section class="card" aria-live="polite">
+        <div class="head"><div class="ic">✨</div><div><h2>Generated Content &amp; Hashtags</h2><p>Review, edit or regenerate your platform-ready content.</p></div></div>
+        <div class="toolbar">
+          <button class="btn btn-g" id="regenBtn">↻ Regenerate</button>
+          <button class="btn btn-g" id="shorterBtn">Make shorter</button>
+          <button class="btn btn-g" id="ctaBtn">Add CTA</button>
+          <button class="btn btn-g" id="engageBtn">Make more engaging</button>
+          <button class="btn btn-pv" id="pvLabel">👁 Preview: LinkedIn</button>
+        </div>
+        <div class="gen" id="genPanel">
+          <div class="sparks" aria-hidden="true"><span class="spark"></span><span class="spark"></span><span class="spark"></span><span class="spark"></span></div>
+          <div class="gen-top">
+            <img class="orb-img" src="sp-logo.png" alt="" aria-hidden="true">
+            <div class="gen-copy"><b>✨ SocialPulse AI</b><b id="phaseTitle" style="margin-top:2px">Understanding your idea</b><span id="phaseSub">Finding the best angle, structure and audience fit.</span></div>
+            <div class="gen-pct" id="genPct">0%</div>
+          </div>
+          <div class="pbar" role="progressbar" aria-label="Generation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="pbar"><div id="pfill"></div></div>
+          <div class="stages" id="stages"></div>
+          <div class="skel" id="skel" aria-hidden="true"><div class="sk" style="width:100%"></div><div class="sk" style="width:92%"></div><div class="sk" style="width:78%"></div><div class="sk" style="width:86%"></div><div class="sk" style="width:64%"></div></div>
+          <div class="gen-err" id="genErr" role="alert"></div>
+        </div>
+        <div style="text-align:right"><button class="simfail" id="failBtn">Simulate failed request</button></div>
+        <div class="editor hide" id="editor">
+          <div class="ready"><span class="ck">✓</span><span id="readyTxt">Content ready for review</span></div>
+          <div class="tabs" id="platTabs" role="tablist"></div>
+          <textarea class="ta" id="capBox" aria-label="Generated caption"></textarea>
+          <div class="counts"><span><b id="cChars">0</b> characters</span><span><b id="cWords">0</b> words</span><span>~<b id="cRead">1</b> min read</span></div>
+          <div class="rowbtns">
+            <button class="btn btn-g" id="copyBtn">📋 Copy Text</button>
+            <button class="tonepill" id="tonePill" title="Tone comes from Step 2">💼 Tone: Professional</button>
+          </div>
+          <div class="sec-t" id="tagTitle">HASHTAGS</div>
+          <div class="chips" id="tagRow"></div>
+          <div class="addtag"><input id="tagInput" placeholder="Add a hashtag…" aria-label="Add a hashtag"><button class="btn btn-g" id="tagAdd">Add</button></div>
+        </div>
+        <div class="nav"><button class="cta sec" id="backBtn">← Back</button><span class="sp"></span><button class="cta" id="nextBtn">Next →</button></div>
+      </section>
+      <aside class="helper" id="helper"></aside>
+    </div>
+  </div></main>
+</div>
+<script>
+(function(){
+"use strict";
+var STEPS=['Idea','Settings','Content','Media','Design','Branding','Preview','Publish'];
+var PLATS=[
+  {id:'linkedin',label:'LinkedIn',bg:'#0A66C2',glyph:'in'},
+  {id:'facebook',label:'Facebook',bg:'#1877F2',glyph:'f'},
+  {id:'instagram',label:'Instagram',bg:'linear-gradient(45deg,#F58529,#DD2A7B 45%,#8134AF 75%,#515BD4)',glyph:'◉'},
+  {id:'whatsapp',label:'WhatsApp',bg:'#25D366',glyph:'✆'}
+];
+var PHASES=[
+  ['Understanding your idea','Finding the best angle, structure and audience fit.'],
+  ['Building the content structure','Creating the hook, message flow and call to action.'],
+  ['Writing your content','Generating platform-ready copy for your selected tone.'],
+  ['Applying your brand voice','Refining wording, style and hashtags for consistency.']
+];
+/* mock platform copy (local only — production wires the real API here) */
+var MOCK={
+  linkedin:{cap:'Growing an audience is a system, not luck.\n\n1) Pick one painful problem your customers have.\n2) Share one actionable fix every week.\n3) Measure what resonates — then double down.\n\nWhat is working for you right now?',tags:['innovation','technology','SocialPulse']},
+  facebook:{cap:'Want to grow your audience this month? Here is a simple plan that actually works: pick one problem, share one fix every week, and keep showing up. Drop a comment and tell us your biggest challenge!',tags:['Community','SocialPulse']},
+  instagram:{cap:'Your audience growth era starts NOW ✨\n\nSave this post 👇\n1. One problem, one fix, every week\n2. Show up consistently\n3. Engage like you mean it\n\nFollow for daily tips!',tags:['instagood','contentcreator','SocialPulse','AI']},
+  whatsapp:{cap:'Hi! Quick growth tip for this week: pick ONE customer problem and share ONE fix with your group. Consistency beats intensity. Reply GROW for the full checklist.',tags:[]}
+};
+var state={step:3,plat:'linkedin',caps:{},tags:{},genState:'idle',pct:0,phase:0,failNext:false,tone:'Professional'};
+function $(s){return document.querySelector(s);}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function platById(id){for(var i=0;i<PLATS.length;i++) if(PLATS[i].id===id) return PLATS[i]; return PLATS[0];}
+
+/* stepper */
+(function(){
+  var pct=Math.round(((state.step-1)/(STEPS.length-1))*100), items='';
+  for(var i=0;i<STEPS.length;i++){
+    var n=i+1, done=n<state.step, act=n===state.step;
+    var bg=done||act?'linear-gradient(135deg,#7C3AED,#A855F7)':'#1E2436';
+    var fg=done||act?'#fff':'rgba(226,232,240,.55)';
+    items+='<div style="display:flex;align-items:center;flex-shrink:0">'
+      +'<span class="sp-item'+(act?' on':'')+'"><span class="sp-circle" style="background:'+bg+';color:'+fg+';'+(act?'box-shadow:0 0 0 4px rgba(139,92,246,.12),0 0 20px rgba(139,92,246,.45)':'')+'">'+(done?'✓':n)+'</span>'
+      +'<span class="sp-label" style="color:'+((done||act)?'#F8FAFC':'rgba(226,232,240,.65)')+'">'+STEPS[i]+'</span></span></div>';
+    if(i<STEPS.length-1) items+='<span style="flex-shrink:0;width:clamp(18px,2.6vw,40px);height:3px;border-radius:3px;margin:0 8px;background:#2A3044;overflow:hidden;position:relative"><span style="position:absolute;inset:0;background:linear-gradient(90deg,#7C3AED,#A855F7);transform:scaleX('+(n<state.step?1:0)+');transform-origin:left center"></span></span>';
+  }
+  $('#stepper').innerHTML='<button class="sp-arrow" disabled>‹</button>'
+    +'<div style="flex:1;min-width:0"><div class="sp-rail">'+items+'</div>'
+    +'<div style="position:relative;height:5px;border-radius:999px;background:#232839;margin:10px 2px 0"><div style="position:absolute;left:0;top:0;bottom:0;width:'+pct+'%;border-radius:999px;background:linear-gradient(90deg,#6D28D9,#8B5CF6,#D946EF)"></div></div></div>'
+    +'<button class="sp-arrow">›</button>';
+})();
+
+/* helper */
+function renderHelper(){
+  var g = state.genState==='generating' ? '<span class="v busy">Generating…</span>'
+    : state.genState==='success' ? '<span class="v ok">Generated</span>'
+    : state.genState==='error' ? '<span class="v" style="color:#B91C1C">Needs retry</span>' : '<span class="v">Waiting</span>';
+  $('#helper').innerHTML='<div class="inspire"><div class="inspire-visual">'
+    +'<span class="orbit-ring"></span>'
+    +'<span class="soc soc-li" title="LinkedIn">in</span>'
+    +'<span class="soc soc-ig" title="Instagram">◉</span>'
+    +'<span class="soc soc-fb" title="Facebook">f</span>'
+    +'<span class="soc soc-wa" title="WhatsApp">✆</span>'
+    +'<span class="robot"><img src="sp-logo.png" alt="SocialPulse AI"></span></div>'
+    +'<div class="inspire-text"><h3>Turn Ideas Into Content</h3><p>AI is shaping your idea into platform-ready content.</p>'
+    +'<ul class="checks"><li><span class="y">✓</span>Tone applied</li><li><span class="y">✓</span>Platforms optimized</li><li><span class="y">✓</span>Content generated</li></ul>'
+    +'</div></div>'
+    +'<div class="summary"><h4>Content Summary</h4>'
+    +'<div class="row"><span class="k">TONE</span><span class="v">'+esc(state.tone)+'</span></div>'
+    +'<div class="row"><span class="k">PLATFORM</span><span class="v">'+esc(platById(state.plat).label)+'</span></div>'
+    +'<div class="row"><span class="k">STATUS</span>'+g+'</div></div>';
+}
+
+/* tabs + editor */
+function renderTabs(){
+  $('#platTabs').innerHTML=PLATS.map(function(p){
+    return '<button class="tab'+(state.plat===p.id?' on':'')+'" role="tab" data-p="'+p.id+'">'+p.label+'</button>';
+  }).join('');
+  Array.prototype.forEach.call($('#platTabs').querySelectorAll('[data-p]'),function(b){
+    b.addEventListener('click',function(){ setPlat(b.getAttribute('data-p')); });
+  });
+  $('#pvLabel').textContent='👁 Preview: '+platById(state.plat).label;
+}
+function cur(){ return {cap:state.caps[state.plat]||'',tags:state.tags[state.plat]||[]}; }
+function renderEditor(){
+  var c=cur();
+  var box=$('#capBox');
+  if(document.activeElement!==box) box.value=c.cap;
+  updateCounts();
+  var p=platById(state.plat);
+  var hasTags=c.tags.length>0;
+  $('#tagTitle').style.display=hasTags?'':'none';
+  $('#tagRow').innerHTML=c.tags.map(function(t,i){
+    return '<span class="chip">#'+esc(t.replace(/^#+/,''))+'<button data-rm="'+i+'" aria-label="Remove hashtag '+esc(t)+'">×</button></span>';
+  }).join('')||'<span style="font-size:12px;color:var(--faint)">No hashtags for this channel.</span>';
+  Array.prototype.forEach.call($('#tagRow').querySelectorAll('[data-rm]'),function(b){
+    b.addEventListener('click',function(){ var t=state.tags[state.plat]; t.splice(Number(b.getAttribute('data-rm')),1); renderEditor(); });
+  });
+  document.querySelector('.addtag').style.display=hasTags||state.plat==='whatsapp'?'':'none';
+  if(state.plat==='whatsapp'&&!hasTags) document.querySelector('.addtag').style.display='';
+}
+function updateCounts(){
+  var v=$('#capBox').value, ch=v.length, w=v.trim()?v.trim().split(/\s+/).length:0;
+  $('#cChars').textContent=ch; $('#cWords').textContent=w; $('#cRead').textContent=Math.max(1,Math.ceil(w/200));
+}
+function setPlat(id){ state.plat=id; renderTabs(); renderEditor(); renderHelper(); }
+
+/* generation state machine (simulated async — production wires the real API) */
+var timers=[];
+function clearTimers(){ timers.forEach(clearTimeout); timers=[]; }
+function later(fn,ms){ timers.push(setTimeout(fn,ms)); }
+function renderStages(){
+  $('#stages').innerHTML=PHASES.map(function(ph,i){
+    var cls=i<state.phase?'stage done':(i===state.phase?'stage active':'stage');
+    var mark=i<state.phase?'✓':'';
+    return '<div class="'+cls+'"><span class="dot"></span><span>'+(i<state.phase?'✓ ':'')+esc(ph[0])+'</span></div>';
+  }).join('');
+}
+function setPct(n){
+  state.pct=n; $('#genPct').textContent=n+'%';
+  $('#pfill').style.width=n+'%'; $('#pbar').setAttribute('aria-valuenow',n);
+}
+function showGen(){
+  $('#genPanel').classList.remove('hide'); $('#editor').classList.add('hide');
+  $('#genErr').style.display='none'; renderStages(); renderHelper();
+}
+function startGen(all){
+  clearTimers(); state.genState='generating'; state.phase=0; setPct(0); showGen();
+  $('#phaseTitle').textContent=PHASES[0][0]; $('#phaseSub').textContent=PHASES[0][1];
+  var reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var total=reduced?400:7000;
+  var t0=performance.now();
+  function frame(now){
+    if(state.genState!=='generating') return;
+    var raw=(now-t0)/total, p=isFinite(raw)?Math.min(1,Math.max(0,raw)):1, eased=1-Math.pow(1-p,2.2);
+    var idx=Math.min(3,Math.max(0,Math.floor(p*4)));
+    if(idx!==state.phase){ state.phase=idx; renderStages(); var ph=PHASES[idx]||PHASES[0]; $('#phaseTitle').textContent=ph[0]; $('#phaseSub').textContent=ph[1]; }
+    setPct(Math.min(99,Math.floor(eased*100)));
+    if(p<1) requestAnimationFrame(frame); else finishGen(all);
+  }
+  requestAnimationFrame(frame);
+}
+function finishGen(all){
+  if(state.failNext){ state.failNext=false; return failGen('The AI service did not respond. Check your connection and try again.'); }
+  if(all){ for(var i=0;i<PLATS.length;i++){ var id=PLATS[i].id; state.caps[id]=MOCK[id].cap; state.tags[id]=MOCK[id].tags.slice(); } }
+  else { state.caps[state.plat]=MOCK[state.plat].cap; state.tags[state.plat]=MOCK[state.plat].tags.slice(); }
+  state.phase=4; setPct(100); renderStages();
+  $('#stages').innerHTML=PHASES.map(function(ph){return '<div class="stage done"><span class="dot"></span><span>✓ '+esc(ph[0])+'</span></div>';}).join('');
+  later(function(){
+    state.genState='success';
+    $('#genPanel').classList.add('hide'); $('#editor').classList.remove('hide');
+    $('#readyTxt').textContent='Content ready for review';
+    renderTabs(); renderEditor(); renderHelper();
+  },450);
+}
+function failGen(msg){
+  clearTimers(); state.genState='error';
+  var e=$('#genErr'); e.style.display='block';
+  e.innerHTML=esc(msg)+' <button class="btn btn-g" id="retryBtn" style="margin-left:8px;min-height:0;padding:6px 14px">Retry</button>';
+  document.getElementById('retryBtn').addEventListener('click',function(){ startGen(true); });
+  renderHelper();
+}
+
+/* wire */
+$('#capBox').addEventListener('input',function(){ state.caps[state.plat]=$('#capBox').value; updateCounts(); });
+$('#copyBtn').addEventListener('click',function(){
+  var txt=$('#capBox').value, done=function(ok){$('#copyBtn').textContent=ok?'✓ Copied':'📋 Copy Text';};
+  var legacy=function(){
+    try{
+      var ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      var ok=document.execCommand('copy'); document.body.removeChild(ta); done(ok);
+      if(ok) setTimeout(function(){done(false);},1800);
+    }catch(e){ done(false); }
+  };
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(function(){done(true);setTimeout(function(){done(false);},1800);},function(){legacy();});}
+  else legacy();
+});
+$('#tagAdd').addEventListener('click',function(){
+  var v=$('#tagInput').value.trim().replace(/^#+/,'');
+  if(!v) return;
+  state.tags[state.plat].push(v); $('#tagInput').value=''; renderEditor();
+});
+$('#regenBtn').addEventListener('click',function(){ startGen(false); });
+$('#failBtn').addEventListener('click',function(){ state.failNext=true; startGen(true); });
+$('#shorterBtn').addEventListener('click',function(){
+  var parts=$('#capBox').value.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if(parts.length>1){ state.caps[state.plat]=parts.slice(0,Math.max(1,Math.ceil(parts.length/2))).join(' '); renderEditor(); }
+});
+$('#ctaBtn').addEventListener('click',function(){
+  var v=$('#capBox').value;
+  if(v.indexOf('Follow for more')<0){ state.caps[state.plat]=v+'\n\n👉 Follow for more tips like this!'; renderEditor(); }
+});
+$('#engageBtn').addEventListener('click',function(){
+  var v=$('#capBox').value;
+  if(v.indexOf('✨')!==0){ state.caps[state.plat]='✨ '+v+'\n\nDrop a 🔥 if you agree!'; renderEditor(); }
+});
+$('#backBtn').addEventListener('click',function(){ state.step=2; });
+$('#nextBtn').addEventListener('click',function(){ state.step=4; });
+$('#tonePill').textContent='💼 Tone: '+state.tone;
+renderTabs(); renderEditor(); renderHelper();
+startGen(true);
+})();
+</script>
+</body>
+</html>

@@ -51,14 +51,52 @@ const COPY = {
   },
 } as const;
 
+const SPARKLE_POSITIONS = [
+  { top: '2%', left: '48%', delay: '0s', size: 6 },
+  { top: '18%', left: '92%', delay: '.6s', size: 4 },
+  { top: '78%', left: '96%', delay: '1.3s', size: 5 },
+  { top: '94%', left: '54%', delay: '.3s', size: 6 },
+  { top: '82%', left: '4%', delay: '1.7s', size: 4 },
+  { top: '16%', left: '2%', delay: '.9s', size: 5 },
+];
+
 function LoaderMark({ label }: { label: string }) {
   return (
-    <div className="sp-gen-logo" role="status" aria-label={label}>
-      <img className="sp-gen-base" src={SP_LOADER_BASE} alt="" aria-hidden="true" />
-      <img className="sp-gen-arcs" src={SP_LOADER_ARCS} alt="" aria-hidden="true" />
-      <img className="sp-gen-dot" src={SP_LOADER_DOT} alt="" aria-hidden="true" />
+    <div className="sp-gen-orbit-wrap">
+      <div className="sp-gen-ring" aria-hidden="true" />
+      {SPARKLE_POSITIONS.map((s, i) => (
+        <span
+          key={i}
+          className="sp-gen-spark"
+          aria-hidden="true"
+          style={{ top: s.top, left: s.left, width: s.size, height: s.size, animationDelay: s.delay }}
+        />
+      ))}
+      <div className="sp-gen-logo" role="status" aria-label={label}>
+        <img className="sp-gen-base" src={SP_LOADER_BASE} alt="" aria-hidden="true" />
+        <img className="sp-gen-arcs" src={SP_LOADER_ARCS} alt="" aria-hidden="true" />
+        <img className="sp-gen-dot" src={SP_LOADER_DOT} alt="" aria-hidden="true" />
+      </div>
     </div>
   );
+}
+
+const PROGRESS_STEPS = [
+  'Understanding your topic…',
+  'Drafting the creative direction…',
+  'Rendering your options…',
+  'Polishing the final details…',
+];
+
+function useProgressStep(active: boolean) {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    setStep(0);
+    const id = setInterval(() => setStep(s => (s + 1) % PROGRESS_STEPS.length), 2200);
+    return () => clearInterval(id);
+  }, [active]);
+  return step;
 }
 
 export default function AIGenerationModal(p: AIGenerationModalProps) {
@@ -67,6 +105,7 @@ export default function AIGenerationModal(p: AIGenerationModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const prevFocus = useRef<Element | null>(null);
   const inFlight = p.phase === 'generating';
+  const progressStep = useProgressStep(inFlight);
 
   // New result set → select all of it. Runs on real arrivals only.
   useEffect(() => { setSelected(p.items.map(i => i.id)); }, [p.items]);
@@ -108,7 +147,12 @@ export default function AIGenerationModal(p: AIGenerationModalProps) {
         .sp-gen-x:not(:disabled) { cursor: pointer; box-shadow: 0 6px 18px rgba(15,23,42,.06); }
         .sp-gen-x:disabled { opacity: 0.45; cursor: not-allowed; }
         .sp-gen-stage { padding: 40px 28px 48px; text-align: center; }
-        .sp-gen-logo { width: 150px; height: 150px; margin: 0 auto 28px; position: relative; animation: spGenBreathe 3.6s ease-in-out infinite; }
+        .sp-gen-orbit-wrap { width: 190px; height: 190px; margin: 0 auto 28px; position: relative; }
+        .sp-gen-ring { position: absolute; inset: 0; border-radius: 50%; padding: 2px; background: conic-gradient(from 0deg, rgba(124,58,237,0) 0%, #7c3aed 18%, #a855f7 36%, rgba(168,85,247,0) 55%, rgba(124,58,237,0) 100%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: spGenRingSpin 5.5s linear infinite; filter: drop-shadow(0 0 10px rgba(124,58,237,.35)); }
+        @keyframes spGenRingSpin { to { transform: rotate(360deg); } }
+        .sp-gen-spark { position: absolute; border-radius: 50%; background: radial-gradient(circle, #c4b5fd, #7c3aed); box-shadow: 0 0 8px rgba(124,58,237,.8); animation: spGenSparkle 2.4s ease-in-out infinite; }
+        @keyframes spGenSparkle { 0%, 100% { opacity: 0; transform: scale(.4); } 50% { opacity: 1; transform: scale(1); } }
+        .sp-gen-logo { width: 150px; height: 150px; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); animation: spGenBreathe 3.6s ease-in-out infinite; }
         .sp-gen-logo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
         .sp-gen-base { z-index: 1; }
         .sp-gen-arcs { z-index: 2; animation: spGenSpin 2.55s linear infinite, spGenFlicker 3.1s ease-in-out infinite; transform-origin: 50% 50%; will-change: transform, filter, opacity; }
@@ -127,6 +171,8 @@ export default function AIGenerationModal(p: AIGenerationModalProps) {
         }
         .sp-gen-h1 { margin: 0; font-size: 34px; line-height: 1.1; letter-spacing: -0.03em; font-weight: 800; color: #0f172a; }
         .sp-gen-sub { margin: 12px 0 0; font-size: 17px; color: #747b8b; }
+        .sp-gen-step { animation: spGenStepFade 2200ms ease; }
+        @keyframes spGenStepFade { 0% { opacity: 0; transform: translateY(4px); } 12% { opacity: 1; transform: translateY(0); } 88% { opacity: 1; } 100% { opacity: 0; } }
         .sp-gen-pill { margin-top: 26px; display: inline-flex; align-items: center; gap: 10px; padding: 11px 18px; border-radius: 999px; color: #6d28d9; background: linear-gradient(180deg,#f7f0ff,#f2ebff); border: 1px solid rgba(124,58,237,.08); font-weight: 800; font-size: 14px; }
         .sp-gen-pill i { width: 9px; height: 9px; border-radius: 50%; background: #7c3aed; box-shadow: 0 0 12px rgba(124,58,237,.7); }
         .sp-gen-enter { animation: spGenEnter 320ms ease; }
@@ -144,13 +190,14 @@ export default function AIGenerationModal(p: AIGenerationModalProps) {
         .sp-gen-err { width: 72px; height: 72px; margin: 0 auto 18px; border-radius: 20px; display: flex; align-items: center; justify-content: center; background: #fff1f2; color: #e11d48; font-size: 34px; font-weight: 900; }
         @media (max-width: 640px) {
           .sp-gen-panel { border-radius: 22px; width: 96vw; }
+          .sp-gen-orbit-wrap { width: 132px; height: 132px; }
           .sp-gen-logo { width: 104px; height: 104px; }
           .sp-gen-h1 { font-size: 25px; }
           .sp-gen-sub { font-size: 15px; }
           .sp-gen-stage { padding: 30px 18px 36px; }
         }
         @media (prefers-reduced-motion: reduce) {
-          .sp-gen-logo, .sp-gen-arcs, .sp-gen-dot { animation: none !important; }
+          .sp-gen-logo, .sp-gen-arcs, .sp-gen-dot, .sp-gen-ring, .sp-gen-spark, .sp-gen-step { animation: none !important; }
         }
       `}</style>
       <div
@@ -178,7 +225,7 @@ export default function AIGenerationModal(p: AIGenerationModalProps) {
             <div role="status" aria-live="polite" aria-label={copy.ariaLoading}>
               <LoaderMark label={copy.ariaLoading} />
               <h1 className="sp-gen-h1">{p.mode === 'image' ? 'Generating your images...' : 'Generating your carousel...'}</h1>
-              <p className="sp-gen-sub">{p.mode === 'image' ? 'SocialPulse AI is preparing your options' : 'Creating and preparing your slides'}</p>
+              <p className="sp-gen-sub sp-gen-step" key={progressStep}>{PROGRESS_STEPS[progressStep]}</p>
               <div><span className="sp-gen-pill"><i />AI generation in progress</span></div>
             </div>
           )}

@@ -44,7 +44,7 @@ const TONE_VARS: Record<Tone, [string, string]> = {
 
 export function toneOf(status: string): Tone {
   const u = String(status || '').toUpperCase().replace(/[_-]/g, ' ');
-  if (/^(ACTIVE|OK|SUCCESS|VERIFIED|REACTIVATED)$/.test(u)) return 'ok';
+  if (/^(ACTIVE|OK|SUCCESS|VERIFIED|REACTIVATED|CONNECTED)$/.test(u)) return 'ok';
   if (/^(PENDING|DEGRADED|NOT CONFIGURED|WARNING|REQUESTED|PASSWORD RESET)$/.test(u)) return 'warn';
   if (/^(SUSPENDED|ERROR|FAILED)$/.test(u)) return 'bad';
   return 'neu';

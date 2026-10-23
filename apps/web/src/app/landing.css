@@ -17,6 +17,17 @@
  * only thing that brings them back inside without clipping their shadows.
  */
 
+/* Every link on this page is either a nav item or a button-styled CTA —
+   color/weight/background already carry the "this is a link" signal, so the
+   browser's default underline is just noise here. Scoped to .lp-root rather
+   than a global `a` reset so it can't leak into other pages, and only
+   text-decoration is touched — color, hover and :focus-visible (no outline
+   override exists anywhere in this file) are untouched, so keyboard focus
+   and hover affordance keep working exactly as before. */
+.lp-root a {
+  text-decoration: none;
+}
+
 .lp-root {
   /* container + rhythm */
   --lp-max: 1240px;
@@ -32,16 +43,150 @@
 
   /* Decorative 3D mockups.
      --lp-hero-scale / --lp-wf-scale only ever SCALE a scene whose internal
-     geometry is fixed pixels (top:70px, height:400px, translateZ(...)). The
-     stage therefore keeps its natural height and is never re-laid-out; the
-     layout reserves only `natural x scale` so there is no dead space and no
-     clipping. Changing a height here instead would shrink the clip box while
-     the card inside stayed 400px tall, which cut the card in half. */
+     geometry is fixed pixels authored against --lp-*-stage-w. The stage
+     therefore keeps its natural size and is never re-laid-out; the layout
+     reserves only `stage x scale` so there is no dead space and no clipping. */
   --lp-hero-scale: 1;
   --lp-wf-scale: 1;
 
+  /* Natural stage size of each 3D scene. Both scenes are authored in fixed
+     pixels against a 580px-wide stage — see the note on .lp-3d-fit for why
+     this must not be fluid. Height is the authored extent of the scene's own
+     content (the hero's phone ends at ~510px, the stack cards at ~390px, plus
+     room for their shadows), so 600/460 leave a little slack without a band of
+     dead space. */
+  --lp-hero-stage-h: 600px;
+  --lp-wf-stage-h: 460px;
+  --lp-hero-stage-w: 580px;
+  --lp-wf-stage-w: 580px;
+
+  /* Hero scene offsets. landing-client.tsx declares each of these inline as
+     `var(--lp-hero-*, <desktop value>)`, because a style attribute cannot
+     carry a media query — the same reason this file exists at all. The values
+     below are the desktop defaults; the breakpoints override only the ones
+     that need to move.
+
+     WHY POSITION AND NOT JUST SCALE: scaling a scene down shrinks every piece
+     by the same factor but leaves the composition's PROPORTIONS alone, so a
+     phone kept seeing the same wide fan — just rendered small, with the outer
+     chips hanging off the edges. Narrow breakpoints below pull the pieces
+     toward the centre as well, which is what actually reads as "compact". */
+  --lp-hero-card-left: 0%;
+  --lp-hero-card-w: 86%;
+  --lp-hero-side-w: 132px;
+  --lp-hero-a-right: 2%;
+  --lp-hero-a-top: 150px;
+  --lp-hero-a-w: 200px;
+  --lp-hero-a-h: 360px;
+  --lp-hero-b-left: -4%;
+  --lp-hero-b-top: 10px;
+  --lp-hero-c-left: 18%;
+  --lp-hero-c-bottom: 30px;
+  --lp-hero-d-right: -5%;
+  --lp-hero-d-top: 200px;
+  --lp-hero-d-dir: column;
+  --lp-hero-d-gap: 10px;
+  --lp-hero-phone-note: 34px;
+  --lp-hero-card-pad: 18px 20px;
+  --lp-hero-stat-gap: 10px;
+  --lp-hero-stat-pad: 10px 12px;
+  --lp-hero-stat-size: 20px;
+  --lp-hero-hello: 17px;
+
+  /* Workflow card stack: fan-out step and the incoming card's offset.
+
+     THE NON-OBVIOUS PART: --lp-wf-z drives more of the horizontal spread than
+     --lp-wf-fan does. A yaw of `rotateY(-20deg)` maps a card's depth into
+     horizontal screen offset at sin(20deg) ~= 0.34 per pixel of Z, so the old
+     z of -110px per step was throwing each card ~38px sideways on its own —
+     5 steps ~= 188px, which is what pushed the last card ~100px past the
+     viewport at 1280px. Lowering Z does more to keep the stack inside its
+     column than lowering the fan does, and it keeps the visible depth that
+     makes it read as a stack.
+
+     --lp-wf-left is 0 here and negative only where the column is too narrow to
+     spare; measured per breakpoint in .tmp-lp-verify.cjs, not guessed. */
+  --lp-wf-left: 0;
+  --lp-wf-card-w: 80%;
+  --lp-wf-fan: 12px;
+  --lp-wf-fan-y: -24px;
+  --lp-wf-z: -32px;
+  --lp-wf-prev-x: -46px;
+  --lp-wf-prev-y: 80px;
+  --lp-wf-prev-z: 160px;
+
+  /* Platform preview card (#platforms). `--lp-pv-rot` / `--lp-pv-inset` govern
+     the decorative rotated backdrop: a -4deg rotate on a ~500px-tall column
+     widens its bounding box by ~35px on each side, which is what pushed it
+     past the viewport at 320px. `--lp-pv-media-ar` switches the media band from
+     a fixed height to an aspect ratio on phones so it stays a landscape shape
+     in a portrait column instead of becoming a tall letterbox. */
+  --lp-pv-inset: 8% 4%;
+  --lp-pv-rot: -4deg;
+  --lp-pv-media-h: 220px;
+  --lp-pv-media-ar: auto;
+  --lp-pv-modal-media-h: 260px;
+  --lp-pv-modal-media-ar: auto;
+  --lp-pv-wa-media-h: 150px;
+
+  /* Connected-app orbit. Sized, not scaled, so nothing is ever clipped by the
+     dark panel. Inner edge of a tile sits at (--lp-orbit-r - tile/2); keep it
+     clear of the centre mark's half-size. */
+  --lp-orbit-r: 170px;
+  --lp-orbit-tile: 58px;
+  --lp-orbit-center: 112px;
+  --lp-orbit-tilt: -54deg;
+  --lp-cta-h: 400px;
+
   /* nav */
   --lp-nav-links: flex;
+  --lp-nav-gap: 18px;
+  --lp-nav-act-gap: 22px;
+}
+
+.lp-orbit-track {
+  position: absolute;
+  width: calc(var(--lp-orbit-r) + var(--lp-orbit-r));
+  height: calc(var(--lp-orbit-r) + var(--lp-orbit-r));
+  border: 2px solid rgba(151, 132, 255, 0.48);
+  border-radius: 50%;
+  transform: rotateX(var(--lp-orbit-tilt));
+  box-shadow: 0 0 22px rgba(128, 95, 255, 0.28), inset 0 0 20px rgba(102, 205, 255, 0.12);
+}
+
+.lp-orbit-track-outer {
+  z-index: 0;
+}
+
+.lp-orbit-track-inner {
+  z-index: 0;
+  opacity: 0.7;
+  transform: rotateX(var(--lp-orbit-tilt)) rotateZ(9deg) scale(0.84);
+}
+
+.lp-orbit-icon {
+  transform: rotateZ(calc(0deg - var(--lp-orbit-angle, 0deg)));
+}
+
+/* ---------- scale both 3D stages to their column ----------
+   This ONE expression replaces every hand-tuned --lp-hero-scale / --lp-wf-scale
+   breakpoint value. While the viewport is narrower than --lp-max (1240px) the
+   scene's column is exactly `100vw - 2*--lp-pad`, so `column / stage-width` is
+   the single correct scale at every width from 320px up — no ladder of magic
+   numbers to fall out of sync with the padding.
+
+   Above 1240px the column stops growing (it is capped by --lp-max and split
+   into two grid columns), so the ratio no longer describes it and the base
+   value of 1 is correct — which is why this is capped at 1240px and not
+   applied globally. `min(1.3, ...)` lets a wide tablet grow the scene a little
+   so it is not a small island in a wide column, but never past 1.3.
+   -16px is a scrollbar allowance: 100vw includes the scrollbar gutter, the
+   column does not. */
+@media (max-width: 1240px) {
+  .lp-root {
+    --lp-hero-scale: min(1.3, calc((100vw - 2 * var(--lp-pad) - 16px) / var(--lp-hero-stage-w)));
+    --lp-wf-scale: min(1.3, calc((100vw - 2 * var(--lp-pad) - 16px) / var(--lp-wf-stage-w)));
+  }
 }
 
 /* ---------- large desktop / small laptop ---------- */
@@ -50,6 +195,20 @@
     --lp-pad: 24px;
     --lp-gap: 32px;
     --lp-sec-pad: 68px;
+  }
+}
+
+/* ---------- desktop ----------
+   1280px and 1440px are explicit review widths. The hero column narrows here
+   (~580px rather than the ~600px the scene was authored for), so the two
+   pieces that hang off the right edge are pulled in and the shallowest ones
+   are trimmed — otherwise the platform rail sits ~100px past the viewport and
+   is clipped by the hero's own overflow:hidden. */
+@media (min-width: 1025px) and (max-width: 1360px) {
+  .lp-root {
+    --lp-hero-a-right: 0%;
+    --lp-hero-d-right: 0%;
+    --lp-hero-b-left: -1%;
   }
 }
 
@@ -62,10 +221,10 @@
     --lp-sec-pad: 56px;
     --lp-lede: 18px;
 
-    /* The hero grid drops to one column here, so the mockup gets the FULL
-       width. It was authored for a ~570px column, so without scaling it
-       spread well past the viewport edge. */
-    --lp-hero-scale: 0.86;
+    --lp-orbit-r: 148px;
+    --lp-orbit-tile: 54px;
+    --lp-orbit-center: 102px;
+    --lp-cta-h: 352px;
   }
 }
 
@@ -80,14 +239,50 @@
     --lp-lede: 17px;
     --lp-body: 15px;
 
-    --lp-hero-scale: 0.62;
+    /* The stage itself is unchanged (still 580px of authored px, see
+       --lp-hero-scale above) — it is only scaled to fit, so the composition is
+       the same one desktop shows, just smaller.
 
-    --lp-wf-scale: 0.78;
+       The platform rail becomes a ROW here. On a 580px stage a vertical rail
+       lands on top of the phone mockup's caption; as a row along the bottom
+       right it reads cleanly and stays inside the stage. */
+    --lp-hero-d-dir: row;
+    --lp-hero-d-top: auto;
+    --lp-hero-d-right: 2%;
+    --lp-hero-d-gap: 7px;
+    /* 0, not the desktop -4%: the stage is a fixed 580px at every width now,
+       so this is the same -23px in the scene — and the stage's own yaw pushes
+       the chip a little further left still, which was ~2px past the viewport
+       edge at 430px. */
+    --lp-hero-b-left: 0%;
+
+    --lp-wf-card-w: 74%;
+    --lp-wf-fan: 10px;
+    --lp-wf-fan-y: -18px;
+    --lp-wf-z: -45px;
+    --lp-wf-prev-x: -26px;
+    --lp-wf-prev-y: 60px;
+    --lp-wf-prev-z: 110px;
+
+    --lp-pv-inset: 5% 3%;
+    --lp-pv-rot: -2deg;
+
+    --lp-orbit-r: 128px;
+    --lp-orbit-tile: 50px;
+    --lp-orbit-center: 92px;
+    --lp-cta-h: 310px;
 
     /* The four centre links do not fit beside the logo and the two CTAs at
        this width; they are hidden rather than allowed to wrap into the
        button row. */
     --lp-nav-links: none;
+  }
+
+  /* The two handwritten margin notes hang off the top and bottom edges of the
+     hero stage (one sits at bottom:-6px) and there is no room for them once the
+     scene is one column wide. Decorative only — dropped here, kept at desktop. */
+  .lp-hero-note {
+    display: none;
   }
 }
 
@@ -102,52 +297,141 @@
     --lp-lede: 16px;
     --lp-body: 14px;
 
-    --lp-hero-scale: 0.44;
+    --lp-wf-card-w: 70%;
+    --lp-wf-fan: 6px;
+    --lp-wf-fan-y: -12px;
+    --lp-wf-z: -40px;
+    --lp-wf-prev-x: -18px;
+    --lp-wf-prev-y: 44px;
+    --lp-wf-prev-z: 80px;
 
-    --lp-wf-scale: 0.56;
+    --lp-pv-inset: 4% 2%;
+    --lp-pv-rot: -1.5deg;
+    --lp-pv-media-h: auto;
+    --lp-pv-media-ar: 16 / 10;
+    --lp-pv-modal-media-h: auto;
+    --lp-pv-modal-media-ar: 16 / 10;
+    --lp-pv-wa-media-h: 130px;
+
+    /* Orbit radius is derived from the viewport, not guessed: the dark panel's
+       inner width is 100vw - 2*(--lp-pad) - 2*20px of CTA padding, so half of
+       it is 50vw - 34px; subtracting half a tile and a 4px safety margin leaves
+       the outermost icon's edge exactly inside the panel at every phone width
+       from 320px up. */
+    --lp-orbit-r: calc(50vw - 60px);
+    --lp-orbit-tile: 44px;
+    --lp-orbit-center: 64px;
+    --lp-cta-h: 244px;
   }
 }
 
 /* ---------- small phone ---------- */
 @media (max-width: 390px) {
   .lp-root {
-    --lp-hero-scale: 0.38;
+    /* 320px content column is only ~292px: tighten the non-wrapping nav row
+       (logo tile + wordmark + Log in + CTA) so the CTA is never clipped. */
+    --lp-nav-gap: 10px;
+    --lp-nav-act-gap: 10px;
+    --lp-nav-tile: 34px;
+    --lp-brand: 17px;
+    --lp-cta-h: 236px;
 
-    --lp-wf-scale: 0.48;
+    --lp-orbit-r: calc(50vw - 58px);
+    --lp-orbit-tile: 42px;
+    --lp-orbit-center: 60px;
+
+    --lp-hero-d-gap: 5px;
+    --lp-wf-card-w: 68%;
+    --lp-wf-fan: 5px;
+    --lp-wf-fan-y: -11px;
+    --lp-wf-z: -38px;
+
+    --lp-strip-gap: 16px;
+    --lp-strip-row: 14px;
+  }
+  .lp-nav-cta {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  .lp-nav-login {
+    font-size: 13.5px;
+  }
+}
+
+/* ---------- very small phone (320px class): the non-wrapping nav row needs
+   a second tightening step — the 390px rules alone still leave the CTA
+   ~4px past the viewport edge here. */
+@media (max-width: 360px) {
+  .lp-root {
+    --lp-nav-gap: 6px;
+    --lp-nav-act-gap: 4px;
+    --lp-nav-tile: 32px;
+    --lp-brand: 15.5px;
+
+    --lp-orbit-r: calc(50vw - 56px);
+    --lp-orbit-tile: 40px;
+    --lp-orbit-center: 54px;
+    --lp-cta-h: 226px;
+
+    --lp-wf-card-w: 66%;
+    --lp-wf-fan: 5px;
+    --lp-wf-fan-y: -10px;
+    --lp-wf-z: -36px;
+    --lp-wf-prev-x: -14px;
+  }
+  .lp-nav-cta {
+    padding: 9px 6px;
+    font-size: 12.5px;
+  }
+  .lp-nav-login {
+    font-size: 12.5px;
   }
 }
 
 /*
- * Scaling wrapper for the decorative 3D scenes. `overflow:hidden` is
- * deliberate here and only here: the mockups are decorative, and clipping them
- * to the scaled box stops the 3D translateZ shadows from spilling sideways on
- * narrow screens. It is applied to the WRAPPER (which is scaled to fit), not
- * to the scene itself, so nothing is cut at desktop widths where the scene
- * already sits inside its column.
+ * Scaling wrapper for the decorative 3D scenes.
+ *
+ * THE STAGE IS A FIXED WIDTH on purpose. Both scenes are authored in fixed
+ * pixels against a ~580px column — the hero card's 132px sidebar, its 3-up stat
+ * grid, the 200px phone, the 80%-wide stack cards all assume that. A previous
+ * version made this element `left:0; right:0`, i.e. FLUID, so on a 320px screen
+ * that same 580px-authored content was squeezed into a 292px box instead of
+ * being scaled down: the sidebar text broke mid-word ("Schedul / er"), the stat
+ * tiles overflowed, and the phone swallowed the dashboard. Scaling a fixed stage
+ * down by (column / stage) is the whole point — it is the only way to keep the
+ * composition's proportions AND its legibility on a phone.
+ *
+ * `overflow:hidden` is deliberate here and only here: the mockups are
+ * decorative, and clipping them to the scaled box stops the 3D translateZ
+ * shadows from spilling sideways. It is applied to the WRAPPER (which is scaled
+ * to fit), not to the scene itself, so nothing is cut at desktop widths where
+ * the scene already sits inside its column.
  */
 .lp-3d-fit {
-  /* The scene keeps its NATURAL height (--lp-stage-h) so nothing is clipped,
-     and is scaled visually. The parent reserves natural x scale, so the scaled
-     result fills the reserved space exactly. */
+  /* The scene keeps its STAGE size (--lp-stage-w x --lp-stage-h) so nothing is
+     clipped, and is scaled visually. Centred with margin-left rather than
+     translateX(-50%) so `transform` stays purely the scale and can use
+     transform-origin: top center. */
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  left: 50%;
+  margin-left: calc(var(--lp-stage-w, 580px) / -2);
+  width: var(--lp-stage-w, 580px);
   height: var(--lp-stage-h, 600px);
   transform: scale(var(--lp-scale, 1));
   transform-origin: top center;
 }
 
-/* Reserved height for the two 3D scenes = natural height x scale. */
+/* Reserved height for the two 3D scenes = natural stage height x scale. */
 .lp-hero-box {
   position: relative;
-  height: calc(600px * var(--lp-hero-scale));
+  height: calc(var(--lp-hero-stage-h, 600px) * var(--lp-hero-scale));
   perspective: 1800px;
 }
 
 .lp-wf-box {
   position: relative;
-  height: calc(460px * var(--lp-wf-scale));
+  height: calc(var(--lp-wf-stage-h, 460px) * var(--lp-wf-scale));
   perspective: 1600px;
 }
 
@@ -194,5 +478,47 @@
 @media (max-width: 560px) {
   .lp-cta-pad {
     --lp-cta-pad: 38px 20px;
+  }
+}
+/* ---------- large CTA buttons ----------
+   "Get Started Free ->" and "See the workflow" are sized from vars so they stop
+   wrapping mid-phrase on a 320px screen: at the default 17px/30px padding the
+   primary CTA needed ~231px of a 252px column and still broke across two lines
+   (and the dark-panel pair, on a shorter line-height, broke the same way).
+   `white-space:nowrap` alone would overflow instead of wrapping, so the box is
+   shrunk to match rather than forced. */
+.lp-btn-primary {
+  font-size: var(--lp-btn-size, 17px);
+  padding: var(--lp-btn-pad, 18px 30px);
+  white-space: nowrap;
+}
+
+.lp-btn-secondary {
+  font-size: var(--lp-btn-size, 17px);
+  padding: var(--lp-btn-pad-sec, 18px 26px);
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .lp-root {
+    --lp-btn-size: 15px;
+    --lp-btn-pad: 15px 18px;
+    --lp-btn-pad-sec: 15px 18px;
+  }
+}
+
+@media (max-width: 390px) {
+  .lp-root {
+    --lp-btn-size: 14px;
+    --lp-btn-pad: 13px 13px;
+    --lp-btn-pad-sec: 13px 13px;
+  }
+}
+
+@media (max-width: 360px) {
+  .lp-root {
+    --lp-btn-size: 13px;
+    --lp-btn-pad: 12px 9px;
+    --lp-btn-pad-sec: 12px 9px;
   }
 }

@@ -200,20 +200,15 @@
   .control, .chevron { transition: none; }
 }
 
-@media (prefers-color-scheme: dark) {
-  .field {
-    color: #eef2ff;
-    --phone-border: #42495c;
-    --phone-muted: #aeb6c8;
-    --phone-surface: #171b27;
-    --phone-soft: #202533;
-    --phone-hover: #292641;
-  }
-  .label, .phoneInput, .search, .option { color: #f1f5f9; }
-  .countryButton { color: #f1f5f9; }
-  .dropdown { border-color: #3a4050; }
-  .searchWrap { border-color: #353b4a; }
-  .search { border-color: #444b5d; }
-  .optionSelected { background: #332c62; color: #f5f3ff; }
-  .optionDial { color: #c2c8d5; }
-}
+/* No `@media (prefers-color-scheme: dark)` block here on purpose: this
+   component's actual dark mode is driven by the explicit `theme` prop (see
+   the `.dark` class rules above), which both call sites on the login/signup
+   page leave at its 'light' default — this field is never rendered in dark
+   mode here. An OS-preference media query used to override colors (e.g.
+   .countryButton to near-white #f1f5f9) independently of that, so on any
+   device with a dark OS/browser preference the button text went
+   near-white while its background stayed light-mode — invisible, most
+   noticeable on hover since the hover background is also light (#f1efff).
+   Removing it fixes that without affecting real dark mode, which the
+   `.dark` class block above already handles correctly when `theme="dark"`
+   is actually passed. */
