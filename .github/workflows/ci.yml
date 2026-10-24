@@ -5,6 +5,7 @@ on:
     branches: [main, codex-next]
   pull_request:
     branches: [main]
+  workflow_call: {}
 
 jobs:
   syntax-check-services:
