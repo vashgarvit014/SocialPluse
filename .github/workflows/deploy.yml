@@ -1,0 +1,55 @@
+name: Deploy to production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build-and-test:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    # Manual approval gate: configure this environment's "Required reviewers"
+    # in GitHub repo Settings -> Environments -> production. The job pauses
+    # here until an approver clicks Approve.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync source to VM staging path
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.next' \
+            --exclude='.env' \
+            --exclude='.env.local' \
+            --exclude='.instagram-media' \
+            --exclude='.media-assets' \
+            --exclude='.whapi-media' \
+            --exclude='backups' \
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/deploy-staging/"
+
+      - name: Run staged deploy on VM
+        # Runs the just-synced copy of deploy.sh (not the one already live in
+        # /opt/socialpulse) so a change to the deploy script itself takes
+        # effect on the same run that introduces it.
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "bash /tmp/deploy-staging/infrastructure/scripts/deploy.sh /tmp/deploy-staging"
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
