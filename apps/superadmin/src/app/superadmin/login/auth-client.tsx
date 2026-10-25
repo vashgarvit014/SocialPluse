@@ -295,6 +295,19 @@ export default function SuperadminLoginClient({ initialCountry }: { initialCount
         pulse('error');
         return;
       }
+      // Server-issued redirect means the session is already authenticated
+      // (e.g. the TEMPORARY LOCAL OTP BYPASS in auth-service — see
+      // services/auth-service/src/server.mjs) and OTP entry should be
+      // skipped entirely. Any response without `redirect` is the normal
+      // flow and proceeds to channel-select below. A full navigation (not
+      // router.replace) because the target can be the separate superadmin
+      // origin, not just a same-app path.
+      if (typeof data.redirect === 'string') {
+        await playSequence();
+        if (!aliveRef.current) return;
+        window.location.replace(data.redirect);
+        return;
+      }
       setChannels((data.channels as { email?: string; whatsapp?: string | null }) || {});
       ok = true;
     } catch {

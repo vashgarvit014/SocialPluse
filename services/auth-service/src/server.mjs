@@ -66,6 +66,41 @@ const rateLimiter = createRateLimiter(poolProxy);
 const logAuthEvent = createAuditLogger(poolProxy);
 const dal = createDal({ sessionManager, usersRepo, userSessionsRepo });
 
+// ===========================================================================
+// TEMPORARY LOCAL OTP BYPASS — RESTORE WHEN REQUESTED
+//
+// Lets a developer log in locally without completing the OTP step, purely so
+// manual testing doesn't require reading a real inbox/WhatsApp message every
+// time. Does not touch OTP generation, delivery, verification, expiry, or
+// resend — every route below (/otp/request, /otp/verify, /otp/resend) is
+// untouched and fully functional. It only adds an early-return in /login and
+// /superadmin/login that runs AFTER the existing password + account-status
+// checks already passed, so it can never substitute for or weaken those.
+//
+// Gating: requires BOTH process.env.APP_ENV === 'development' AND
+// process.env.DISABLE_LOGIN_OTP_LOCAL === 'true'. Any other value (unset,
+// misspelled, 'TRUE', '1', etc.) defaults to false — OTP stays enforced.
+//
+// Why APP_ENV instead of NODE_ENV: this service's own Dockerfile hardcodes
+// `ENV NODE_ENV=production` unconditionally, in EVERY environment this image
+// runs in — local docker-compose included — so NODE_ENV cannot distinguish
+// "local" from "real production" here; both report 'production'. APP_ENV is
+// a dedicated signal for that instead, and it is only ever set by
+// .env.local, a file that is explicitly excluded from every sync path in
+// infrastructure/scripts/deploy.sh and from the manual deploy process. That
+// means this flag structurally cannot reach socialpulse.dotstark.tech even
+// if accidentally left enabled on a developer's machine — it is not merely
+// "off by default in prod", it is absent from prod's source entirely.
+//
+// To restore the original OTP-required flow: set
+// DISABLE_LOGIN_OTP_LOCAL=false (or delete the line) in .env.local and
+// restart auth-service (`docker compose up -d --no-deps auth-service`). No
+// code change is required.
+// ===========================================================================
+function isLocalOtpBypassActive() {
+  return process.env.APP_ENV === 'development' && process.env.DISABLE_LOGIN_OTP_LOCAL === 'true';
+}
+
 function verifyInternalSecretHeader(req) {
   const provided = req.headers['x-internal-secret'];
   if (typeof provided !== 'string' || !provided || !INTERNAL_SECRET) return false;
@@ -312,6 +347,25 @@ const server = http.createServer(async (req, res) => {
         // Safe fields only — never password, hash, OTP, or session token.
         logAuthEvent('CANVA_REVIEW_OTP_SKIPPED', { userId: user.id, ip, purpose });
         return send(res, 200, { success: true, redirect: '/dashboard', canvaReview: true });
+      }
+
+      // TEMPORARY LOCAL OTP BYPASS — see isLocalOtpBypassActive() above for
+      // gating + restore instructions. Runs only after the password/status
+      // checks above already passed.
+      if (isLocalOtpBypassActive()) {
+        if (purpose === 'SIGNUP_VERIFY') {
+          // Mirrors exactly what a real OTP verification would have done to
+          // this row (see otp/verify below), so an account never stays stuck
+          // PENDING just because this path skipped entering the code.
+          await usersRepo.markChannelVerified(user.id, user.email ? 'EMAIL' : 'WHATSAPP');
+        }
+        const { cookieString } = await sessionManager.createSession(user.id, user.sessionVersion, { userAgent: req.headers['user-agent'], ip });
+        setCookieHeader(res, cookieString);
+        await usersRepo.recordLogin(user.id);
+        logAuthEvent('LOCAL_OTP_BYPASS', { userId: user.id, ip, purpose });
+        const host = normalizeHost(req.headers.host);
+        const redirect = user.role !== 'SUPERADMIN' ? '/dashboard' : isPublicHost(host) ? `${SUPERADMIN_ORIGIN}/superadmin` : '/superadmin';
+        return send(res, 200, { success: true, redirect, localOtpBypass: true });
       }
 
       const cookie = await setPendingAuth({ userId: user.id, purpose });
@@ -569,6 +623,23 @@ const server = http.createServer(async (req, res) => {
         return send(res, 401, { error: GENERIC_ERROR });
       }
       const purpose = user.status === 'PENDING' ? 'SIGNUP_VERIFY' : 'LOGIN_VERIFY';
+
+      // TEMPORARY LOCAL OTP BYPASS — see isLocalOtpBypassActive() above for
+      // gating + restore instructions. Runs only after the password/status/
+      // role checks above already passed.
+      if (isLocalOtpBypassActive()) {
+        if (purpose === 'SIGNUP_VERIFY') {
+          await usersRepo.markChannelVerified(user.id, user.email ? 'EMAIL' : 'WHATSAPP');
+        }
+        const { cookieString } = await sessionManager.createSession(user.id, user.sessionVersion, { userAgent: req.headers['user-agent'], ip });
+        setCookieHeader(res, cookieString);
+        await usersRepo.recordLogin(user.id);
+        logAuthEvent('LOCAL_OTP_BYPASS', { userId: user.id, ip, purpose, meta: { interface: 'superadmin' } });
+        const host = normalizeHost(req.headers.host);
+        const redirect = isPublicHost(host) ? `${SUPERADMIN_ORIGIN}/superadmin` : '/superadmin';
+        return send(res, 200, { success: true, redirect, localOtpBypass: true });
+      }
+
       const cookie = await setPendingAuth({ userId: user.id, purpose });
       setCookieHeader(res, cookie);
       logAuthEvent('LOGIN_SUCCESS', { userId: user.id, ip, purpose, meta: { interface: 'superadmin' } });
