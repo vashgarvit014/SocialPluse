@@ -1288,7 +1288,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              announcementGroupId: t.sendId,
+              groupId: t.sendId,
               text,
               mediaList: effectiveMedia,
               attemptId: `${attemptId}_${t.id}`,
@@ -3321,7 +3321,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           const res = await fetch('/api/whatsapp/publish', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ announcementGroupId: whapiSelectedGroupId, text: finalPublishContent, mediaList: waMedia, attemptId }),
+            body: JSON.stringify({ groupId: whapiSelectedGroupId, text: finalPublishContent, mediaList: waMedia, attemptId }),
           });
           if (res.ok) {
             results.push('whatsapp: Success');
