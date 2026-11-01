@@ -622,10 +622,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (AI_ROUTES.has(pathnameOnly)) {
-    // Only /content needs the long budget. /image, /vary-image and /alt-text
-    // either return 202 immediately or are short calls, so they keep the
-    // standard 15s bound and a hung one is still cut off quickly.
-    const isSynchronousLlmCall = pathnameOnly === '/api/generate-content';
+    // /image returns 202 immediately, so it keeps the standard 15s bound.
+    // /content, /vary-image and /alt-text all make a direct synchronous
+    // vision call — /vary-image and /alt-text used to be genuinely short
+    // (NVIDIA's own vision models) but moved to an OpenRouter reasoning
+    // model on 2026-11-01, which routinely takes 8-15s+ (confirmed live:
+    // 8.4s and 12.87s on real test calls) and was tipping over the old 15s
+    // ceiling as a false-positive 503, not a real vision failure. Given the
+    // long budget here too.
+    const isSynchronousLlmCall = pathnameOnly === '/api/generate-content' || pathnameOnly === '/api/vary-image' || pathnameOnly === '/api/media/alt';
     return proxyToService(req, res, requestId, {
       name: 'ai', baseUrl: AI_SERVICE_URL, breaker: aiBreaker,
       targetPath: AI_ROUTES.get(pathnameOnly), forwardCookie: false,

@@ -4,13 +4,79 @@
 // preserved verbatim — this is tuned product behavior, not something to
 // improve in translation.
 
+import { createLogger } from '../packages/logger/index.mjs';
+
+const log = createLogger('ai-service');
+
+// Classifies a non-ok provider HTTP response into a stable, user-safe error
+// so callers never have to guess what an opaque "NVIDIA API error: 403"
+// actually means. 401/403 = bad/expired/revoked credentials (permanent
+// until the key is fixed — retrying does nothing). 402/429 = quota/billing
+// exhausted (same: permanent until the account is topped up). 5xx = the
+// provider's own outage (genuinely transient — retry is the right advice).
+// Logs the classification server-side (model + status only — never the key,
+// never the prompt) so a future incident like this one is diagnosable from
+// logs alone instead of needing a live repro.
+export function classifyProviderError(provider, model, status, context) {
+  let code;
+  let transient;
+  let userMessage;
+  if (status === 401 || status === 403) {
+    code = `${provider.toUpperCase()}_AUTH_FAILED`;
+    transient = false;
+    userMessage = `${provider} is not available right now (configuration issue). This will not resolve by retrying — please contact support.`;
+  } else if (status === 402 || status === 429) {
+    code = `${provider.toUpperCase()}_QUOTA_EXCEEDED`;
+    transient = false;
+    userMessage = `${provider} is temporarily unavailable (provider quota/balance exhausted). This will not resolve by retrying — please contact support.`;
+  } else if (status >= 500) {
+    code = `${provider.toUpperCase()}_UPSTREAM_ERROR`;
+    transient = true;
+    userMessage = `${provider} is temporarily unavailable. Please try again in a moment.`;
+  } else {
+    code = `${provider.toUpperCase()}_REQUEST_ERROR`;
+    transient = false;
+    userMessage = `${provider} could not process this request.`;
+  }
+  log.error({ event: 'provider_error', provider, model, status, code, context });
+  const err = new Error(userMessage);
+  err.code = code;
+  err.transient = transient;
+  err.providerStatus = status;
+  return err;
+}
+
 const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
 const NVIDIA_API_URL = `${NVIDIA_BASE_URL.replace(/\/$/, '')}/chat/completions`;
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
 const TEXT_MODEL = process.env.NVIDIA_TEXT_MODEL || 'nvidia/nemotron-3.5-lightning-30b-a3b';
 const TEXT_FALLBACK_MODEL = process.env.NVIDIA_TEXT_FALLBACK_MODEL || 'nvidia/nemotron-3.5-lightning-30b-a3b';
-const VISION_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning';
-const VISION_FALLBACK_MODEL = 'meta/llama-3.2-11b-vision-instruct';
+// --- Previous vision config (NVIDIA-hosted) — disabled 2026-10-30 because
+// NVIDIA_API_KEY started returning 403 "Authorization failed" for every
+// model, vision and text-fallback alike (verified with a bare curl against
+// the provider, independent of this app's code). Kept here, not deleted,
+// so vision can be rolled back to NVIDIA in one uncomment once the key is
+// replaced. Does NOT affect TEXT_MODEL/TEXT_FALLBACK_MODEL above, which are
+// unrelated NVIDIA text-fallback constants also broken by the same key but
+// out of scope for this change (Mercury/Inception is untouched and remains
+// the real text-generation path).
+// const VISION_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning';
+// const VISION_FALLBACK_MODEL = 'meta/llama-3.2-11b-vision-instruct';
+const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
+const OPENROUTER_API_URL = `${OPENROUTER_BASE_URL.replace(/\/$/, '')}/chat/completions`;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+// Both verified live with real inference calls (image description, text
+// extraction, structured captioning) before being wired in here — see the
+// benchmark conversation for raw results. nano-omni is primary: same model
+// name as the old NVIDIA-hosted path above but reached through OpenRouter
+// instead, so it's unaffected by the dead NVIDIA key; 2.7s and a clean
+// `stop` finish on test. super-vl is the fallback: also independently
+// verified (1.0-1.7s on simple calls; ~41s on the heavy one-shot
+// image+full-JSON generation path in generateContent() specifically, since
+// it burns tokens on internal reasoning before answering — see
+// callVisionWithImage()'s comment below).
+const VISION_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
+const VISION_FALLBACK_MODEL = 'nvidia/nemotron-3.5-super-vl:free';
 const TEXT_TIMEOUT_MS = 120_000;
 
 const INCEPTION_BASE_URL = process.env.INCEPTION_BASE_URL || 'https://api.inceptionlabs.ai/v1';
@@ -19,7 +85,7 @@ const INCEPTION_API_KEY = process.env.INCEPTION_API_KEY;
 const MERCURY_MODEL = process.env.INCEPTION_TEXT_MODEL || 'mercury-3';
 const MERCURY_FALLBACK_MODEL = process.env.INCEPTION_TEXT_FALLBACK_MODEL || 'mercury-2.5';
 const MERCURY_REASONING_EFFORT = process.env.INCEPTION_REASONING_EFFORT || 'low';
-const VISION_MODELS = [VISION_MODEL, VISION_FALLBACK_MODEL];
+const VISION_MODELS = [...new Set([VISION_MODEL, VISION_FALLBACK_MODEL])];
 
 function cleanTopic(raw) {
   let t = raw.trim();
@@ -279,7 +345,7 @@ async function callNVIDIA(prompt, systemPrompt, timeoutMs = NVIDIA_TIMEOUT_MS, m
       signal: controller.signal,
     });
     clearTimeout(timer);
-    if (!response.ok) throw new Error(`NVIDIA API error: ${response.status}`);
+    if (!response.ok) throw classifyProviderError('NVIDIA', model, response.status, 'text-fallback');
     const data = await response.json();
     return (data.choices?.[0]?.message?.content || '').trim();
   } catch (err) {
@@ -293,26 +359,33 @@ async function callNVIDIA(prompt, systemPrompt, timeoutMs = NVIDIA_TIMEOUT_MS, m
 }
 
 async function callVisionWithImage(imageData, systemPrompt, userPrompt, timeoutMs = 90000, model = VISION_MODEL) {
-  if (!NVIDIA_API_KEY) throw new Error('NVIDIA API key not configured');
+  if (!OPENROUTER_API_KEY) throw new Error('OpenRouter API key not configured');
   const list = (Array.isArray(imageData) ? imageData : [imageData]).slice(0, 4);
   const toDataUrl = (d) => d.startsWith('data:') ? d : `data:image/jpeg;base64,${d}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(NVIDIA_API_URL, {
+    const response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${NVIDIA_API_KEY}` },
-      body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: [...list.map((u) => ({ type: 'image_url', image_url: { url: toDataUrl(u) } })), { type: 'text', text: list.length > 1 ? `[${list.length} reference images attached — consider ALL of them] ${userPrompt}` : userPrompt }] }], max_tokens: 2000, temperature: 0.55 }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENROUTER_API_KEY}` },
+      // The system prompt is folded into the user turn (not sent as a
+      // separate role:"system" message) because this OpenRouter vision
+      // model spends its max_tokens budget on internal chain-of-thought
+      // reasoning before answering — splitting instructions across two
+      // messages measurably increased truncated/no-content responses in
+      // testing versus one combined user turn.
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: [...list.map((u) => ({ type: 'image_url', image_url: { url: toDataUrl(u) } })), { type: 'text', text: `${systemPrompt}\n\n${list.length > 1 ? `[${list.length} reference images attached — consider ALL of them] ${userPrompt}` : userPrompt}` }] }], max_tokens: 2000, temperature: 0.55 }),
       signal: controller.signal,
     });
     clearTimeout(timer);
-    if (!response.ok) {
-      const errorText = await response.text();
-      if (response.status >= 500) throw new Error(`Vision API error (${model}): ${response.status} (transient)`);
-      throw new Error(`Vision API error (${model}): ${response.status}`);
-    }
+    if (!response.ok) throw classifyProviderError('OpenRouter', model, response.status, 'vision-direct');
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || '';
+    const msg = data.choices?.[0]?.message || {};
+    // Reasoning-model fallback: when content is null/empty (budget spent
+    // entirely on `reasoning`, finish_reason:"length"), there is no answer
+    // to recover — surface that as "no output" rather than silently
+    // returning '' as if the model had nothing to say.
+    return msg.content || '';
   } catch (err) {
     clearTimeout(timer);
     if (err.name === 'AbortError') throw new Error(`Vision API timeout (${Math.round(timeoutMs / 1000)}s)`);
@@ -339,7 +412,12 @@ async function withVisionRetry(label, fn, retries = 1) {
     return await fn();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    const retryable = /timeout|429|5\d\d|fetch failed|ECONNRESET/i.test(msg);
+    // err.transient (set by classifyProviderError) is authoritative when
+    // present — a classified 401/403/402/429 is explicitly NOT retryable
+    // even though its message may still happen to contain "429". Fall back
+    // to the old text heuristic only for unclassified errors (e.g. the
+    // AbortError timeout path, which isn't run through classifyProviderError).
+    const retryable = err?.transient === true || (err?.transient === undefined && /timeout|429|5\d\d|fetch failed|ECONNRESET/i.test(msg));
     if (retries > 0 && retryable) {
       await new Promise((r) => setTimeout(r, 3000));
       return await fn();
@@ -349,20 +427,24 @@ async function withVisionRetry(label, fn, retries = 1) {
 }
 
 async function analyzeImageSeparately(imageData, timeoutMs = 60000, model = VISION_MODEL) {
-  if (!NVIDIA_API_KEY) throw new Error('NVIDIA API key not configured');
+  if (!OPENROUTER_API_KEY) throw new Error('OpenRouter API key not configured');
   const list = (Array.isArray(imageData) ? imageData : [imageData]).slice(0, 4);
   const toDataUrl = (d) => d.startsWith('data:') ? d : `data:image/jpeg;base64,${d}`;
   const controller = new AbortController();
+  // Reasoning-model budget: the OpenRouter vision model spends part of
+  // max_tokens on internal chain-of-thought before its real answer (observed
+  // live: 250-780 reasoning tokens per call) — too low a cap here would
+  // silently truncate before any usable description is produced.
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(NVIDIA_API_URL, {
+    const response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${NVIDIA_API_KEY}` },
-      body: JSON.stringify({ model, messages: [{ role: 'user', content: [...list.map((u) => ({ type: 'image_url', image_url: { url: toDataUrl(u) } })), { type: 'text', text: list.length > 1 ? `Describe EACH of these ${list.length} images in 1-2 sentences (label them Image 1, Image 2...) covering subject, setting, objects, colors, mood — for a LinkedIn caption. Be specific.` : 'Describe this image in detail (subject, setting, objects, colors, mood) in 2-3 sentences for a LinkedIn caption. Be specific.' }] }], max_tokens: 350 + list.length * 150, temperature: 0.45 }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENROUTER_API_KEY}` },
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: [...list.map((u) => ({ type: 'image_url', image_url: { url: toDataUrl(u) } })), { type: 'text', text: list.length > 1 ? `Describe EACH of these ${list.length} images in 1-2 sentences (label them Image 1, Image 2...) covering subject, setting, objects, colors, mood — for a LinkedIn caption. Be specific.` : 'Describe this image in detail (subject, setting, objects, colors, mood) in 2-3 sentences for a LinkedIn caption. Be specific.' }] }], max_tokens: 900 + list.length * 150, temperature: 0.45 }),
       signal: controller.signal,
     });
     clearTimeout(timer);
-    if (!response.ok) throw new Error(`Vision API error: ${response.status}`);
+    if (!response.ok) throw classifyProviderError('OpenRouter', model, response.status, 'vision-two-step');
     const data = await response.json();
     return data.choices?.[0]?.message?.content || '';
   } catch (err) {
@@ -507,6 +589,7 @@ export async function generateContent(prompt, platforms, tone, hasImage, imageDa
     const winner = await raceToFirst([raceDirect(VISION_MODEL)]);
     if (winner) return winner.result;
 
+    let lastVisionError = null;
     for (const model of VISION_MODELS) {
       try {
         const analysis = await withVisionRetry(`Two-step/${model}`, () => analyzeImageSeparately(imgs, 45000, model));
@@ -545,8 +628,16 @@ export async function generateContent(prompt, platforms, tone, hasImage, imageDa
           const resultStrict = parseAndValidate(rawStrict);
           if (resultStrict) return resultStrict;
         }
-      } catch { /* try next model */ }
+      } catch (e) {
+        // Remember the classified cause (if any) instead of discarding it —
+        // a 401/403/402 here means every remaining model attempt is also
+        // going to fail for the same reason, so the generic "slow, please
+        // retry" message below must not override a real, non-retryable
+        // cause we already know about.
+        if (e?.code) lastVisionError = e;
+      }
     }
+    if (lastVisionError && lastVisionError.transient === false) throw lastVisionError;
     throw new Error('Vision models are slow right now — please retry, or generate without an image.');
   }
 

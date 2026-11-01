@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { createLogger } from '../packages/logger/index.mjs';
 import { verifyInternalSecret } from '../packages/service-auth/index.mjs';
-import { generateContent } from './content.mjs';
+import { generateContent, classifyProviderError } from './content.mjs';
 import { moderatePrompt, promptFingerprint, providerSafetyDecision, moderationBlockCopy } from './moderation.mjs';
 import { createModerationStore } from './moderation-escalation.mjs';
 import { createUsageRecorder } from './ai-usage.mjs';
@@ -118,7 +118,18 @@ async function handleGenerateContent(req, res) {
     return send(res, 200, result);
   } catch (error) {
     recordAiUsage({ type: 'CONTENT', provider: 'text-generation', success: false, userId });
-    return send(res, 500, { error: error instanceof Error ? error.message : 'Failed to generate content', code: 'AI_GENERATION_FAILED' });
+    // Previously unlogged entirely — a failure here (e.g. the 2026-10 NVIDIA
+    // key outage) left zero server-side trace, only the per-request 500 the
+    // caller saw once. code/providerStatus come from classifyProviderError
+    // when the failure was a classified provider error; both are safe to
+    // log (no key, no prompt).
+    log.error({
+      event: 'content_generation_failed', userId,
+      code: error?.code, providerStatus: error?.providerStatus,
+      message: error instanceof Error ? error.message : 'unknown',
+    });
+    const status = error?.code && error?.transient === false ? 503 : 500;
+    return send(res, status, { error: error instanceof Error ? error.message : 'Failed to generate content', code: error?.code || 'AI_GENERATION_FAILED' });
   }
 }
 
@@ -196,7 +207,8 @@ async function handleStartImageJob(req, res) {
           return;
         }
         if (!fallbackApiKey) {
-          setTerminalJob({ status: 'error', model: PRIMARY_MODEL, userId, message: `${PRIMARY_MODEL} is currently unavailable. Please try again in a moment — no fallback will be used (hold).`, createdAt: Date.now() });
+          const classified = classifyProviderError('Pollinations', PRIMARY_MODEL, response.status, 'primary-key, no fallback configured');
+          setTerminalJob({ status: 'error', model: PRIMARY_MODEL, userId, message: classified.message, code: classified.code, createdAt: Date.now() });
           return;
         }
         usedFallbackKey = true;
@@ -207,7 +219,14 @@ async function handleStartImageJob(req, res) {
             setTerminalJob({ status: 'blocked', model: PRIMARY_MODEL, userId, createdAt: Date.now() });
             return;
           }
-          setTerminalJob({ status: 'error', model: PRIMARY_MODEL, userId, message: `${PRIMARY_MODEL} is currently unavailable on both keys. Please try again in a moment.`, createdAt: Date.now() });
+          // Both the primary and fallback keys failed. If both failures are
+          // the same non-transient cause (e.g. both accounts out of
+          // balance, as found during the 2026-10 investigation — see
+          // AGENTS.md/PULLOVER notes), say so plainly instead of the old
+          // generic "unavailable... try again in a moment", which was
+          // actively misleading: retrying a 402/401/403 never helps.
+          const classified = classifyProviderError('Pollinations', PRIMARY_MODEL, response.status, 'fallback-key');
+          setTerminalJob({ status: 'error', model: PRIMARY_MODEL, userId, message: classified.message, code: classified.code, createdAt: Date.now() });
           return;
         }
       }
@@ -238,7 +257,17 @@ async function handleStartImageJob(req, res) {
 
       setTerminalJob({ status: 'done', image: `data:${mime};base64,${imageBase64}`, model: PRIMARY_MODEL, userId, assetId, filename, createdAt: Date.now() });
     } catch (err) {
-      setTerminalJob({ status: 'error', model: PRIMARY_MODEL, userId, message: 'Network error reaching the image model. Please try again.', createdAt: Date.now() });
+      // Was previously silent (no log.error anywhere in this catch) and
+      // always reported the same generic network-error message even when
+      // the real cause was a classified provider error (err.code set) —
+      // use the classified, already-sanitized message when we have one.
+      log.error({
+        event: 'image_job_failed', userId, jobId,
+        code: err?.code, providerStatus: err?.providerStatus,
+        message: err instanceof Error ? err.message : 'unknown',
+      });
+      const message = err?.code ? err.message : 'Network error reaching the image model. Please try again.';
+      setTerminalJob({ status: 'error', model: PRIMARY_MODEL, userId, message, code: err?.code, createdAt: Date.now() });
     }
   })();
 
@@ -252,7 +281,7 @@ function handlePollImageJob(req, res, url) {
   if (!jobId) return send(res, 400, { error: 'jobId is required' });
   const job = jobs.get(jobId);
   if (!job || job.userId !== userId) return send(res, 404, { error: 'Unknown or expired job' });
-  return send(res, 200, { status: job.status, image: job.image, model: job.model, message: job.message, assetId: job.assetId, filename: job.filename });
+  return send(res, 200, { status: job.status, image: job.image, model: job.model, message: job.message, code: job.code, assetId: job.assetId, filename: job.filename });
 }
 
 const server = http.createServer(async (req, res) => {

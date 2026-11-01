@@ -3,6 +3,8 @@
 // covered; it only covered generate-content/generate-image). Describes an
 // uploaded image as a rich prompt for /image to generate a fresh
 // variation from — no pixels are copied.
+import { classifyProviderError } from './content.mjs';
+
 const NVIDIA_API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
 // minimaxai/minimax-m3 went end-of-life on 2026-09-09 (410 Gone), so Llama
 // vision is currently the only usable vision model on this endpoint — same
@@ -16,7 +18,7 @@ export async function varyImage({ imageData, style }) {
 
   const url = imageData.startsWith('data:') ? imageData : `data:image/jpeg;base64,${imageData}`;
   const styleHint = typeof style === 'string' && style ? ` in a ${style} style` : '';
-  let lastError = 'Vision models are slow right now — please retry.';
+  let lastError = { message: 'Vision models are slow right now — please retry.', status: 503 };
 
   for (const model of VARY_MODELS) {
     const controller = new AbortController();
@@ -40,15 +42,19 @@ export async function varyImage({ imageData, style }) {
         signal: controller.signal,
       });
       clearTimeout(timer);
-      if (!res.ok) { lastError = `Vision API error (${model}): ${res.status}`; continue; }
+      if (!res.ok) {
+        const classified = classifyProviderError('NVIDIA', model, res.status, 'vary-image');
+        lastError = { message: classified.message, status: classified.transient ? 503 : (res.status === 402 || res.status === 429 ? res.status : 401) };
+        continue;
+      }
       const data = await res.json();
       const prompt = (data.choices?.[0]?.message?.content || '').trim().replace(/^["']|["']$/g, '');
       if (prompt.length < 20) continue;
       return { prompt, success: true, model };
     } catch (err) {
       clearTimeout(timer);
-      lastError = err instanceof Error && err.name === 'AbortError' ? `Vision timeout (${model})` : String(err);
+      lastError = { message: err instanceof Error && err.name === 'AbortError' ? `Vision timeout (${model})` : 'Network error reaching the vision provider.', status: 503 };
     }
   }
-  return { error: lastError, status: 503 };
+  return { error: lastError.message, status: lastError.status };
 }
