@@ -2815,21 +2815,37 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   }, [logoPosition, logoScale, logoOpacity]);
 
   const getCompressedForAPI = (dataUrl: string): Promise<string> => {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const img = new Image();
+      // A decode failure (bad data URL, unsupported format, tainted canvas)
+      // used to leave this promise permanently unsettled — generateContent()
+      // awaits it before ever calling fetch(), so the request would never
+      // reach the backend and isGeneratingContent would stay true forever
+      // with no error shown. onerror + a decode timeout make failure visible
+      // instead of hanging the UI indefinitely.
+      const timer = setTimeout(() => reject(new Error('Image took too long to process — try a different image.')), 15000);
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX = 1024;
-        let w = img.width;
-        let h = img.height;
-        if (w > MAX || h > MAX) {
-          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-          else { w = Math.round(w * MAX / h); h = MAX; }
+        clearTimeout(timer);
+        try {
+          const canvas = document.createElement('canvas');
+          const MAX = 1024;
+          let w = img.width;
+          let h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+            else { w = Math.round(w * MAX / h); h = MAX; }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error('Could not process this image.'));
         }
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        reject(new Error('Could not load this image — it may be corrupted or in an unsupported format.'));
       };
       img.src = dataUrl;
     });
