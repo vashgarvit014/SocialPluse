@@ -233,6 +233,7 @@ export default function LandingClient() {
   const [step, setStep] = useState(0);
   const [tab, setTab] = useState<'linkedin' | 'facebook' | 'instagram' | 'whatsapp'>('linkedin');
   const [modal, setModal] = useState(false);
+  const [demoVideoOpen, setDemoVideoOpen] = useState(false);
   const [filter, setFilter] = useState('All');
   const [toast, setToast] = useState('');
   const [posts, setPosts] = useState(initialPosts);
@@ -408,7 +409,7 @@ export default function LandingClient() {
               <Hover tag={Link} href="/login-signup?mode=signup" className="lp-btn-primary" base="color:#fff;background:linear-gradient(135deg,#5b6cff,#8b5cf6);border-radius:14px;font-weight:600;box-shadow:0 14px 30px rgba(91,76,245,.35);display:inline-block;" hover="transform:translateY(-2px)">
                 Get Started Free →
               </Hover>
-              <Hover tag="a" href="#workflow" className="lp-btn-secondary" base="color:#0f1020;background:#fff;border-radius:14px;font-weight:600;border:1px solid #e4e4ee;display:inline-flex;align-items:center;justify-content:center;gap:10px;" hover="border:1px solid #c9c3ff">
+              <Hover tag="button" onClick={() => setDemoVideoOpen(true)} className="lp-btn-secondary" base="cursor:pointer;color:#0f1020;background:#fff;border-radius:14px;font-weight:600;border:1px solid #e4e4ee;display:inline-flex;align-items:center;justify-content:center;gap:10px;" hover="border:1px solid #c9c3ff">
                 <span style={sx('width:24px;height:24px;border-radius:50%;background:#0f1020;display:flex;align-items:center;justify-content:center;flex-shrink:0;')}>
                   <span style={sx('width:0;height:0;border-left:8px solid #fff;border-top:5px solid transparent;border-bottom:5px solid transparent;margin-left:2px;')} />
                 </span>
@@ -811,6 +812,18 @@ export default function LandingClient() {
         </div>
       )}
 
+      {demoVideoOpen && (
+        <div onClick={() => setDemoVideoOpen(false)} style={sx('position:fixed;inset:0;z-index:100;background:rgba(15,16,32,.78);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;')}>
+          <div onClick={e => e.stopPropagation()} style={sx('width:100%;max-width:960px;background:#0f1020;border-radius:24px;box-shadow:0 50px 100px -20px rgba(0,0,0,.6);overflow:hidden;')}>
+            <div style={sx('display:flex;justify-content:space-between;align-items:center;padding:16px 20px;')}>
+              <div style={sx('font-weight:800;font-size:15px;color:#fff;')}>SocialPulse — product demo</div>
+              <button onClick={() => setDemoVideoOpen(false)} aria-label="Close video" style={sx('cursor:pointer;border:none;background:rgba(255,255,255,.1);color:#fff;width:34px;height:34px;border-radius:10px;font-size:16px;')}>✕</button>
+            </div>
+            <video src="/demo/socialpulse-demo.mp4" controls autoPlay style={sx('display:block;width:100%;aspect-ratio:16/9;background:#000;')} />
+          </div>
+        </div>
+      )}
+
       {/* SCHEDULER */}
       <section id="scheduler" style={sx('max-width:var(--lp-max);margin:0 auto;padding:var(--lp-sec-pad) var(--lp-pad);')}>
         <div style={sx('display:flex;justify-content:space-between;align-items:flex-end;gap:30px;flex-wrap:wrap;margin-bottom:40px;')}>
@@ -979,7 +992,7 @@ export default function LandingClient() {
             <p style={sx('font-size:18px;line-height:1.6;color:#c9cadb;margin:0 0 32px;max-width:460px;')}>Bring your ideas, media, brand, and schedule into one workspace.</p>
             <div style={sx('display:flex;gap:14px;flex-wrap:wrap;')}>
               <Hover tag={Link} href="/login-signup?mode=signup" className="lp-btn-primary" base="color:#0f1020;background:#fff;border-radius:14px;font-weight:700;display:inline-block;" hover="transform:translateY(-2px)">Get Started Free →</Hover>
-              <Hover tag="a" href="#workflow" className="lp-btn-secondary" base="color:#fff;border-radius:14px;font-weight:600;border:1px solid rgba(255,255,255,.22);display:inline-block;" hover="border:1px solid rgba(255,255,255,.5)">See the workflow</Hover>
+              <Hover tag="button" onClick={() => setDemoVideoOpen(true)} className="lp-btn-secondary" base="cursor:pointer;color:#fff;background:transparent;border-radius:14px;font-weight:600;border:1px solid rgba(255,255,255,.22);display:inline-block;" hover="border:1px solid rgba(255,255,255,.5)">See the workflow</Hover>
             </div>
           </div>
           <div className="lp-cta-visual" style={sx('position:relative;height:var(--lp-cta-h,340px);perspective:1100px;display:flex;align-items:center;justify-content:center;')}>
