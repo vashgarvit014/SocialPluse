@@ -21,7 +21,7 @@ export default function PrivacyPage() {
         <div style={{ backgroundColor: "#fff", border: "1px solid #E8EAF1", borderRadius: 16, boxShadow: "0 1px 2px rgba(15,23,42,0.04), 0 8px 28px rgba(15,23,42,0.06)", overflow: "hidden" }}>
           <div style={{ padding: "28px 28px 0" }}>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", letterSpacing: "-0.03em", margin: 0 }}>Privacy Policy</h1>
-            <p style={{ fontSize: 13, color: "#64748B", marginTop: 6 }}>Last updated: September 14, 2026 — SocialPulse by Dotstark Technologies</p>
+            <p style={{ fontSize: 13, color: "#64748B", marginTop: 6 }}>Last updated: November 5, 2026 — SocialPulse by Dotstark Technologies</p>
             <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.7, marginTop: 12, backgroundColor: "#F8FAFC", border: "1px solid #F1F3F9", borderRadius: 10, padding: "10px 12px" }}>
               This policy explains how SocialPulse handles data when you connect LinkedIn (including your personal profile and your LinkedIn Company Page via a business account) and other platforms.
             </p>
@@ -34,6 +34,7 @@ export default function PrivacyPage() {
                 <li><b>LinkedIn OAuth:</b> name, email, member ID (OpenID), and the access token you grant. If you grant Company Page access, we also read the list of organizations you administrate (<code>organizationAcls</code>) and basic organization info to let you pick the publishing target.</li>
                 <li><b>Content you create:</b> captions, hashtags, images/videos you upload or generate, and scheduling metadata.</li>
                 <li><b>Other platforms (Facebook, Instagram, Canva):</b> analogous tokens and page/design IDs, only when you connect them.</li>
+                <li><b>YouTube API Services:</b> when you connect YouTube, we access the authorized channel&rsquo;s name, channel ID, thumbnail and status, plus the OAuth access/refresh tokens needed to upload videos and refresh authorization. For a video you choose to publish, we process the file, title, description, tags, privacy choice, audience setting, schedule and returned video/processing status.</li>
               </ul>
             </section>
 
@@ -42,7 +43,7 @@ export default function PrivacyPage() {
               <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
                 <li>Authenticate you and publish/schedule posts <b>only</b> to the accounts/pages you select and confirm.</li>
                 <li>Generate AI content/images you request (topic → caption/hashtags via Inception/NVIDIA; images via Pollinations).</li>
-                <li>Never post automatically without your explicit Publish/Schedule action; no auto-retry.</li>
+                <li>Never post automatically without your explicit Publish/Schedule action. Interrupted YouTube uploads resume only when you ask SocialPulse to continue.</li>
               </ul>
             </section>
 
@@ -55,7 +56,7 @@ export default function PrivacyPage() {
 
             <section>
               <h2 style={{ fontSize: 14, fontWeight: 800, color: "#0F172A", margin: "0 0 6px" }}>4. Sharing</h2>
-              <p style={{ margin: 0 }}>We do not sell your data. Data is sent only to the platform APIs you authorize (LinkedIn, Facebook/Instagram Graph, Canva, and AI providers listed in our model docs) for the single purpose of completing your request.</p>
+              <p style={{ margin: 0 }}>We do not sell your data. Data is sent only to the platform APIs you authorize (including YouTube Data API, LinkedIn, Facebook/Instagram Graph and Canva) and the AI providers listed in our model documentation, for the purpose of completing your request.</p>
             </section>
 
             <section>
@@ -63,13 +64,14 @@ export default function PrivacyPage() {
               <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
                 <li>Disconnect any platform at any time via the app (Account card → Disconnect) — this deletes the server token immediately.</li>
                 <li>You can also revoke access directly in LinkedIn &gt; Settings &gt; Permitted services or Meta Business Suite &gt; Integrations.</li>
+                <li>YouTube access can also be reviewed or revoked in <a href="https://security.google.com/settings/security/permissions" target="_blank" rel="noopener noreferrer" style={{ color: "#7C3AED", fontWeight: 700, textDecoration: "none" }}>Google Security permissions</a>. Disconnecting YouTube in SocialPulse revokes the provider token where Google accepts the revocation, removes usable credentials from SocialPulse, and prevents further uploads.</li>
                 <li>Contact us to delete all stored data: <a href="mailto:privacy@dotstark.tech" style={{ color: "#7C3AED", fontWeight: 700, textDecoration: "none" }}>privacy@dotstark.tech</a></li>
               </ul>
             </section>
 
             <section>
               <h2 style={{ fontSize: 14, fontWeight: 800, color: "#0F172A", margin: "0 0 6px" }}>6. Retention</h2>
-              <p style={{ margin: 0 }}>Tokens are kept until you disconnect or they expire/revoke. Generated content lives in your browser draft/history until you clear it; scheduled-post records are kept locally until you cancel them.</p>
+              <p style={{ margin: 0 }}>Tokens are kept until you disconnect or they expire or are revoked. Drafts, upload sessions, provider video IDs, processing results and scheduled-post records are stored server-side for operational continuity and removed when no longer needed under our retention practices. Saved media is retained for 30 days as described above.</p>
             </section>
 
             <section>

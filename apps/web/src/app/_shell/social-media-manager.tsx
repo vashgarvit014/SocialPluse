@@ -60,6 +60,8 @@ interface SocialAccount {
   // Instagram only: the linked Business account's id (needed by
   // instagram/publish to resolve the right Page token server-side).
   igUserId?: string;
+  thumbnail?: string;
+  channels?: Array<{ id: string; name: string; thumbnail?: string }>;
 }
 
 const platformColors: Record<string, string> = {
@@ -67,6 +69,7 @@ const platformColors: Record<string, string> = {
   instagram: '#E1306C',
   facebook: '#1877F2',
   whatsapp: '#25D366',
+  youtube: '#FF0000',
 };
 
 const platformInitials: Record<string, string> = {
@@ -74,6 +77,7 @@ const platformInitials: Record<string, string> = {
   instagram: 'IG',
   facebook: 'FB',
   whatsapp: 'WA',
+  youtube: 'YT',
 };
 
 // Real platform glyphs (inline SVG, white fill/stroke — sits on the platform's
@@ -93,6 +97,8 @@ function PlatformIcon({ platform, size = 16 }: { platform: string; size?: number
           f
         </span>
       );
+    case 'youtube':
+      return <span style={{ color: '#fff', fontSize: size, lineHeight: 1 }}>▶</span>;
     case 'instagram':
       return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -170,7 +176,7 @@ function getPostMedia(post: { imageUrl?: string; videoUrl?: string; mediaUrl?: s
   return { url, type: isVideo ? 'video' as const : url ? 'image' as const : null, isVideo, list: url ? [{id:'0',url,type:isVideo?'video':'image'} as MediaItem] : [], count: url?1:0, videoCount: isVideo?1:0, imageCount: isVideo?0:(url?1:0) };
 }
 
-export interface MediaItem { id: string; url: string; type: 'image' | 'video'; name?: string; altText?: string; source?: string; canvaDesignId?: string; sourceMediaId?: string; importedAt?: number }
+export interface MediaItem { id: string; url: string; type: 'image' | 'video'; name?: string; altText?: string; source?: string; canvaDesignId?: string; sourceMediaId?: string; importedAt?: number; size?: number; mime?: string }
 // Tracks one Canva editor outing: which design, which SocialPulse media item
 // it came from (edit flow), how it was started, and when. Never holds tokens.
 export interface CanvaSession { designId: string; sourceMediaId: string | null; mode: 'edit' | 'create'; openedAt: number; importedAt?: number }
@@ -278,6 +284,7 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   // accounts could never be targeted. Keys are `${platform}:${userId}:${pageId}`.
   const [selectedAccountKeys, setSelectedAccountKeys] = useState<string[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [youtubeAvailable, setYoutubeAvailable] = useState(false);
   const [canvaConnected, setCanvaConnected] = useState(false);
   const [canvaName, setCanvaName] = useState('');
   const [isSendingToCanva, setIsSendingToCanva] = useState(false);
@@ -400,7 +407,7 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const topicFileInputRef = useRef<HTMLInputElement>(null);
-  const [platformContent, setPlatformContent] = useState<Record<string, { caption: string; hashtags: string[] }>>({});
+  const [platformContent, setPlatformContent] = useState<Record<string, { caption: string; hashtags: string[]; title?: string }>>({});
   const [imagePrompt, setImagePromptRaw] = useState('');
   const [activePreviewPlatform, setActivePreviewPlatform] = useState('linkedin');
   const [generationError, setGenerationError] = useState('');
@@ -748,6 +755,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     let linkedinAccount: SocialAccount | undefined;
     let facebookAccount: SocialAccount | undefined;
     let instagramAccount: SocialAccount | undefined;
+    let youtubeAccount: SocialAccount | undefined;
 
     if (!ACCOUNTS_KEY) return;
     const saved = localStorage.getItem(ACCOUNTS_KEY);
@@ -771,7 +779,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         linkedinAccount = scrubbed.find(a => a.platform === 'linkedin');
         facebookAccount = scrubbed.find(a => a.platform === 'facebook');
         instagramAccount = scrubbed.find(a => a.platform === 'instagram');
-        const rest = scrubbed.filter(a => a.platform !== 'linkedin' && a.platform !== 'facebook' && a.platform !== 'instagram');
+        youtubeAccount = scrubbed.find(a => a.platform === 'youtube');
+        const rest = scrubbed.filter(a => a.platform !== 'linkedin' && a.platform !== 'facebook' && a.platform !== 'instagram' && a.platform !== 'youtube');
         setAccounts(rest);
         localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(rest));
       } catch { /* ignore corrupt cache - status checks below still run unconditionally */ }
@@ -842,6 +851,18 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             });
           })
           .catch(() => { /* transient failure reaching our own status route - leave it disconnected for this load rather than trust the cache */ });
+
+        fetchStatusWithFallback<{ available?: boolean; connected: boolean; userId?: string; name?: string; thumbnail?: string; channels?: Array<{ id: string; name: string; thumbnail?: string }> }>('/api/youtube/status', youtubeAccount?.userId)
+          .then((data) => {
+            setYoutubeAvailable(data.available === true);
+            if (!data.connected || !data.userId) return;
+            setAccounts(prev => {
+              const updated = [...prev.filter(a => a.platform !== 'youtube'), { platform: 'youtube', connected: true, userId: data.userId!, name: data.name || 'YouTube Channel', email: '', thumbnail: data.thumbnail, channels: data.channels }];
+              localStorage.setItem(ACCOUNTS_KEY!, JSON.stringify(updated));
+              return updated;
+            });
+          })
+          .catch(() => setYoutubeAvailable(false));
     }
 
     const params = new URLSearchParams(window.location.search);
@@ -1514,9 +1535,9 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       return;
     }
 
-    const connectedSelected = selectedPlatforms.filter(p =>
+    const connectedSelected = selectedPlatforms.filter(p => p !== 'youtube' && (
       p === 'whatsapp' ? whapiConnected : accounts.some(a => a.platform === p && a.connected)
-    );
+    ));
     if (connectedSelected.length === 0) {
       setPublishResult('No connected platforms selected');
       setPublishResultType('error');
@@ -1771,9 +1792,10 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
 
   const oauthPending = useRef<{ id: string; popup: Window | null } | null>(null);
   const refreshConnections = async () => {
-    const statuses = await Promise.all(['linkedin', 'facebook', 'instagram'].map(async platform => {
+    const statuses = await Promise.all(['linkedin', 'facebook', 'instagram', 'youtube'].map(async platform => {
       const res = await fetch('/api/' + platform + '/status'); if (!res.ok) throw new Error('Connection status unavailable');
       const data = await res.json();
+      if (platform === 'youtube') setYoutubeAvailable(data.available === true);
       setAccounts(prev => {
         const existing = prev.find(a => a.platform === platform);
         const updated = prev.filter(a => a.platform !== platform);
@@ -1783,6 +1805,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           email: data.email || existing?.email || '', pages: data.pages || existing?.pages,
           pageId: data.pageId || (data.pages?.some((p: {id: string}) => p.id === existing?.pageId) ? existing?.pageId : data.pages?.[0]?.id),
           igUserId: data.igUserId,
+          thumbnail: data.thumbnail || existing?.thumbnail,
+          channels: data.channels || existing?.channels,
         });
         localStorage.setItem(ACCOUNTS_KEY!, JSON.stringify(updated)); return updated;
       });
@@ -2773,8 +2797,8 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
   // Asset Gallery "Use": drops a persistent asset into the SAME session
   // media pipeline as uploads (data URL, first-item drives generated
   // image/video) and jumps to the studio — no second pipeline invented.
-  const useGalleryAsset = (item: { url: string; type: 'image' | 'video'; name: string }) => {
-    const m: MediaItem = { id: `gal_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, url: item.url, type: item.type, name: item.name, source: 'gallery' };
+  const useGalleryAsset = (item: { url: string; type: 'image' | 'video'; name: string; sourceMediaId?: string; size?: number; mime?: string }) => {
+    const m: MediaItem = { id: `gal_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, url: item.url, type: item.type, name: item.name, source: 'gallery', sourceMediaId: item.sourceMediaId, size: item.size, mime: item.mime };
     setMediaItems(prev => [...prev, m]);
     if (item.type === 'video') { setGeneratedVideo(item.url); setGeneratedImage(''); setMediaType('video'); }
     else { setGeneratedImage(item.url); setGeneratedVideo(''); setMediaType('image'); }
@@ -3285,9 +3309,9 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       notify('ALT text missing on one or more images. You can add it in Accessibility.', true);
       if (!window.confirm('Some images are missing ALT text. Publish anyway?')) return;
     }
-    const connectedSelected = selectedPlatforms.filter(p =>
+    const connectedSelected = selectedPlatforms.filter(p => p !== 'youtube' && (
       p === 'whatsapp' ? whapiConnected : accounts.some(a => a.platform === p && a.connected)
-    );
+    ));
     if (connectedSelected.length === 0) {
       setPublishResult('No connected platforms selected');
       setPublishResultType('error');
@@ -3826,6 +3850,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             burnedLogoIds={burnedLogoIds} clearLogo={clearLogo} restoreBurnedMedia={restoreBurnedMedia}
             applyLogoToAllMedia={applyLogoToAllMedia} isApplyingLogo={isApplyingLogo}
             accounts={accounts} togglePlatform={togglePlatform}
+            youtubeAvailable={youtubeAvailable}
 
             selectedAccountKeys={selectedAccountKeys} toggleAccount={toggleAccount} selectAllAccountsFor={selectAllAccountsFor} clearAccountsFor={clearAccountsFor} connectPlatform={connectPlatform} disconnectPlatform={disconnectPlatform}
             setAccountPageId={setAccountPageId}
@@ -3863,6 +3888,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           <div style={{ flex: 1, minHeight: 0, backgroundColor: '#f8fafc' }}>
           <ConnectPlatforms
             accounts={accounts} connectPlatform={connectPlatform} disconnectPlatform={disconnectPlatform}
+            youtubeAvailable={youtubeAvailable}
             whapiConnected={whapiConnected} whapiChannelStatus={whapiChannelStatus} whapiAccountName={whapiAccountName} whapiPhoneMasked={whapiPhoneMasked}
             whapiGroups={whapiGroups} whapiLoading={whapiLoading} whapiGroupsLoading={whapiGroupsLoading} loadWhapiGroups={loadWhapiGroups} startWhatsAppConnect={startWhatsAppConnect}
             disconnectWhatsApp={disconnectWhatsApp} whatsappDisconnecting={whatsappDisconnecting} whapiCanConnect={whapiCanConnect}

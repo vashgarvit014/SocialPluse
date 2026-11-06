@@ -2,11 +2,11 @@ import 'server-only';
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://gateway:8080';
 
-export async function proxyToGateway(request: Request, path?: string): Promise<Response> {
+export async function proxyToGateway(request: Request, path?: string, options: { streamBody?: boolean } = {}): Promise<Response> {
   const url = new URL(request.url);
   const targetPath = path || `${url.pathname}${url.search}`;
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
-  const body = hasBody ? await request.arrayBuffer() : undefined;
+  const body = hasBody ? (options.streamBody ? request.body : await request.arrayBuffer()) : undefined;
 
   const headers = new Headers();
   const cookie = request.headers.get('cookie');
@@ -14,15 +14,21 @@ export async function proxyToGateway(request: Request, path?: string): Promise<R
   const requestId = request.headers.get('x-request-id');
   if (cookie) headers.set('cookie', cookie);
   if (contentType) headers.set('content-type', contentType);
+  for (const name of ['content-range', 'content-length', 'range']) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
   if (requestId) headers.set('x-request-id', requestId);
 
-  const upstream = await fetch(`${GATEWAY_URL}${targetPath}`, {
+  const init: RequestInit & { duplex?: 'half' } = {
     method: request.method,
     headers,
     body,
     cache: 'no-store',
     redirect: 'manual',
-  });
+  };
+  if (options.streamBody && hasBody) init.duplex = 'half';
+  const upstream = await fetch(`${GATEWAY_URL}${targetPath}`, init);
 
   const responseHeaders = new Headers();
   upstream.headers.forEach((value, key) => {

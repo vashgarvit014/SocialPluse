@@ -98,7 +98,7 @@ function clientCheck(file: File): string | null {
 
 export default function AssetLibrary({ sessionItems, onUseAsset }: {
   sessionItems: MediaItem[];
-  onUseAsset: (item: { url: string; type: 'image' | 'video'; name: string }) => void;
+  onUseAsset: (item: { url: string; type: 'image' | 'video'; name: string; sourceMediaId?: string; size?: number; mime?: string }) => void;
 }) {
   const [assets, setAssets] = useState<StoredAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -217,7 +217,7 @@ export default function AssetLibrary({ sessionItems, onUseAsset }: {
   }
 
   // Takes the projected card, which only carries the fields the editor needs.
-  async function loadAssetForEditor(a: { id: string; filename: string; type: 'image' | 'video' }) {
+  async function loadAssetForEditor(a: { id: string; filename: string; type: 'image' | 'video'; size?: number; mime?: string }) {
     if (useBusyId) return;
     setUseBusyId(a.id);
     try {
@@ -230,7 +230,7 @@ export default function AssetLibrary({ sessionItems, onUseAsset }: {
         reader.onerror = () => reject(new Error('Could not read the asset.'));
         reader.readAsDataURL(blob);
       });
-      onUseAsset({ url: dataUrl, type: a.type, name: a.filename });
+      onUseAsset({ url: dataUrl, type: a.type, name: a.filename, sourceMediaId: a.id, size: a.size, mime: a.mime });
     } catch (e) {
       setNotice(e instanceof Error ? e.message : 'Could not use the asset.');
     } finally {
@@ -334,7 +334,10 @@ export default function AssetLibrary({ sessionItems, onUseAsset }: {
                     <button onClick={() => setLightbox({ url: c.url, type: c.type, name: c.name, note: 'expires' in c && c.expires ? c.expires : undefined })} style={{ flex: 1, padding: '6px 0', borderRadius: 7, fontSize: 11, fontWeight: 700, border: '1px solid #E2E8F0', background: '#fff', color: '#334155', cursor: 'pointer' }}>Preview</button>
                     <button
                       onClick={() => {
-                        if (c.kind === 'UPLOAD') void loadAssetForEditor({ id: (c as { id: string }).id, filename: c.name, type: c.type });
+                        if (c.kind === 'UPLOAD') {
+                          const original = assets.find(a => a.id === (c as { id: string }).id);
+                          void loadAssetForEditor({ id: (c as { id: string }).id, filename: c.name, type: c.type, size: original?.size, mime: original?.mime });
+                        }
                         else onUseAsset({ url: c.url, type: c.type, name: c.name });
                       }}
                       disabled={useBusyId !== null}

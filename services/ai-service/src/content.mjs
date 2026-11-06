@@ -174,6 +174,17 @@ const PLATFORM_SPECS = {
     hashtags: 'Hashtags: NONE. Always return "hashtags": []. Never put #tags in the WhatsApp caption.',
     jsonField: `"whatsapp": { "caption": "<WhatsApp message per spec above, NO hashtags>", "hashtags": [] }`,
   },
+  youtube: {
+    label: 'YouTube',
+    instructions: `YouTube (video discovery metadata, accurate and editable):
+- Return a compelling, factual title in "title" (maximum 100 characters; no clickbait or invented claims).
+- "caption" is the video description: 120-500 words with the core value first, scannable paragraphs, optional short bullets, and a clear call to action.
+- Include relevant search phrases naturally; never keyword-stuff.
+- Hashtags are optional discovery terms. Return plain words without "#"; these are also used as editable video tags.
+- Do not claim the upload is a Short. SocialPulse can only indicate whether the selected video appears Shorts-ready.`,
+    hashtags: 'Tags: 5-12 accurate, relevant search terms, plain words WITHOUT "#".',
+    jsonField: `"youtube": { "title": "<specific YouTube title, <=100 chars>", "caption": "<editable YouTube description>", "hashtags": ["tag1","tag2",...] }`,
+  },
 };
 
 function linkedinMinWords(topic) {

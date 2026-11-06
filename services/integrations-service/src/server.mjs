@@ -10,6 +10,7 @@ import { createLinkedInRouter } from '../providers/linkedin/routes.mjs';
 import { createFacebookRouter } from '../providers/facebook/routes.mjs';
 import { createInstagramRouter } from '../providers/instagram/routes.mjs';
 import { createWhatsAppRouter } from '../providers/whatsapp/routes.mjs';
+import { createYouTubeRouter } from '../providers/youtube/routes.mjs';
 
 // integrations-service.
 //
@@ -55,6 +56,7 @@ const handleInstagramRoute = createInstagramRouter({ query: (...args) => getPool
 // WhatsApp's connections store also needs pool.connect() for one transaction
 // (beginQrAttempt) — the other providers only ever call .query().
 const handleWhatsAppRoute = createWhatsAppRouter({ query: (...args) => getPool().query(...args), connect: (...args) => getPool().connect(...args) });
+const handleYouTubeRoute = createYouTubeRouter({ query: (...args) => getPool().query(...args) });
 
 function send(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -169,6 +171,16 @@ const server = http.createServer(async (req, res) => {
     const handled = await handleInstagramRoute(subpath, req, res, { requestId });
     if (handled !== null) return;
     return send(res, 404, { code: 'NOT_FOUND', message: 'No such Instagram route.' });
+  }
+
+  if (url.pathname.startsWith('/youtube/')) {
+    if (!verifyInternalSecret(req, INTERNAL_SECRET)) {
+      return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
+    }
+    const subpath = url.pathname.replace(/^\/youtube/, '');
+    const handled = await handleYouTubeRoute(subpath, req, res, { requestId, isHttps: process.env.NODE_ENV === 'production' });
+    if (handled !== null) return;
+    return send(res, 404, { code: 'NOT_FOUND', message: 'No such YouTube route.' });
   }
 
   // WhatsApp/Whapi provider routes.

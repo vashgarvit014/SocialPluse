@@ -5,6 +5,7 @@ import { createLogger } from '../packages/logger/index.mjs';
 import { verifyInternalSecret, internalFetchHeaders } from '../packages/service-auth/index.mjs';
 import { createMediaAssetsStore } from './media-assets.mjs';
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { createBrandedVideo } from './ffmpeg-logo.mjs';
 
 // media-service — Asset Gallery storage/retrieval, faithfully ported from
@@ -72,6 +73,35 @@ function dataUrlToBuffer(dataUrl) {
   const buffer = Buffer.from(match[2], 'base64');
   const ext = mime.includes('png') ? 'png' : mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : mime.includes('mp4') ? 'mp4' : mime.includes('webm') ? 'webm' : 'bin';
   return { buffer, ext };
+}
+
+async function serveAsset(req, res, asset, cacheControl = 'private, max-age=3600') {
+  const opened = await store.openMediaAsset(asset);
+  if (!opened) return send(res, 404, { error: 'Asset not found.' });
+  const baseHeaders = {
+    'Content-Type': asset.mime,
+    'Cache-Control': cacheControl,
+    'X-Content-Type-Options': 'nosniff',
+    'Accept-Ranges': 'bytes',
+    'Content-Disposition': `inline; filename="${asset.filename.replace(/"/g, '')}"`,
+  };
+  const match = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range || ''));
+  if (req.headers.range && !match) {
+    res.writeHead(416, { 'Content-Range': `bytes */${opened.size}` });
+    return res.end();
+  }
+  if (match) {
+    const start = Number(match[1]);
+    const end = match[2] ? Number(match[2]) : opened.size - 1;
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end >= opened.size) {
+      res.writeHead(416, { 'Content-Range': `bytes */${opened.size}` });
+      return res.end();
+    }
+    res.writeHead(206, { ...baseHeaders, 'Content-Length': String(end - start + 1), 'Content-Range': `bytes ${start}-${end}/${opened.size}` });
+    return createReadStream(opened.path, { start, end }).pipe(res);
+  }
+  res.writeHead(200, { ...baseHeaders, 'Content-Length': String(opened.size) });
+  return createReadStream(opened.path).pipe(res);
 }
 
 // Builds a web-standard Request from the raw Node request so we can reuse
@@ -245,16 +275,7 @@ const server = http.createServer(async (req, res) => {
     if (!userId) return send(res, 401, { error: 'Unauthorized' });
     const asset = await store.getMediaAsset(userId, idMatch[1]);
     if (!asset) return send(res, 404, { error: 'Asset not found.' });
-    const bytes = await store.readMediaAssetBytes(asset);
-    if (!bytes) return send(res, 404, { error: 'Asset not found.' });
-    res.writeHead(200, {
-      'Content-Type': asset.mime,
-      'Content-Length': String(bytes.length),
-      'Cache-Control': 'private, max-age=3600',
-      'X-Content-Type-Options': 'nosniff',
-      'Content-Disposition': `inline; filename="${asset.filename.replace(/"/g, '')}"`,
-    });
-    return res.end(bytes);
+    return serveAsset(req, res, asset);
   }
 
   // DELETE /assets/:id — owner-only soft delete + file removal.
@@ -276,10 +297,7 @@ const server = http.createServer(async (req, res) => {
     if (!verifyInternalSecret(req, INTERNAL_SECRET)) return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
     const asset = await store.getMediaAssetById(internalIdMatch[1], { includeExpired: true });
     if (!asset) return send(res, 404, { error: 'Asset not found.' });
-    const bytes = await store.readMediaAssetBytes(asset);
-    if (!bytes) return send(res, 404, { error: 'Asset not found.' });
-    res.writeHead(200, { 'Content-Type': asset.mime, 'Content-Length': String(bytes.length), 'Cache-Control': 'private, no-store' });
-    return res.end(bytes);
+    return serveAsset(req, res, asset, 'private, no-store');
   }
 
   // POST /internal/assets — service-to-service create (AI/integrations/

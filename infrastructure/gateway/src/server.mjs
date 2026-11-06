@@ -98,6 +98,7 @@ const canvaBreaker = createBreaker('integrations-canva');
 const linkedinBreaker = createBreaker('integrations-linkedin');
 const facebookBreaker = createBreaker('integrations-facebook');
 const instagramBreaker = createBreaker('integrations-instagram');
+const youtubeBreaker = createBreaker('integrations-youtube');
 const whatsappBreaker = createBreaker('integrations-whatsapp');
 const mediaBreaker = createBreaker('media-service');
 const publishingBreaker = createBreaker('publishing-service');
@@ -213,6 +214,13 @@ const INSTAGRAM_ROUTES = new Map([
   ['/api/instagram/reconnect', { skipAuth: false }],
 ]);
 
+const YOUTUBE_ROUTES = new Map([
+  ['/api/youtube/auth', { skipAuth: false }],
+  ['/api/youtube/callback', { skipAuth: true }],
+  ['/api/youtube/status', { skipAuth: false }],
+  ['/api/youtube/disconnect', { skipAuth: false }],
+]);
+
 // WhatsApp/Whapi (Phase 3B, this round). All session-gated — no callback
 // equivalent here (QR pairing, not OAuth redirect). /api/whapi/groups and
 // /api/whapi/destinations deliberately absent — still Phase 3A passthrough/
@@ -292,7 +300,7 @@ async function readBody(req) {
 // SUPERADMIN-only right now (mirrors their existing monolith routes'
 // requireApiSuperadmin() checks) — a future non-admin service passes
 // requireRole: undefined instead.
-async function proxyToService(req, res, requestId, { name, baseUrl, breaker, prefix, targetPath, requireRole, unavailableCode, unavailableMessage, forwardCookie, skipAuth, timeoutMs }) {
+async function proxyToService(req, res, requestId, { name, baseUrl, breaker, prefix, targetPath, requireRole, unavailableCode, unavailableMessage, forwardCookie, skipAuth, timeoutMs, streamRequest }) {
   const auth = skipAuth ? { ok: true, userId: undefined, role: undefined } : await authenticateRequest(req, requestId, { requireRole });
   if (!auth.ok) return send(res, auth.status, auth.body);
 
@@ -327,6 +335,7 @@ async function proxyToService(req, res, requestId, { name, baseUrl, breaker, pre
     // hop already set (Cloudflare, in production) so it isn't silently
     // "unknown" for every caller once this gateway is actually cut over.
     if (req.headers['x-forwarded-for']) extraHeaders['x-forwarded-for'] = req.headers['x-forwarded-for'];
+    if (req.headers.range) extraHeaders.range = req.headers.range;
     // integrations-service (Phase 3A) still forwards this to the monolith's
     // own status routes, which run requireApiSession() themselves — the
     // gateway's check above is an additional gate, not a replacement.
@@ -339,14 +348,17 @@ async function proxyToService(req, res, requestId, { name, baseUrl, breaker, pre
     // this code. internalFetchHeaders sets a default 'content-type':
     // 'application/json', which must NOT override multipart's own boundary.
     const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
-    const bodyBuf = hasBody ? await readBody(req) : undefined;
+    const bodyBuf = hasBody ? (streamRequest ? req : await readBody(req)) : undefined;
     if (hasBody && req.headers['content-type']) extraHeaders['content-type'] = req.headers['content-type'];
+    if (streamRequest && req.headers['content-range']) extraHeaders['content-range'] = req.headers['content-range'];
+    if (streamRequest && req.headers['content-length']) extraHeaders['content-length'] = req.headers['content-length'];
     const upstreamRes = await fetch(`${baseUrl}${subpath}`, {
       method: req.method,
       // x-actor-* are informational (logging/future use) — the actual trust
       // boundary is x-internal-secret, verified by the service itself.
       headers: internalFetchHeaders(INTERNAL_SECRET, requestId, extraHeaders),
       body: bodyBuf,
+      duplex: streamRequest && hasBody ? 'half' : undefined,
       signal: controller.signal,
       // CRITICAL: Canva's callback (and others) return a 302 to an absolute
       // URL the BROWSER must follow. Without 'manual', undici's fetch
@@ -580,6 +592,15 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  if (YOUTUBE_ROUTES.has(pathnameOnly)) {
+    const { skipAuth } = YOUTUBE_ROUTES.get(pathnameOnly);
+    return proxyToService(req, res, requestId, {
+      name: 'integrations-youtube', baseUrl: INTEGRATIONS_SERVICE_URL, breaker: youtubeBreaker,
+      prefix: /^\/api/, forwardCookie: true, skipAuth,
+      unavailableCode: 'YOUTUBE_UNAVAILABLE', unavailableMessage: 'YouTube connection is temporarily unavailable.',
+    });
+  }
+
   if (WHATSAPP_ROUTES.has(pathnameOnly)) {
     const { skipAuth, targetPath } = WHATSAPP_ROUTES.get(pathnameOnly);
     return proxyToService(req, res, requestId, {
@@ -645,6 +666,16 @@ const server = http.createServer(async (req, res) => {
       targetPath: PUBLISH_ROUTES.get(pathnameOnly), forwardCookie: false,
       unavailableCode: 'PUBLISHING_UNAVAILABLE', unavailableMessage: 'Publishing is temporarily unavailable.',
       timeoutMs: PUBLISH_TIMEOUT_MS,
+    });
+  }
+
+  if (/^\/api\/youtube\/uploads(?:\/[a-f0-9-]{36})?$/.test(pathnameOnly)) {
+    return proxyToService(req, res, requestId, {
+      name: 'youtube-publishing', baseUrl: PUBLISHING_SERVICE_URL, breaker: publishingBreaker,
+      prefix: /^\/api/, forwardCookie: false,
+      unavailableCode: 'YOUTUBE_UNAVAILABLE', unavailableMessage: 'YouTube publishing is temporarily unavailable.',
+      timeoutMs: 90_000,
+      streamRequest: req.method === 'PUT',
     });
   }
 

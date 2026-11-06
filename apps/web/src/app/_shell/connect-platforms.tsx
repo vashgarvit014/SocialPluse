@@ -3,9 +3,10 @@
 import { useState } from 'react';
 
 type ConnectPlatformsProps = {
-  accounts: Array<{ platform: string; connected: boolean; name: string; email: string; userId: string; pages?: Array<{ id: string; name: string }>; pageId?: string }>;
+  accounts: Array<{ platform: string; connected: boolean; name: string; email: string; userId: string; pages?: Array<{ id: string; name: string }>; pageId?: string; channels?: Array<{ id: string; name: string; thumbnail?: string }> }>;
   connectPlatform: (p: string) => void;
   disconnectPlatform: (p: string) => void;
+  youtubeAvailable: boolean;
   whapiConnected: boolean;
   whapiChannelStatus: string;
   whapiAccountName: string;
@@ -56,9 +57,10 @@ export default function ConnectPlatforms(p: ConnectPlatformsProps) {
   const linkedinAcc = p.accounts.find(a => a.platform === 'linkedin' && a.connected);
   const fbAcc = p.accounts.find(a => a.platform === 'facebook' && a.connected);
   const igAcc = p.accounts.find(a => a.platform === 'instagram' && a.connected);
+  const youtubeAcc = p.accounts.find(a => a.platform === 'youtube' && a.connected);
 
-  const platformsCount = 5;
-  const trueConnected = (p.accounts.some(a => a.platform === 'linkedin' && a.connected) ? 1 : 0) + (p.accounts.some(a => a.platform === 'facebook' && a.connected) ? 1 : 0) + (p.accounts.some(a => a.platform === 'instagram' && a.connected) ? 1 : 0) + (p.whapiConnected ? 1 : 0) + (p.canvaConnected ? 1 : 0);
+  const platformsCount = 6;
+  const trueConnected = (p.accounts.some(a => a.platform === 'linkedin' && a.connected) ? 1 : 0) + (p.accounts.some(a => a.platform === 'facebook' && a.connected) ? 1 : 0) + (p.accounts.some(a => a.platform === 'instagram' && a.connected) ? 1 : 0) + (p.accounts.some(a => a.platform === 'youtube' && a.connected) ? 1 : 0) + (p.whapiConnected ? 1 : 0) + (p.canvaConnected ? 1 : 0);
   const needsAttention = platformsCount - trueConnected;
 
   const refreshAll = async () => {
@@ -68,6 +70,7 @@ export default function ConnectPlatforms(p: ConnectPlatformsProps) {
         fetch('/api/linkedin/status').then(() => {}).catch(() => {}),
         fetch('/api/facebook/status').then(() => {}).catch(() => {}),
         fetch('/api/instagram/status').then(() => {}).catch(() => {}),
+        fetch('/api/youtube/status').then(() => {}).catch(() => {}),
         p.refreshWhapiStatus(),
         p.refreshCanvaStatus(),
       ]);
@@ -320,6 +323,34 @@ export default function ConnectPlatforms(p: ConnectPlatformsProps) {
               ) : p.whapiCanConnect ? (
                 <button onClick={() => p.startWhatsAppConnect()} disabled={p.whapiLoading} style={{ width: '100%', height: 46, borderRadius: 10, fontSize: 13, fontWeight: 800, border: 'none', background: 'linear-gradient(135deg,#25D366,#128C7E)', color: '#fff', cursor: p.whapiLoading ? 'wait' : 'pointer', boxShadow: '0 3px 10px rgba(37,211,102,0.25)' }}>Connect WhatsApp →</button>
               ) : null}
+            </div>
+          </div>
+        </div>
+
+        {/* YouTube — server-side feature flag + test-user allowlist */}
+        <div className={`cp-card ${youtubeAcc ? 'cp-card-connected' : ''}`} style={{ backgroundColor: '#fff', borderRadius: 18, border: '1px solid #e2e8f0', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 320 }}>
+          <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'flex-start', gap: 14, borderBottom: '1px solid #f1f5f9' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: '#FF0000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: youtubeAcc ? '0 4px 12px rgba(255,0,0,.22)' : 'none' }}><p.PlatformIcon platform="youtube" size={20} /></div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>YouTube</div>
+              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>Videos, Shorts &amp; scheduling</div>
+            </div>
+            <StatusPill status={youtubeAcc ? 'connected' : p.youtubeAvailable ? 'disconnected' : 'attention'} />
+          </div>
+          <div style={{ padding: '16px 20px', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {youtubeAcc ? (
+              <div><div style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>{youtubeAcc.name || 'YouTube Channel'}</div><div style={{ fontSize: 11, color: '#059669', fontWeight: 600, marginTop: 4 }}>Channel connected securely</div>{youtubeAcc.channels && youtubeAcc.channels.length > 1 && <div style={{ fontSize: 10.5, color: '#64748b', marginTop: 4 }}>{youtubeAcc.channels.length} channels were returned by this authorized identity; uploads remain bound to the active OAuth channel.</div>}</div>
+            ) : p.youtubeAvailable ? (
+              <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.5 }}>Connect an approved Google Test User and authorize the channel you want SocialPulse to publish to.</div>
+            ) : (
+              <div style={{ fontSize: 12, color: '#92400e', backgroundColor: '#fffbeb', border: '1px solid #fde68a', padding: '10px 12px', borderRadius: 10, lineHeight: 1.5 }}>Limited beta. This SocialPulse account is not on the server-side YouTube test allowlist.</div>
+            )}
+            {featurePanel(['Resumable video uploads', 'Private, unlisted or public', 'YouTube-native scheduling'], '#fff7f7', '#fee2e2')}
+            <div style={{ display: 'flex', gap: 10, marginTop: 'auto', paddingTop: 14 }}>
+              {youtubeAcc ? <>
+                <button onClick={() => p.disconnectPlatform('youtube')} style={{ flex: 1, height: 44, borderRadius: 10, fontSize: 12, fontWeight: 700, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}>Disconnect</button>
+                <button onClick={() => p.connectPlatform('youtube')} style={{ flex: 1, height: 44, borderRadius: 10, fontSize: 12, fontWeight: 800, border: 'none', background: '#FF0000', color: '#fff', cursor: 'pointer' }}>Reconnect</button>
+              </> : <button onClick={() => p.connectPlatform('youtube')} disabled={!p.youtubeAvailable} style={{ width: '100%', height: 46, borderRadius: 10, fontSize: 13, fontWeight: 800, border: 'none', background: p.youtubeAvailable ? '#FF0000' : '#CBD5E1', color: '#fff', cursor: p.youtubeAvailable ? 'pointer' : 'not-allowed' }}>Connect YouTube →</button>}
             </div>
           </div>
         </div>

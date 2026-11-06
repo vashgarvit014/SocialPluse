@@ -343,7 +343,7 @@ async function migrate(client: PoolClient) {
     CREATE TABLE IF NOT EXISTS platform_connections (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      platform TEXT NOT NULL CHECK (platform IN ('facebook', 'instagram', 'linkedin', 'canva')),
+      platform TEXT NOT NULL CHECK (platform IN ('facebook', 'instagram', 'linkedin', 'canva', 'youtube')),
       provider_user_id TEXT NOT NULL,
       display_name TEXT,
       email TEXT,
@@ -354,6 +354,8 @@ async function migrate(client: PoolClient) {
       disconnected_at TIMESTAMPTZ
     )
   `);
+  await client.query(`ALTER TABLE platform_connections DROP CONSTRAINT IF EXISTS platform_connections_platform_check`);
+  await client.query(`ALTER TABLE platform_connections ADD CONSTRAINT platform_connections_platform_check CHECK (platform IN ('facebook', 'instagram', 'linkedin', 'canva', 'youtube'))`);
   // One provider account is connected to exactly one SocialPulse user.
   // Without this a second user could re-run OAuth for the same LinkedIn
   // member id and hijack the first user's connection row.

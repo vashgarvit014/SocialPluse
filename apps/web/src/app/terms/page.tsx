@@ -75,6 +75,7 @@ export default function TermsPage() {
                 <li><b>LinkedIn:</b> governed by the LinkedIn User Agreement and Professional Community Policies.</li>
                 <li><b>Facebook and Instagram:</b> governed by Meta&rsquo;s Terms of Service and Community Standards. Instagram access is granted through Meta Business Suite/Facebook Login.</li>
                 <li><b>WhatsApp (where applicable):</b> governed by the WhatsApp Business Terms and Data Processing Terms.</li>
+                <li><b>YouTube:</b> SocialPulse uses YouTube API Services. By connecting or uploading through this integration, you also agree to the <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#7C3AED", fontWeight: 700, textDecoration: "none" }}>YouTube Terms of Service</a>, Community Guidelines and Google&rsquo;s Privacy Policy. You remain responsible for rights to every uploaded video and for the title, description, tags, audience and privacy settings you choose.</li>
                 <li><b>AI providers:</b> text and image generation is performed by third-party AI providers (including Inception, NVIDIA and Pollinations), which process your input under their own terms.</li>
               </ul>
               <p style={{ margin: "6px 0 0" }}>

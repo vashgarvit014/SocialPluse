@@ -13,6 +13,7 @@ import { publishToFacebook } from '../providers/facebook.mjs';
 import { publishToInstagram } from '../providers/instagram.mjs';
 import { publishToWhapi } from '../providers/whapi.mjs';
 import { createInstagramMediaStager } from '../providers/instagram-media.mjs';
+import { createYouTubeUploadRouter } from './youtube-upload.mjs';
 import { createWhapiMediaStager } from '../providers/whapi-media.mjs';
 import { assertContentAllowed } from './pre-publish-check.mjs';
 
@@ -68,6 +69,7 @@ const credentials = createCredentialsStore(poolProxy);
 const idempotency = createIdempotencyStore(poolProxy);
 const prepareInstagramMedia = createInstagramMediaStager(INSTAGRAM_MEDIA_ROOT, APP_ORIGIN);
 const prepareWhapiMedia = createWhapiMediaStager(WHAPI_MEDIA_ROOT, APP_ORIGIN);
+const handleYouTubeUpload = createYouTubeUploadRouter(poolProxy);
 
 function send(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -345,6 +347,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (!verifyInternalSecret(req, INTERNAL_SECRET)) {
       return send(res, 401, { code: 'INTERNAL_UNAUTHORIZED', message: 'Missing or invalid internal service secret.' });
+    }
+
+    if (url.pathname.startsWith('/youtube/uploads')) {
+      const userId = requireActor(req);
+      if (!userId) return err(res, 'PLATFORM_NOT_CONNECTED', 'Sign in required.', 401);
+      const handled = await handleYouTubeUpload(url.pathname, req, res, userId);
+      if (handled !== null) return;
     }
 
     if (req.method !== 'POST') return send(res, 404, { code: 'NOT_FOUND', message: 'No such publishing-service route.' });

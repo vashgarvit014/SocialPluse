@@ -264,6 +264,11 @@ services:
       # integrations-service's WhatsApp connection logic.
       WHAPI_API_BASE: ${WHAPI_API_BASE}
       WHAPI_API_TOKEN: ${WHAPI_API_TOKEN}
+      YOUTUBE_CLIENT_ID: ${YOUTUBE_CLIENT_ID}
+      YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET}
+      YOUTUBE_REDIRECT_URI: ${YOUTUBE_REDIRECT_URI:-https://socialpulse.dotstark.tech/api/youtube/callback}
+      YOUTUBE_ENABLED: ${YOUTUBE_ENABLED:-false}
+      YOUTUBE_TEST_USER_EMAILS: ${YOUTUBE_TEST_USER_EMAILS:-}
       INSTAGRAM_MEDIA_ROOT: /app/.instagram-media
       WHAPI_MEDIA_ROOT: /app/.whapi-media
     volumes:
@@ -303,6 +308,13 @@ services:
       FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
       FACEBOOK_REDIRECT_URI: ${FACEBOOK_REDIRECT_URI}
       FACEBOOK_LOGIN_CONFIG_ID: ${FACEBOOK_LOGIN_CONFIG_ID}
+      # YouTube remains disabled unless explicitly enabled and the signed-in
+      # SocialPulse email is in YOUTUBE_TEST_USER_EMAILS.
+      YOUTUBE_CLIENT_ID: ${YOUTUBE_CLIENT_ID}
+      YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET}
+      YOUTUBE_REDIRECT_URI: ${YOUTUBE_REDIRECT_URI:-https://socialpulse.dotstark.tech/api/youtube/callback}
+      YOUTUBE_ENABLED: ${YOUTUBE_ENABLED:-false}
+      YOUTUBE_TEST_USER_EMAILS: ${YOUTUBE_TEST_USER_EMAILS:-}
       # WhatsApp/Whapi (Phase 3B, this round). Shared-channel mode only —
       # WHATSAPP_PARTNER_* intentionally NOT required/passed; this deployment
       # has none configured, same as the monolith today.

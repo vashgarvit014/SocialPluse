@@ -197,6 +197,17 @@ export function createMediaAssetsStore(pool, root) {
     }
   }
 
+  async function openMediaAsset(asset) {
+    const absolute = storagePathFor(asset.storageKey);
+    if (!absolute || !(await assertNoSymlink(absolute))) return null;
+    try {
+      const info = await stat(absolute);
+      return info.isFile() ? { path: absolute, size: info.size } : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function removeAssetFiles(asset) {
     for (const key of [asset.storageKey, asset.thumbnailKey]) {
       if (!key) continue;
@@ -266,5 +277,5 @@ export function createMediaAssetsStore(pool, root) {
     return summary;
   }
 
-  return { validateUpload, sanitizeFilename, saveMediaAsset, listMediaAssets, getMediaAsset, getMediaAssetById, readMediaAssetBytes, deleteMediaAsset, toPublicAsset, cleanupExpired };
+  return { validateUpload, sanitizeFilename, saveMediaAsset, listMediaAssets, getMediaAsset, getMediaAssetById, readMediaAssetBytes, openMediaAsset, deleteMediaAsset, toPublicAsset, cleanupExpired };
 }

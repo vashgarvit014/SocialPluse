@@ -120,8 +120,8 @@ export interface StudioWorkspaceProps {
   content: string; setContent: (v: string) => void;
   statusMessage: string;
   generationError: string; setGenerationError: (v: string) => void;
-  platformContent: Record<string, { caption: string; hashtags: string[] }>;
-  setPlatformContent: (v: Record<string, { caption: string; hashtags: string[] }>) => void;
+  platformContent: Record<string, { caption: string; hashtags: string[]; title?: string }>;
+  setPlatformContent: (v: Record<string, { caption: string; hashtags: string[]; title?: string }>) => void;
   activePreviewPlatform: string; switchPreviewPlatform: (p: string) => void;
   editorTab: 'edit' | 'preview'; setEditorTab: (v: 'edit' | 'preview') => void;
   imagePrompt: string; setImagePrompt: (v: string) => void;
@@ -167,7 +167,8 @@ export interface StudioWorkspaceProps {
   burnedLogoIds: Record<string, boolean>; clearLogo: () => void; restoreBurnedMedia: () => void;
   applyLogoToAllMedia: (logoOverride?: string, opts?: { keepOpen?: boolean }) => void; isApplyingLogo: boolean;
   // platforms / accounts
-  accounts: Array<{ platform: string; connected: boolean; name: string; email: string; accessToken?: string; userId: string; pages?: Array<{ id: string; name: string }>; pageId?: string }>;
+  accounts: Array<{ platform: string; connected: boolean; name: string; email: string; accessToken?: string; userId: string; pages?: Array<{ id: string; name: string }>; pageId?: string; thumbnail?: string; channels?: Array<{ id: string; name: string; thumbnail?: string }> }>;
+  youtubeAvailable: boolean;
   togglePlatform: (p: string) => void;
   setAccountPageId: (platform: string, pageId: string) => void;
   connectPlatform: (p: string) => void;

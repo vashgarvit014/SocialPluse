@@ -83,7 +83,7 @@ async function handleGenerateContent(req, res) {
 
   if (!prompt?.trim() && !hasImage) return send(res, 400, { error: 'Topic or image is required' });
   if (!platforms || !Array.isArray(platforms) || platforms.length === 0) return send(res, 400, { error: 'At least one platform must be selected' });
-  const validPlatforms = ['linkedin', 'instagram', 'facebook', 'whatsapp'];
+  const validPlatforms = ['linkedin', 'instagram', 'facebook', 'whatsapp', 'youtube'];
   const selectedPlatforms = platforms.filter((p) => validPlatforms.includes(p));
   if (selectedPlatforms.length === 0) return send(res, 400, { error: 'No valid platforms selected' });
 

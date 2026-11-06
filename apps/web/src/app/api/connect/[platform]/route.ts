@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest, context: { params: Promise<{ platform: string }> }) {
   const { platform } = await context.params;
   const id = request.nextUrl.searchParams.get('return_id') || '';
-  if (!/^[a-f0-9-]{36}$/.test(id) || !['linkedin', 'facebook', 'instagram', 'canva', 'whatsapp'].includes(platform)) {
+  if (!/^[a-f0-9-]{36}$/.test(id) || !['linkedin', 'facebook', 'instagram', 'canva', 'whatsapp', 'youtube'].includes(platform)) {
     return NextResponse.json({ error: 'Invalid connection request' }, { status: 400 });
   }
   if (platform === 'whatsapp') {

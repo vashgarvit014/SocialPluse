@@ -9,6 +9,7 @@ import FacebookPostPreview from './facebook-preview';
 import LinkedInPostPreview from './linkedin-preview';
 import WhatsAppCommunityPreview from './whatsapp-preview';
 import WhatsAppDestinationPicker from './whatsapp-destination-picker';
+import YouTubePublisher from './youtube-publisher';
 import { SP_LOGO, STUDIO_MARK } from './brand-assets';
 
 // ---------------------------------------------------------------------------
@@ -111,6 +112,7 @@ const PLATFORM_LABELS: Record<string, string> = {
   facebook: 'Facebook',
   instagram: 'Instagram',
   whatsapp: 'WhatsApp',
+  youtube: 'YouTube',
 };
 
 const PLATFORM_DESCS: Record<string, string> = {
@@ -118,6 +120,7 @@ const PLATFORM_DESCS: Record<string, string> = {
   facebook: 'Community & business',
   instagram: 'Visual storytelling',
   whatsapp: 'Direct audience reach',
+  youtube: 'Video discovery & publishing',
 };
 
 // Supplied brand artwork for the selectable platform cards (falls back to
@@ -127,6 +130,7 @@ const PLATFORM_IMGS: Record<string, string> = {
   facebook: '/brand-icons/facebook.png',
   instagram: '/brand-icons/instagram.png',
   whatsapp: '/brand-icons/whatsapp.png',
+  youtube: '/brand-icons/youtube.svg',
 };
 
 // Generation phases for the Step 3 animation panel (presentation only —
@@ -158,6 +162,7 @@ const S8_BRAND_ICON: Record<string, string> = {
   facebook: '/brand-icons/facebook.png',
   linkedin: '/brand-icons/linkedin.webp',
   whatsapp: '/brand-icons/whatsapp.png',
+  youtube: '/brand-icons/youtube.svg',
 };
 
 // Compact ring stepper — layout and motion ported from CompactRing.dc.html.
@@ -661,6 +666,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
   // long as ONE platform was connected, which silently dropped the others -
   // the user saw "published" without realising a platform was skipped.
   const disconnectedSelected = p.selectedPlatforms.filter(pl => !isPlatformConnected(pl));
+  const standardSelected = p.selectedPlatforms.filter(pl => pl !== 'youtube');
   // Reference animates this ring to a hardcoded 75%. That number is fabricated,
   // so the animation is identical but the target is derived from the real
   // required checks: content, media, and every selected platform connected.
@@ -1378,6 +1384,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   { id: 'facebook', label: 'Facebook' },
                   { id: 'instagram', label: 'Instagram' },
                   { id: 'whatsapp', label: 'WhatsApp' },
+                  { id: 'youtube', label: 'YouTube' },
                 ] as const).map(cfg => {
                   // Content-generation selection ONLY (multi-select). Connection
                   // state lives in Publish — never shown or toggled here.
@@ -1468,7 +1475,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 <div>
                   <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', color: C.faint }}>PLATFORMS</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-                    {(['linkedin', 'facebook', 'instagram', 'whatsapp'] as const)
+                    {(['linkedin', 'facebook', 'instagram', 'whatsapp', 'youtube'] as const)
                       .filter(pl => p.selectedPlatforms.includes(pl))
                       .map(pl => (
                         <span key={pl} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px 4px 4px', borderRadius: 999, backgroundColor: '#F6F1FF', border: '1px solid #E4DBFF', fontSize: 12, fontWeight: 700, color: C.primaryDark }}>
@@ -2686,7 +2693,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                 const heroUrl = hero?.url || p.generatedImage || p.generatedVideo || '';
                 const heroIsVideo = hero ? hero.type === 'video' : !!p.generatedVideo && !hero;
                 const heroKey = hero?.id || 'gen';
-                const brandIcon: Record<string, string> = { linkedin: '/brand-icons/linkedin.webp', facebook: '/brand-icons/facebook.png', instagram: '/brand-icons/instagram.png', whatsapp: '/brand-icons/whatsapp.png' };
+                const brandIcon: Record<string, string> = { linkedin: '/brand-icons/linkedin.webp', facebook: '/brand-icons/facebook.png', instagram: '/brand-icons/instagram.png', whatsapp: '/brand-icons/whatsapp.png', youtube: '/brand-icons/youtube.svg' };
                 const previewOpts = (['instagram', 'facebook', 'linkedin', 'whatsapp'] as const).filter(pl => p.selectedPlatforms.includes(pl));
                 const safePreviewIdx = Math.min(previewSlideIdx, Math.max(previewOpts.length - 1, 0));
                 const capNoTags = (() => { const tags = p.platformContent[p.activePreviewPlatform]?.hashtags || []; if (!p.content.trim()) return ''; return tags.length ? p.content.replace(/\n\n(#[A-Za-z0-9_]+\s*)+$/,'').trim() : p.content; })();
@@ -2909,7 +2916,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: C.ink }}>Selected Platform</div>
                   <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Choose where you want to publish this content.</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                {(['linkedin', 'facebook', 'instagram', 'whatsapp'] as const).filter(pl => p.selectedPlatforms.includes(pl)).map(pl => {
+                {(['linkedin', 'facebook', 'instagram', 'whatsapp', 'youtube'] as const).filter(pl => p.selectedPlatforms.includes(pl)).map(pl => {
                   const active = previewPlatform === pl;
                   const brand = p.platformColors[pl] || '#0A66C2';
                   return (
@@ -3129,7 +3136,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   </div>
 
                   <div className="sp-s8-plat-grid">
-                    {(['linkedin', 'facebook', 'instagram', 'whatsapp'] as const).map(pl => {
+                    {(['linkedin', 'facebook', 'instagram', 'whatsapp', 'youtube'] as const).map(pl => {
                       const label = platformLabel(pl);
                       const isSelected = p.selectedPlatforms.includes(pl);
                       const connected = isPlatformConnected(pl);
@@ -3255,6 +3262,21 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     )}
                   </div>
                 </section>
+
+                {p.selectedPlatforms.includes('youtube') && (() => {
+                  const channel = p.accounts.find((account) => account.platform === 'youtube' && account.connected);
+                  return (
+                    <YouTubePublisher
+                      connected={!!channel}
+                      available={p.youtubeAvailable}
+                      channelName={channel?.name}
+                      channelThumbnail={channel?.thumbnail}
+                      mediaItems={p.mediaItems}
+                      generated={p.platformContent.youtube}
+                      onConnect={() => p.connectPlatform('youtube')}
+                    />
+                  );
+                })()}
 
                 <div className="sp-s8-back-row">
                   <button className="sp-s8-btn ghost" onClick={goBack}>← Back</button>
@@ -3436,7 +3458,9 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       <div aria-live="polite" className={'sp-s8-hint' + (canPublish ? ' ok' : '')}>
                         {canPublish ? 'Everything looks good — you’re ready to publish!' : publishBlocker}
                       </div>
-                      {publishMode === 'now' ? (
+                      {standardSelected.length === 0 ? (
+                        <div style={{ fontSize: 12.5, color: '#475569', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 12px' }}>Use the YouTube Video panel to upload, monitor processing, or schedule publication.</div>
+                      ) : publishMode === 'now' ? (
                         <button
                           className={'sp-s8-btn primary' + (canPublish && !p.isPublishing && p.publishCooldown === 0 ? ' sp-s8-cta-on' : '')}
                           onClick={() => p.publishToAll()}
@@ -3444,7 +3468,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                           aria-busy={p.isPublishing}
                           title={!canPublish ? publishBlocker : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s before publishing again` : 'Publish now'}
                         >
-                          {p.isPublishing ? 'Publishing…' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : '🚀 Publish Now →'}
+                          {p.isPublishing ? 'Publishing…' : p.publishCooldown > 0 ? `Wait ${p.publishCooldown}s` : p.selectedPlatforms.includes('youtube') ? '🚀 Publish Other Platforms →' : '🚀 Publish Now →'}
                         </button>
                       ) : (
                         <button
