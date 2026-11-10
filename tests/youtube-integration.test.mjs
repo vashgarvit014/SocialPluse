@@ -88,13 +88,38 @@ test('resumable initiation sends metadata and upload size, returning only the pr
   assert.equal(sessionUrl, 'https://upload.youtube.test/resumable/opaque');
 });
 
-test('schedule cancellation updates the existing video to private', async () => {
+test('schedule cancellation preserves status fields, drops publishAt, and forces private', async () => {
+  const calls = [];
   let body;
-  await cancelScheduledYouTubeVideo('access', 'video123', async (_url, init) => {
+  const future = new Date(Date.now() + 3600_000).toISOString();
+  await cancelScheduledYouTubeVideo('access', 'video123', async (_url, init = {}) => {
+    const method = init.method || 'GET';
+    calls.push(method);
+    if (method === 'GET') {
+      return Response.json({ items: [{ id: 'video123', status: { privacyStatus: 'private', publishAt: future, selfDeclaredMadeForKids: true, license: 'creativeCommon', embeddable: false, publicStatsViewable: false } }] });
+    }
     body = JSON.parse(init.body);
     return Response.json({ id: 'video123' });
   });
-  assert.deepEqual(body, { id: 'video123', status: { privacyStatus: 'private' } });
+  assert.deepEqual(calls, ['GET', 'PUT'], 'current status must be read before videos.update replaces it');
+  assert.equal(body.status.privacyStatus, 'private');
+  assert.equal(body.status.publishAt, undefined, 'omitting publishAt is what clears the schedule');
+  assert.equal(body.status.selfDeclaredMadeForKids, true);
+  assert.equal(body.status.license, 'creativeCommon');
+  assert.equal(body.status.embeddable, false);
+  assert.equal(body.status.publicStatsViewable, false);
+});
+
+test('cancellation refuses a video the provider reports as already public', async () => {
+  let putCalls = 0;
+  await assert.rejects(
+    () => cancelScheduledYouTubeVideo('access', 'video123', async (_url, init = {}) => {
+      if ((init.method || 'GET') === 'PUT') { putCalls++; return Response.json({}); }
+      return Response.json({ items: [{ id: 'video123', status: { privacyStatus: 'public' } }] });
+    }),
+    (error) => error.code === 'YOUTUBE_ALREADY_PUBLISHED',
+  );
+  assert.equal(putCalls, 0, 'a live video must never reach videos.update');
 });
 
 class FakeResponse {
@@ -112,6 +137,7 @@ class FakePool {
     if (sql.includes('DELETE FROM oauth_handshakes')) { const row = this.handshakes.get(args[0]); this.handshakes.delete(args[0]); return { rows: row ? [row] : [] }; }
     if (sql.includes('SELECT email FROM users')) return { rows: [{ email: 'tester@example.com' }] };
     if (sql.includes("platform = 'youtube'") && sql.includes('SELECT id')) return { rows: this.connection ? [this.connection] : [] };
+    if (sql.includes('UPDATE platform_connections') && sql.includes('provider_user_id')) return { rows: [{ id: 'conn-1' }] };
     if (sql.includes('INSERT INTO platform_connections')) {
       this.connection = { id: args[0], user_id: args[1], provider_user_id: args[2], display_name: args[3], credentials: JSON.parse(args[4]), meta: JSON.parse(args[5]) };
       return { rows: [{ id: args[0], user_id: args[1] }] };
@@ -173,4 +199,168 @@ test('auth refuses with a redirect the dashboard can render, never a raw JSON do
   const notAllowedRes = new FakeResponse();
   await notAllowed('/auth', request('/youtube/auth', { 'x-actor-user-id': 'user-1' }), notAllowedRes, { isHttps: false });
   assert.equal(new URL(notAllowedRes.getHeader('location')).searchParams.get('error'), 'youtube_not_available');
+});
+
+// --- publishing-service upload router -------------------------------------
+const { createYouTubeUploadRouter } = await import('../services/publishing-service/src/youtube-upload.mjs');
+
+const uploadConfig = { ...config, allowedEmails: new Set(['tester@example.com']) };
+const UPLOAD_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+class FakeUploadPool {
+  constructor({ row = null, connection = null } = {}) { this.row = row; this.connection = connection; this.writes = []; }
+  async query(sql, args = []) {
+    if (/CREATE TABLE/.test(sql)) return { rows: [] };
+    if (/SELECT email FROM users/.test(sql)) return { rows: [{ email: 'tester@example.com' }] };
+    if (/WHERE user_id = \$1 AND attempt_id/.test(sql)) return { rows: [] };
+    if (/SELECT \* FROM youtube_upload_sessions WHERE id/.test(sql)) return { rows: this.row ? [this.row] : [] };
+    if (/status = 'CANCELLED'/.test(sql)) {
+      this.writes.push('cancel');
+      const allowed = this.row && !['PUBLISHED', 'CANCELLED'].includes(this.row.status);
+      return { rows: allowed ? [{ ...this.row, status: 'CANCELLED' }] : [] };
+    }
+    if (/status = 'FAILED'/.test(sql)) { this.writes.push('fail'); return { rows: [] }; }
+    if (/SELECT id, credentials FROM platform_connections/.test(sql)) return { rows: this.connection ? [this.connection] : [] };
+    if (/UPDATE platform_connections SET credentials/.test(sql)) return { rows: [] };
+    throw new Error(`Unhandled upload SQL: ${sql.slice(0, 60)}`);
+  }
+}
+function jsonRequest(method, body, headers = {}) {
+  const payload = Buffer.from(JSON.stringify(body));
+  return { method, url: '/youtube/uploads', headers, async *[Symbol.asyncIterator]() { yield payload; } };
+}
+const bodyOf = (res) => JSON.parse(res.body);
+
+test('cancelling an already-published upload never privatizes the live video', async () => {
+  const pool = new FakeUploadPool({
+    row: { id: UPLOAD_ID, user_id: 'user-1', status: 'PUBLISHED', provider_video_id: 'video123', bytes_total: '10', bytes_uploaded: '10', metadata: {}, provider_status: {} },
+    connection: { id: 'conn-1', credentials: { accessToken: 'access', refreshToken: 'refresh', expiresAt: new Date(Date.now() + 3600_000).toISOString() } },
+  });
+  let providerCalls = 0;
+  const router = createYouTubeUploadRouter(pool, { config: uploadConfig, fetchImpl: async () => { providerCalls++; return Response.json({}); } });
+  const res = new FakeResponse();
+  await router(`/youtube/uploads/${UPLOAD_ID}`, { method: 'DELETE', headers: {} }, res, 'user-1');
+  assert.equal(res.statusCode, 409);
+  assert.equal(bodyOf(res).code, 'YOUTUBE_UPLOAD_NOT_CANCELLABLE');
+  assert.equal(providerCalls, 0, 'a published video must not be sent to videos.update');
+  assert.ok(!pool.writes.includes('cancel'));
+});
+
+test('an expired Testing-mode refresh token asks the user to reconnect, not a 500', async () => {
+  const pool = new FakeUploadPool({
+    connection: { id: 'conn-1', credentials: { accessToken: 'stale', refreshToken: 'revoked', expiresAt: new Date(Date.now() - 1000).toISOString() } },
+  });
+  const router = createYouTubeUploadRouter(pool, {
+    config: uploadConfig,
+    fetchImpl: async () => new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400, headers: { 'content-type': 'application/json' } }),
+  });
+  const res = new FakeResponse();
+  await router('/youtube/uploads', jsonRequest('POST', { title: 'Launch', size: 1024, mime: 'video/mp4', attemptId: 'attempt-1' }), res, 'user-1');
+  assert.equal(res.statusCode, 401);
+  assert.equal(bodyOf(res).code, 'YOUTUBE_NOT_CONNECTED');
+});
+
+test('a 403 quota refusal is retryable and does not burn the resumable session', async () => {
+  const pool = new FakeUploadPool({
+    row: { id: UPLOAD_ID, user_id: 'user-1', status: 'INITIATED', upload_url: 'https://upload.youtube.test/session', mime: 'video/mp4', bytes_total: '1000', bytes_uploaded: '0', metadata: {}, provider_status: {} },
+  });
+  const router = createYouTubeUploadRouter(pool, {
+    config: uploadConfig,
+    fetchImpl: async () => new Response(JSON.stringify({ error: { errors: [{ reason: 'quotaExceeded' }], message: 'Quota exceeded' } }), { status: 403, headers: { 'content-type': 'application/json' } }),
+  });
+  const res = new FakeResponse();
+  await router(`/youtube/uploads/${UPLOAD_ID}`, { method: 'PUT', headers: { 'content-range': 'bytes 0-999/1000' } }, res, 'user-1');
+  assert.equal(res.statusCode, 429);
+  assert.equal(bodyOf(res).code, 'YOUTUBE_QUOTA_EXCEEDED');
+  assert.ok(!pool.writes.includes('fail'), 'a transient quota error must not mark the upload FAILED');
+});
+
+const SCOPES_WITH_WRITE = 'https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.force-ssl';
+const SCOPES_LEGACY = 'https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.upload';
+
+function scheduledPool(scope) {
+  return new FakeUploadPool({
+    row: { id: UPLOAD_ID, user_id: 'user-1', status: 'SCHEDULED', provider_video_id: 'video123', bytes_total: '10', bytes_uploaded: '10', metadata: {}, provider_status: {} },
+    connection: { id: 'conn-1', credentials: { accessToken: 'access', refreshToken: 'refresh', expiresAt: new Date(Date.now() + 3600_000).toISOString(), scope } },
+  });
+}
+async function cancelUpload(pool, fetchImpl) {
+  const router = createYouTubeUploadRouter(pool, { config: uploadConfig, fetchImpl });
+  const res = new FakeResponse();
+  await router(`/youtube/uploads/${UPLOAD_ID}`, { method: 'DELETE', headers: {} }, res, 'user-1');
+  return res;
+}
+
+test('a connection predating force-ssl is asked to reconnect, without spending a provider call', async () => {
+  const pool = scheduledPool(SCOPES_LEGACY);
+  let providerCalls = 0;
+  const res = await cancelUpload(pool, async () => { providerCalls++; return Response.json({}); });
+  assert.equal(res.statusCode, 403);
+  assert.equal(bodyOf(res).code, 'YOUTUBE_REAUTH_REQUIRED');
+  assert.equal(providerCalls, 0);
+  assert.ok(!pool.writes.includes('cancel'));
+});
+
+test('a scheduled upload cancels once force-ssl is granted', async () => {
+  const pool = scheduledPool(SCOPES_WITH_WRITE);
+  const future = new Date(Date.now() + 3600_000).toISOString();
+  const res = await cancelUpload(pool, async (_url, init = {}) => (
+    (init.method || 'GET') === 'GET'
+      ? Response.json({ items: [{ id: 'video123', status: { privacyStatus: 'private', publishAt: future } }] })
+      : Response.json({ id: 'video123' })
+  ));
+  assert.equal(res.statusCode, 200);
+  assert.equal(bodyOf(res).upload.status, 'CANCELLED');
+  assert.ok(pool.writes.includes('cancel'));
+});
+
+test('a 403 from videos.update is reported as reauth required, not a generic failure', async () => {
+  const pool = scheduledPool(SCOPES_WITH_WRITE);
+  const future = new Date(Date.now() + 3600_000).toISOString();
+  const res = await cancelUpload(pool, async (_url, init = {}) => (
+    (init.method || 'GET') === 'GET'
+      ? Response.json({ items: [{ id: 'video123', status: { privacyStatus: 'private', publishAt: future } }] })
+      : new Response(JSON.stringify({ error: { errors: [{ reason: 'insufficientPermissions' }], message: 'Insufficient Permission' } }), { status: 403, headers: { 'content-type': 'application/json' } })
+  ));
+  assert.equal(res.statusCode, 403);
+  assert.equal(bodyOf(res).code, 'YOUTUBE_REAUTH_REQUIRED');
+  assert.ok(!pool.writes.includes('cancel'), 'a failed provider cancel must not mark the row cancelled');
+});
+
+test('a provider outage on cancel is a retryable 502, leaving the row untouched', async () => {
+  const pool = scheduledPool(SCOPES_WITH_WRITE);
+  const future = new Date(Date.now() + 3600_000).toISOString();
+  const res = await cancelUpload(pool, async (_url, init = {}) => (
+    (init.method || 'GET') === 'GET'
+      ? Response.json({ items: [{ id: 'video123', status: { privacyStatus: 'private', publishAt: future } }] })
+      : new Response(JSON.stringify({ error: { message: 'Backend Error' } }), { status: 500, headers: { 'content-type': 'application/json' } })
+  ));
+  assert.equal(res.statusCode, 502);
+  assert.equal(bodyOf(res).code, 'YOUTUBE_CANCEL_FAILED');
+  assert.ok(!pool.writes.includes('cancel'));
+});
+
+async function youtubeStatusFor(scope) {
+  const pool = new FakePool();
+  pool.connection = {
+    id: 'conn-1', user_id: 'user-1', provider_user_id: 'UC1', display_name: 'Primary', meta: {}, disconnected_at: null,
+    credentials: { accessToken: 'access', refreshToken: 'refresh', expiresAt: new Date(Date.now() + 3600_000).toISOString(), scope },
+  };
+  const router = createYouTubeRouter(pool, {
+    config,
+    fetchImpl: async () => Response.json({ items: [{ id: 'UC1', snippet: { title: 'Primary' }, status: { privacyStatus: 'public' } }] }),
+  });
+  const res = new FakeResponse();
+  await router('/status', request('/youtube/status', { 'x-actor-user-id': 'user-1' }), res, { isHttps: false });
+  return JSON.parse(res.body);
+}
+
+test('status flags a legacy connection for reconnect and clears it once force-ssl is granted', async () => {
+  const legacy = await youtubeStatusFor(SCOPES_LEGACY);
+  assert.equal(legacy.connected, true, 'the existing connection must survive — the warning never disconnects anyone');
+  assert.equal(legacy.scopeUpgradeRequired, true);
+
+  const upgraded = await youtubeStatusFor(SCOPES_WITH_WRITE);
+  assert.equal(upgraded.connected, true);
+  assert.equal(upgraded.scopeUpgradeRequired, false, 'the warning clears only when the scope is actually present');
 });

@@ -6,7 +6,23 @@ const UPLOAD_ROOT = 'https://www.googleapis.com/upload/youtube/v3';
 export const YOUTUBE_SCOPES = [
   'https://www.googleapis.com/auth/youtube.readonly',
   'https://www.googleapis.com/auth/youtube.upload',
+  // videos.update (used to unschedule) accepts none of the read/upload
+  // scopes — only youtube, youtube.force-ssl or youtubepartner.
+  'https://www.googleapis.com/auth/youtube.force-ssl',
 ];
+
+// Scopes Google accepts for videos.update. A connection established before
+// force-ssl was requested carries none of them and must reconnect.
+const VIDEO_WRITE_SCOPES = [
+  'https://www.googleapis.com/auth/youtube.force-ssl',
+  'https://www.googleapis.com/auth/youtube',
+  'https://www.googleapis.com/auth/youtubepartner',
+];
+
+export function canModifyYouTubeVideos(credentials) {
+  const granted = new Set(String(credentials?.scope || '').split(/\s+/).filter(Boolean));
+  return VIDEO_WRITE_SCOPES.some((scope) => granted.has(scope));
+}
 
 export function youtubeConfig(env = process.env) {
   return {
@@ -177,11 +193,36 @@ export async function getYouTubeVideo(accessToken, videoId, fetchImpl = fetch) {
   return data.items?.[0] || null;
 }
 
+// videos.update REPLACES the parts it is given: any status field omitted here
+// is reset to its default, so the current status is read first and carried
+// over. publishAt is deliberately dropped — that is what clears the schedule.
 export async function cancelScheduledYouTubeVideo(accessToken, videoId, fetchImpl = fetch) {
+  const video = await getYouTubeVideo(accessToken, videoId, fetchImpl);
+  if (!video) {
+    const error = new Error('That video no longer exists on YouTube.');
+    error.code = 'YOUTUBE_VIDEO_NOT_FOUND';
+    throw error;
+  }
+  const status = video.status || {};
+  const stillScheduled = status.publishAt && Date.parse(status.publishAt) > Date.now();
+  if (status.privacyStatus === 'public' && !stillScheduled) {
+    const error = new Error('That video is already public on YouTube; cancelling would unpublish it.');
+    error.code = 'YOUTUBE_ALREADY_PUBLISHED';
+    throw error;
+  }
   const response = await fetchImpl(`${API_ROOT}/videos?part=status`, {
     method: 'PUT',
     headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ id: videoId, status: { privacyStatus: 'private' } }),
+    body: JSON.stringify({
+      id: videoId,
+      status: {
+        privacyStatus: 'private',
+        selfDeclaredMadeForKids: (status.selfDeclaredMadeForKids ?? status.madeForKids) === true,
+        ...(status.license ? { license: status.license } : {}),
+        ...(typeof status.embeddable === 'boolean' ? { embeddable: status.embeddable } : {}),
+        ...(typeof status.publicStatsViewable === 'boolean' ? { publicStatsViewable: status.publicStatsViewable } : {}),
+      },
+    }),
   });
   return readProviderJson(response);
 }

@@ -1,4 +1,5 @@
 import {
+  canModifyYouTubeVideos,
   cancelScheduledYouTubeVideo,
   getYouTubeVideo,
   initiateYouTubeResumableUpload,
@@ -102,7 +103,10 @@ export function createYouTubeUploadRouter(pool, deps = {}) {
       const synced = await syncProviderOffset(userId, existing).catch(() => existing);
       return send(res, 200, { success: true, upload: publicUpload(synced), chunkSize: YOUTUBE_CHUNK_SIZE, resumed: true });
     }
-    const auth = await connection(userId);
+    // A failed refresh (invalid_grant) is the expected outcome once the
+    // Testing-mode refresh token expires; treat it as "not connected" so the
+    // user is told to reconnect instead of receiving an opaque 500.
+    const auth = await connection(userId).catch(() => null);
     if (!auth) return send(res, 401, { success: false, code: 'YOUTUBE_NOT_CONNECTED', message: 'Reconnect YouTube before uploading.' });
     try {
       const uploadUrl = await initiateYouTubeResumableUpload({ accessToken: auth.credentials.accessToken, metadata: metadata.value, mimeType: mime, size }, fetchImpl);
@@ -141,9 +145,15 @@ export function createYouTubeUploadRouter(pool, deps = {}) {
       }
       const data = await upstream.json().catch(() => ({}));
       if (!upstream.ok || !data.id) {
-        const reason = data?.error?.errors?.[0]?.reason || data?.error?.message || `YouTube rejected the upload chunk (${upstream.status}).`;
-        if (upstream.status !== 401 && upstream.status !== 429 && upstream.status < 500) await store.fail(userId, id, 'YOUTUBE_UPLOAD_FAILED', String(reason));
-        return send(res, upstream.status === 401 ? 401 : upstream.status === 429 ? 429 : 502, { success: false, code: upstream.status === 429 ? 'YOUTUBE_QUOTA_EXCEEDED' : 'YOUTUBE_UPLOAD_FAILED', message: String(reason) });
+        const providerReason = data?.error?.errors?.[0]?.reason || '';
+        const reason = providerReason || data?.error?.message || `YouTube rejected the upload chunk (${upstream.status}).`;
+        // YouTube signals quota and rate limits with 403, not 429. Marking
+        // those FAILED burned the resumable session over a transient limit.
+        const throttled = upstream.status === 429
+          || (upstream.status === 403 && ['quotaExceeded', 'rateLimitExceeded', 'userRateLimitExceeded'].includes(providerReason));
+        const retryable = throttled || upstream.status === 401 || upstream.status >= 500;
+        if (!retryable) await store.fail(userId, id, 'YOUTUBE_UPLOAD_FAILED', String(reason));
+        return send(res, upstream.status === 401 ? 401 : throttled ? 429 : 502, { success: false, code: throttled ? 'YOUTUBE_QUOTA_EXCEEDED' : 'YOUTUBE_UPLOAD_FAILED', message: String(reason) });
       }
       const completed = await store.complete(userId, id, data.id, data);
       return send(res, 200, { success: true, complete: true, upload: publicUpload(completed) });
@@ -171,10 +181,39 @@ export function createYouTubeUploadRouter(pool, deps = {}) {
   async function cancel(res, userId, id) {
     const row = await store.get(userId, id);
     if (!row) return send(res, 404, { success: false, code: 'YOUTUBE_UPLOAD_NOT_FOUND', message: 'Upload not found.' });
+    // store.cancel() refuses PUBLISHED and CANCELLED rows, so calling the
+    // provider first would privatize a live video on YouTube and then report
+    // the untouched saved status back as a success.
+    if (['PUBLISHED', 'CANCELLED'].includes(row.status)) {
+      return send(res, 409, { success: false, code: 'YOUTUBE_UPLOAD_NOT_CANCELLABLE', message: 'This upload is already published or cancelled.', upload: publicUpload(row) });
+    }
     if (row.provider_video_id) {
-      const auth = await connection(userId);
+      const auth = await connection(userId).catch(() => null);
       if (!auth) return send(res, 401, { success: false, code: 'YOUTUBE_NOT_CONNECTED', message: 'Reconnect YouTube before cancelling the schedule.' });
-      await cancelScheduledYouTubeVideo(auth.credentials.accessToken, row.provider_video_id, fetchImpl);
+      // Connections made before youtube.force-ssl was requested cannot call
+      // videos.update; ask for a reconnect rather than spending a 403.
+      if (!canModifyYouTubeVideos(auth.credentials)) {
+        return send(res, 403, { success: false, code: 'YOUTUBE_REAUTH_REQUIRED', message: 'Reconnect YouTube to grant permission to change video settings.', upload: publicUpload(row) });
+      }
+      try {
+        await cancelScheduledYouTubeVideo(auth.credentials.accessToken, row.provider_video_id, fetchImpl);
+      } catch (error) {
+        // The provider is authoritative: the saved row can lag behind a video
+        // that already went public on YouTube.
+        if (error?.code === 'YOUTUBE_ALREADY_PUBLISHED') {
+          return send(res, 409, { success: false, code: 'YOUTUBE_UPLOAD_NOT_CANCELLABLE', message: error.message, upload: publicUpload(row) });
+        }
+        if (error?.code === 'YOUTUBE_VIDEO_NOT_FOUND') {
+          return send(res, 200, { success: true, upload: publicUpload(await store.cancel(userId, id) || row) });
+        }
+        const insufficient = error?.status === 403;
+        return send(res, insufficient ? 403 : 502, {
+          success: false,
+          code: insufficient ? 'YOUTUBE_REAUTH_REQUIRED' : 'YOUTUBE_CANCEL_FAILED',
+          message: error instanceof Error ? error.message : 'Could not cancel the scheduled video.',
+          upload: publicUpload(row),
+        });
+      }
     }
     const cancelled = await store.cancel(userId, id);
     return send(res, 200, { success: true, upload: publicUpload(cancelled || row) });

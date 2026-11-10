@@ -3,6 +3,7 @@ import { parseCookies } from '../../packages/cookies/index.mjs';
 import { startReturn, finishReturn, clearReturnCookie, RETURN_COOKIE } from '../../src/oauth-return.mjs';
 import {
   buildYouTubeAuthorizationUrl,
+  canModifyYouTubeVideos,
   exchangeYouTubeCode,
   listMyYouTubeChannels,
   refreshYouTubeToken,
@@ -127,7 +128,9 @@ export function createYouTubeRouter(pool, deps = {}) {
         const channels = await listMyYouTubeChannels(credentials.accessToken, fetchImpl);
         if (!channels.length) return json(res, 200, { available: true, connected: false, reconnectRequired: true });
         await vault.updateChannels(userId, channels);
-        return json(res, 200, { available: true, connected: true, userId: channels[0].id, name: channels[0].name, thumbnail: channels[0].thumbnail, channels });
+        // Surfaces a connection authorized before youtube.force-ssl was added,
+        // so the UI can prompt a reconnect before a cancel attempt fails.
+        return json(res, 200, { available: true, connected: true, userId: channels[0].id, name: channels[0].name, thumbnail: channels[0].thumbnail, channels, scopeUpgradeRequired: !canModifyYouTubeVideos(credentials) });
       } catch (error) {
         const reconnectRequired = error?.status === 400 || error?.status === 401;
         return json(res, 200, { available: true, connected: false, reconnectRequired });

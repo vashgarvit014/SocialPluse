@@ -285,6 +285,9 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const [selectedAccountKeys, setSelectedAccountKeys] = useState<string[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [youtubeAvailable, setYoutubeAvailable] = useState(false);
+  // Server-derived: /api/youtube/status computes it from the stored credential
+  // scope, so it clears only once force-ssl has genuinely been granted.
+  const [youtubeScopeUpgrade, setYoutubeScopeUpgrade] = useState(false);
   const [canvaConnected, setCanvaConnected] = useState(false);
   const [canvaName, setCanvaName] = useState('');
   const [isSendingToCanva, setIsSendingToCanva] = useState(false);
@@ -852,9 +855,10 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           })
           .catch(() => { /* transient failure reaching our own status route - leave it disconnected for this load rather than trust the cache */ });
 
-        fetchStatusWithFallback<{ available?: boolean; connected: boolean; userId?: string; name?: string; thumbnail?: string; channels?: Array<{ id: string; name: string; thumbnail?: string }> }>('/api/youtube/status', youtubeAccount?.userId)
+        fetchStatusWithFallback<{ available?: boolean; connected: boolean; userId?: string; name?: string; thumbnail?: string; scopeUpgradeRequired?: boolean; channels?: Array<{ id: string; name: string; thumbnail?: string }> }>('/api/youtube/status', youtubeAccount?.userId)
           .then((data) => {
             setYoutubeAvailable(data.available === true);
+            setYoutubeScopeUpgrade(data.connected === true && data.scopeUpgradeRequired === true);
             if (!data.connected || !data.userId) return;
             setAccounts(prev => {
               const updated = [...prev.filter(a => a.platform !== 'youtube'), { platform: 'youtube', connected: true, userId: data.userId!, name: data.name || 'YouTube Channel', email: '', thumbnail: data.thumbnail, channels: data.channels }];
@@ -862,7 +866,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
               return updated;
             });
           })
-          .catch(() => setYoutubeAvailable(false));
+          .catch(() => { setYoutubeAvailable(false); setYoutubeScopeUpgrade(false); });
     }
 
     const params = new URLSearchParams(window.location.search);
@@ -1795,7 +1799,10 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
     const statuses = await Promise.all(['linkedin', 'facebook', 'instagram', 'youtube'].map(async platform => {
       const res = await fetch('/api/' + platform + '/status'); if (!res.ok) throw new Error('Connection status unavailable');
       const data = await res.json();
-      if (platform === 'youtube') setYoutubeAvailable(data.available === true);
+      if (platform === 'youtube') {
+        setYoutubeAvailable(data.available === true);
+        setYoutubeScopeUpgrade(data.connected === true && data.scopeUpgradeRequired === true);
+      }
       setAccounts(prev => {
         const existing = prev.find(a => a.platform === platform);
         const updated = prev.filter(a => a.platform !== platform);
@@ -3894,6 +3901,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
           <ConnectPlatforms
             accounts={accounts} connectPlatform={connectPlatform} disconnectPlatform={disconnectPlatform}
             youtubeAvailable={youtubeAvailable}
+            youtubeScopeUpgradeRequired={youtubeScopeUpgrade}
             whapiConnected={whapiConnected} whapiChannelStatus={whapiChannelStatus} whapiAccountName={whapiAccountName} whapiPhoneMasked={whapiPhoneMasked}
             whapiGroups={whapiGroups} whapiLoading={whapiLoading} whapiGroupsLoading={whapiGroupsLoading} loadWhapiGroups={loadWhapiGroups} startWhatsAppConnect={startWhatsAppConnect}
             disconnectWhatsApp={disconnectWhatsApp} whatsappDisconnecting={whatsappDisconnecting} whapiCanConnect={whapiCanConnect}

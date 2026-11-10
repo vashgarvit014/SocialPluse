@@ -7,6 +7,7 @@ type ConnectPlatformsProps = {
   connectPlatform: (p: string) => void;
   disconnectPlatform: (p: string) => void;
   youtubeAvailable: boolean;
+  youtubeScopeUpgradeRequired: boolean;
   whapiConnected: boolean;
   whapiChannelStatus: string;
   whapiAccountName: string;
@@ -29,13 +30,14 @@ type ConnectPlatformsProps = {
   PlatformIcon: ({ platform, size }: { platform: string; size?: number }) => React.JSX.Element;
 };
 
-function StatusPill({ status }: { status: 'connected' | 'disconnected' | 'connecting' | 'attention' | 'error' }) {
+function StatusPill({ status }: { status: 'connected' | 'disconnected' | 'connecting' | 'attention' | 'error' | 'reconnect' }) {
   const map: Record<string, { bg: string; color: string; border: string; dot: string; label: string }> = {
     connected: { bg: '#ecfdf5', color: '#059669', border: '#a7f3d0', dot: '#10b981', label: 'Connected' },
     disconnected: { bg: '#f1f5f9', color: '#64748b', border: '#e2e8f0', dot: '#94a3b8', label: 'Not connected' },
     connecting: { bg: '#fffbeb', color: '#b45309', border: '#fde68a', dot: '#f59e0b', label: 'Connecting' },
     attention: { bg: '#fffbeb', color: '#b45309', border: '#fde68a', dot: '#f59e0b', label: 'Needs Attention' },
     error: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca', dot: '#ef4444', label: 'Error' },
+    reconnect: { bg: '#fffbeb', color: '#b45309', border: '#fde68a', dot: '#f59e0b', label: 'Reconnect Required' },
   };
   const m = map[status] || map.disconnected;
   return (
@@ -335,11 +337,11 @@ export default function ConnectPlatforms(p: ConnectPlatformsProps) {
               <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>YouTube</div>
               <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>Videos, Shorts &amp; scheduling</div>
             </div>
-            <StatusPill status={youtubeAcc ? 'connected' : p.youtubeAvailable ? 'disconnected' : 'attention'} />
+            <StatusPill status={youtubeAcc ? (p.youtubeScopeUpgradeRequired ? 'reconnect' : 'connected') : p.youtubeAvailable ? 'disconnected' : 'attention'} />
           </div>
           <div style={{ padding: '16px 20px', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
             {youtubeAcc ? (
-              <div><div style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>{youtubeAcc.name || 'YouTube Channel'}</div><div style={{ fontSize: 11, color: '#059669', fontWeight: 600, marginTop: 4 }}>Channel connected securely</div>{youtubeAcc.channels && youtubeAcc.channels.length > 1 && <div style={{ fontSize: 10.5, color: '#64748b', marginTop: 4 }}>{youtubeAcc.channels.length} channels were returned by this authorized identity; uploads remain bound to the active OAuth channel.</div>}</div>
+              <div><div style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>{youtubeAcc.name || 'YouTube Channel'}</div>{p.youtubeScopeUpgradeRequired ? <div style={{ fontSize: 11, color: '#b45309', fontWeight: 600, marginTop: 4, lineHeight: 1.5 }}>Reconnect to grant permission to change video settings. Scheduled videos cannot be cancelled until you do. Your channel stays connected in the meantime.</div> : <div style={{ fontSize: 11, color: '#059669', fontWeight: 600, marginTop: 4 }}>Channel connected securely</div>}{youtubeAcc.channels && youtubeAcc.channels.length > 1 && <div style={{ fontSize: 10.5, color: '#64748b', marginTop: 4 }}>{youtubeAcc.channels.length} channels were returned by this authorized identity; uploads remain bound to the active OAuth channel.</div>}</div>
             ) : p.youtubeAvailable ? (
               <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.5 }}>Connect an approved Google Test User and authorize the channel you want SocialPulse to publish to.</div>
             ) : (
@@ -349,7 +351,7 @@ export default function ConnectPlatforms(p: ConnectPlatformsProps) {
             <div style={{ display: 'flex', gap: 10, marginTop: 'auto', paddingTop: 14 }}>
               {youtubeAcc ? <>
                 <button onClick={() => p.disconnectPlatform('youtube')} style={{ flex: 1, height: 44, borderRadius: 10, fontSize: 12, fontWeight: 700, border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}>Disconnect</button>
-                <button onClick={() => p.connectPlatform('youtube')} style={{ flex: 1, height: 44, borderRadius: 10, fontSize: 12, fontWeight: 800, border: 'none', background: '#FF0000', color: '#fff', cursor: 'pointer' }}>Reconnect</button>
+                <button onClick={() => p.connectPlatform('youtube')} style={{ flex: 1, height: 44, borderRadius: 10, fontSize: 12, fontWeight: 800, border: 'none', background: '#FF0000', color: '#fff', cursor: 'pointer' }}>{p.youtubeScopeUpgradeRequired ? 'Reconnect YouTube' : 'Reconnect'}</button>
               </> : <button onClick={() => p.connectPlatform('youtube')} disabled={!p.youtubeAvailable} style={{ width: '100%', height: 46, borderRadius: 10, fontSize: 13, fontWeight: 800, border: 'none', background: p.youtubeAvailable ? '#FF0000' : '#CBD5E1', color: '#fff', cursor: p.youtubeAvailable ? 'pointer' : 'not-allowed' }}>Connect YouTube →</button>}
             </div>
           </div>
