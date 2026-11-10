@@ -151,3 +151,26 @@ test('OAuth callback consumes state once, exchanges server-side, retrieves mine=
   assert.match(replayRes.getHeader('location'), /state_mismatch/);
   assert.equal(providerCalls, 2, 'a replayed state must not reach Google');
 });
+
+test('auth refuses with a redirect the dashboard can render, never a raw JSON document', async () => {
+  const pool = new FakePool();
+  const noProvider = async () => { throw new Error('a refused /auth must not reach Google'); };
+
+  const unconfigured = createYouTubeRouter(pool, { config: { ...config, clientId: '' }, fetchImpl: noProvider });
+  const missingRes = new FakeResponse();
+  await unconfigured('/auth', request('/youtube/auth', { 'x-actor-user-id': 'user-1' }), missingRes, { isHttps: false });
+  assert.equal(missingRes.statusCode, 302);
+  const missingTarget = new URL(missingRes.getHeader('location'));
+  assert.equal(missingTarget.pathname, '/dashboard');
+  assert.equal(missingTarget.searchParams.get('error'), 'youtube_not_configured');
+
+  const disabled = createYouTubeRouter(pool, { config: { ...config, enabled: false }, fetchImpl: noProvider });
+  const disabledRes = new FakeResponse();
+  await disabled('/auth', request('/youtube/auth', { 'x-actor-user-id': 'user-1' }), disabledRes, { isHttps: false });
+  assert.equal(new URL(disabledRes.getHeader('location')).searchParams.get('error'), 'youtube_disabled');
+
+  const notAllowed = createYouTubeRouter(pool, { config: { ...config, allowedEmails: new Set(['someone-else@example.com']) }, fetchImpl: noProvider });
+  const notAllowedRes = new FakeResponse();
+  await notAllowed('/auth', request('/youtube/auth', { 'x-actor-user-id': 'user-1' }), notAllowedRes, { isHttps: false });
+  assert.equal(new URL(notAllowedRes.getHeader('location')).searchParams.get('error'), 'youtube_not_available');
+});

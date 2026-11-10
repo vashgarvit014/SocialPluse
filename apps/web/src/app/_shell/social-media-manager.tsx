@@ -1863,9 +1863,14 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       // OAuth error codes arrive as snake_case from the callback. Map the one
       // users can act on to a sentence; everything else falls back to the raw
       // code so an unknown failure is never silently swallowed.
-      const friendlyError = error === 'account_already_connected'
-        ? 'this account is already connected to a different SocialPulse user — ask them to disconnect it first, then try again'
-        : error;
+      const errorMessages: Record<string, string> = {
+        account_already_connected: 'this account is already connected to a different SocialPulse user — ask them to disconnect it first, then try again',
+        youtube_not_configured: 'YouTube is not set up on this server yet — its API credentials are missing. Ask an administrator to add them.',
+        youtube_disabled: 'YouTube publishing is switched off on this server',
+        youtube_not_available: 'your account is not on the YouTube test-user allowlist yet',
+        youtube_channel_not_found: 'that Google account has no YouTube channel — create one, then connect again',
+      };
+      const friendlyError = errorMessages[error] || error;
       try { const statuses = await refreshConnections(); const failed = error || !statuses[provider]; notify(failed ? 'Platform connection failed: ' + (friendlyError || 'connection could not be verified') : provider + ' connected. OAuth returned successfully. Your editor is unchanged.', !!failed); }
       catch { notify('OAuth returned, but connection status could not be verified. Your work is preserved.', true); }
       await returnStore('delete', pending.id).catch(() => {});

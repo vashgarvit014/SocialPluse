@@ -1,6 +1,6 @@
 import { createOAuthStateStore } from '../../packages/oauth-state/index.mjs';
 import { parseCookies } from '../../packages/cookies/index.mjs';
-import { startReturn, finishReturn, clearReturnCookie } from '../../src/oauth-return.mjs';
+import { startReturn, finishReturn, clearReturnCookie, RETURN_COOKIE } from '../../src/oauth-return.mjs';
 import {
   buildYouTubeAuthorizationUrl,
   exchangeYouTubeCode,
@@ -60,10 +60,22 @@ export function createYouTubeRouter(pool, deps = {}) {
     if (pathname === '/auth' && req.method === 'GET') {
       const userId = requireActor(req);
       if (!userId) return json(res, 401, { code: 'UNAUTHORIZED', message: 'Sign in required.' });
-      const missing = youtubeConfigMissing(config);
-      if (missing.length) return json(res, 503, { code: 'YOUTUBE_NOT_CONFIGURED', message: `YouTube is not configured. Missing: ${missing.join(', ')}.` });
+      // /auth is a browser navigation target (the Connect button lands here via
+      // /api/connect/youtube), so a refusal must come back as a redirect the UI
+      // can render — same shape /callback already uses. Returning JSON stranded
+      // the user on a raw error document with no way back into the app.
+      const fail = (code) => {
+        // Pass the cookie's own state so finishReturn never mistakes a refusal
+        // issued before startReturn for a state mismatch and overwrites `code`.
+        let returnState;
+        try { returnState = JSON.parse(cookies[RETURN_COOKIE] || 'null')?.state; } catch { /* no usable return hint */ }
+        const target = finishReturn(req.headers.cookie || '', returnState, new URL(`/dashboard?error=${encodeURIComponent(code)}`, appOrigin));
+        clearReturnCookie(res, isHttps);
+        return redirect(res, target.toString());
+      };
+      if (youtubeConfigMissing(config).length) return fail('youtube_not_configured');
       const access = await featureAccess(pool, userId, config);
-      if (!access.allowed) return json(res, 403, { code: 'YOUTUBE_NOT_AVAILABLE', message: 'YouTube is currently limited to approved test users.' });
+      if (!access.allowed) return fail(access.reason === 'feature_disabled' ? 'youtube_disabled' : 'youtube_not_available');
       const state = await oauthState.saveOAuthState('youtube', userId);
       startReturn(cookies, res, state, isHttps);
       return redirect(res, buildYouTubeAuthorizationUrl(config, state));
