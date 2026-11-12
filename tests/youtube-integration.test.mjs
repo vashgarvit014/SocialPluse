@@ -8,6 +8,7 @@ import {
   refreshYouTubeToken,
   tokenCredentials,
   validateYouTubeMetadata,
+  youtubeConfig,
   YOUTUBE_SCOPES,
 } from '../packages/youtube/index.mjs';
 import { createYouTubeRouter } from '../services/integrations-service/providers/youtube/routes.mjs';
@@ -363,4 +364,142 @@ test('status flags a legacy connection for reconnect and clears it once force-ss
   const upgraded = await youtubeStatusFor(SCOPES_WITH_WRITE);
   assert.equal(upgraded.connected, true);
   assert.equal(upgraded.scopeUpgradeRequired, false, 'the warning clears only when the scope is actually present');
+});
+
+test('allowlist matching normalizes the stored address the same way it parses the variable', async () => {
+  const padded = { ...youtubeConfig({ YOUTUBE_CLIENT_ID: 'id', YOUTUBE_CLIENT_SECRET: 'secret', YOUTUBE_REDIRECT_URI: 'http://localhost:3000/api/youtube/callback', YOUTUBE_ENABLED: 'true', YOUTUBE_TEST_USER_EMAILS: ' Tester@Example.com , second@example.com ' }) };
+  assert.deepEqual([...padded.allowedEmails].sort(), ['second@example.com', 'tester@example.com']);
+
+  // A stored address carrying stray whitespace or mixed case must still match.
+  class PaddedEmailPool extends FakePool {
+    async query(sql, args) {
+      if (sql.includes('SELECT email FROM users')) return { rows: [{ email: '  Tester@Example.COM ' }] };
+      return super.query(sql, args);
+    }
+  }
+  const router = createYouTubeRouter(new PaddedEmailPool(), { config: padded, fetchImpl: async () => { throw new Error('unreachable'); } });
+  const res = new FakeResponse();
+  await router('/auth', request('/youtube/auth', { 'x-actor-user-id': 'user-1' }), res, { isHttps: false });
+  assert.equal(res.statusCode, 302);
+  assert.equal(new URL(res.getHeader('location')).origin, 'https://accounts.google.com', 'an allowlisted user must reach Google');
+});
+
+test('an address outside the allowlist is still refused', async () => {
+  class OtherEmailPool extends FakePool {
+    async query(sql, args) {
+      if (sql.includes('SELECT email FROM users')) return { rows: [{ email: 'outsider@example.com' }] };
+      return super.query(sql, args);
+    }
+  }
+  const router = createYouTubeRouter(new OtherEmailPool(), { config, fetchImpl: async () => { throw new Error('a refused user must not reach Google'); } });
+  const res = new FakeResponse();
+  await router('/auth', request('/youtube/auth', { 'x-actor-user-id': 'user-1' }), res, { isHttps: false });
+  assert.equal(res.statusCode, 302);
+  assert.equal(new URL(res.getHeader('location')).searchParams.get('error'), 'youtube_not_available');
+});
+
+async function callbackFailure({ tokenStatus, channelStatus, storeThrows }) {
+  const pool = new FakePool();
+  if (storeThrows) {
+    const inner = pool.query.bind(pool);
+    pool.query = async (sql, args) => {
+      if (sql.includes('INSERT INTO platform_connections')) throw Object.assign(new Error('deadlock detected'), { code: '40P01' });
+      return inner(sql, args);
+    };
+  }
+  const logged = [];
+  const fetchImpl = async (url) => {
+    if (String(url).includes('oauth2.googleapis.com/token')) {
+      if (tokenStatus) return new Response(JSON.stringify({ error: 'invalid_grant', error_description: 'Bad Request' }), { status: tokenStatus, headers: { 'content-type': 'application/json' } });
+      return Response.json({ access_token: 'access', refresh_token: 'refresh', expires_in: 3600 });
+    }
+    if (channelStatus) return new Response(JSON.stringify({ error: { errors: [{ reason: 'insufficientPermissions' }], message: 'Insufficient Permission' } }), { status: channelStatus, headers: { 'content-type': 'application/json' } });
+    return Response.json({ items: [{ id: 'UC_TEST', snippet: { title: 'Test Channel' }, status: { privacyStatus: 'public' } }] });
+  };
+  // Mirrors the real createLogger signature: ONE object, no message argument.
+  const router = createYouTubeRouter(pool, { config, fetchImpl, log: { error: (fields) => logged.push(fields) } });
+  const authRes = new FakeResponse();
+  await router('/auth', request('/youtube/auth', { 'x-actor-user-id': 'user-1' }), authRes, { isHttps: false });
+  const state = new URL(authRes.getHeader('location')).searchParams.get('state');
+  const res = new FakeResponse();
+  await router('/callback', request(`/youtube/callback?code=code&state=${state}`), res, { isHttps: false });
+  return { error: new URL(res.getHeader('location')).searchParams.get('error'), logged };
+}
+
+test('callback failures name the stage that broke and log it without leaking secrets', async () => {
+  const exchange = await callbackFailure({ tokenStatus: 400 });
+  assert.equal(exchange.error, 'youtube_token_exchange_failed');
+  assert.equal(exchange.logged[0].stage, 'token_exchange');
+  assert.equal(exchange.logged[0].status, 400);
+
+  const channel = await callbackFailure({ channelStatus: 403 });
+  assert.equal(channel.error, 'youtube_channel_fetch_failed');
+  assert.equal(channel.logged[0].providerCode, 'insufficientPermissions');
+
+  const store = await callbackFailure({ storeThrows: true });
+  assert.equal(store.error, 'youtube_store_failed');
+  assert.equal(store.logged[0].stage, 'store');
+
+  // Nothing logged may carry a token, the authorization code, or the state.
+  for (const run of [exchange, channel, store]) {
+    const dump = JSON.stringify(run.logged);
+    for (const secret of ['access', 'refresh', 'code', 'state_key']) {
+      assert.ok(!new RegExp(`"[^"]*":"[^"]*${secret}`).test(dump), `log must not carry ${secret}`);
+    }
+  }
+});
+
+test('the real structured logger emits one parseable line carrying no secrets', async () => {
+  const { createLogger } = await import('../packages/logger/index.mjs');
+  const pool = new FakePool();
+  const lines = [];
+  let state;
+  const original = console.error;
+  console.error = (line) => lines.push(line);
+  try {
+    const router = createYouTubeRouter(pool, {
+      config,
+      log: createLogger('integrations-service'),
+      fetchImpl: async (url) => (String(url).includes('oauth2.googleapis.com/token')
+        ? new Response(JSON.stringify({ error: 'invalid_grant', error_description: 'Bad Request' }), { status: 400, headers: { 'content-type': 'application/json' } })
+        : Response.json({ items: [] })),
+    });
+    const authRes = new FakeResponse();
+    await router('/auth', request('/youtube/auth', { 'x-actor-user-id': 'user-1' }), authRes, { isHttps: false });
+    state = new URL(authRes.getHeader('location')).searchParams.get('state');
+    const res = new FakeResponse();
+    await router('/callback', request(`/youtube/callback?code=SECRET_AUTH_CODE&state=${state}`), res, { isHttps: false });
+  } finally {
+    console.error = original;
+  }
+
+  assert.equal(lines.length, 1);
+  const entry = JSON.parse(lines[0]); // would throw if the fields were spread as string indices
+  assert.equal(entry.event, 'youtube_callback_failed');
+  assert.equal(entry.stage, 'token_exchange');
+  assert.equal(entry.status, 400);
+  assert.equal(entry.service, 'integrations-service');
+  assert.ok(!('0' in entry), 'a string passed as fields would spread into numeric keys');
+  assert.ok(!lines[0].includes('SECRET_AUTH_CODE'), 'the authorization code must never be logged');
+  assert.ok(!lines[0].includes(state), 'the OAuth state must never be logged');
+});
+
+test('access-log paths never carry OAuth query parameters, for any provider', async () => {
+  const { requestPath } = await import('../packages/logger/index.mjs');
+  const cases = [
+    ['/api/youtube/callback?code=4/0A_SECRET_CODE&state=STATE_VALUE', '/api/youtube/callback'],
+    ['/api/linkedin/callback?code=AQ_SECRET&state=abc', '/api/linkedin/callback'],
+    ['/api/facebook/callback?code=SECRET#fragment', '/api/facebook/callback'],
+    ['/youtube/callback?code=x', '/youtube/callback'],
+    ['/api/youtube/status', '/api/youtube/status'],
+    ['', ''],
+    [undefined, ''],
+    [null, ''],
+  ];
+  for (const [input, expected] of cases) assert.equal(requestPath(input), expected);
+
+  const logged = requestPath('/api/youtube/callback?code=4/0A_SECRET_CODE&state=STATE_VALUE');
+  for (const leak of ['SECRET', 'STATE_VALUE', 'code=', 'state=', '?']) {
+    assert.ok(!logged.includes(leak), `access log must not retain "${leak}"`);
+  }
 });

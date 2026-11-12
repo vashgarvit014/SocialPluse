@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { Pool } from 'pg';
-import { createLogger } from '../packages/logger/index.mjs';
+import { createLogger, requestPath } from '../packages/logger/index.mjs';
 import { verifyInternalSecret } from '../packages/service-auth/index.mjs';
 import { createCanvaRouter } from '../providers/canva/routes.mjs';
 import { createLinkedInRouter } from '../providers/linkedin/routes.mjs';
@@ -56,7 +56,7 @@ const handleInstagramRoute = createInstagramRouter({ query: (...args) => getPool
 // WhatsApp's connections store also needs pool.connect() for one transaction
 // (beginQrAttempt) — the other providers only ever call .query().
 const handleWhatsAppRoute = createWhatsAppRouter({ query: (...args) => getPool().query(...args), connect: (...args) => getPool().connect(...args) });
-const handleYouTubeRoute = createYouTubeRouter({ query: (...args) => getPool().query(...args) });
+const handleYouTubeRoute = createYouTubeRouter({ query: (...args) => getPool().query(...args) }, { log });
 
 function send(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -112,7 +112,7 @@ const server = http.createServer(async (req, res) => {
   const requestId = req.headers['x-request-id'] || randomUUID();
   const start = Date.now();
   res.on('finish', () => {
-    log.info({ requestId, path: req.url, method: req.method, status: res.statusCode, durationMs: Date.now() - start });
+    log.info({ requestId, path: requestPath(req.url), method: req.method, status: res.statusCode, durationMs: Date.now() - start });
   });
 
   if (req.url === '/health') {

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
-import { createLogger } from '../packages/logger/index.mjs';
+import { createLogger, requestPath } from '../packages/logger/index.mjs';
 import { verifyInternalSecret } from '../packages/service-auth/index.mjs';
 import { carouselMediaError } from '../packages/validation/carousel.mjs';
 import { createPostStore } from './post-store.mjs';
@@ -382,7 +382,7 @@ const server = http.createServer(async (req, res) => {
   const requestId = req.headers['x-request-id'] || randomUUID();
   const start = Date.now();
   res.on('finish', () => {
-    log.info({ requestId, path: req.url, method: req.method, status: res.statusCode, durationMs: Date.now() - start });
+    log.info({ requestId, path: requestPath(req.url), method: req.method, status: res.statusCode, durationMs: Date.now() - start });
   });
 
   try {

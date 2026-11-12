@@ -2,7 +2,7 @@ import http from 'node:http';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { SignJWT } from 'jose';
 import { Pool, types } from 'pg';
-import { createLogger } from '../packages/logger/index.mjs';
+import { createLogger, requestPath } from '../packages/logger/index.mjs';
 import { parseCookies } from '../packages/cookies/index.mjs';
 import { createUsersRepo, normalizeEmail } from './users.mjs';
 import { createUserSessionsRepo } from './user-sessions.mjs';
@@ -173,7 +173,7 @@ const server = http.createServer(async (req, res) => {
   const requestId = req.headers['x-request-id'] || randomUUID();
   const start = Date.now();
   res.on('finish', () => {
-    log.info({ requestId, path: req.url, method: req.method, status: res.statusCode, durationMs: Date.now() - start });
+    log.info({ requestId, path: requestPath(req.url), method: req.method, status: res.statusCode, durationMs: Date.now() - start });
   });
 
   try {

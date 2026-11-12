@@ -14,6 +14,16 @@ function assertSafe(fields) {
   }
 }
 
+// Access logs must never carry query strings. OAuth callbacks arrive as
+// /api/<provider>/callback?code=...&state=..., so logging req.url verbatim
+// writes single-use authorization codes and CSRF state to disk for every
+// provider. Callers log the pathname only.
+export function requestPath(url) {
+  const value = String(url || '');
+  const cut = value.search(/[?#]/);
+  return cut === -1 ? value : value.slice(0, cut);
+}
+
 export function createLogger(service) {
   function emit(level, fields) {
     assertSafe(fields);

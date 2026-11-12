@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { createLogger } from '../packages/logger/index.mjs';
+import { createLogger, requestPath } from '../packages/logger/index.mjs';
 import { internalFetchHeaders } from '../packages/service-auth/index.mjs';
 
 // socialpulse-gateway — thin router only, no business logic (per migration
@@ -432,7 +432,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('x-request-id', requestId);
   const start = Date.now();
   res.on('finish', () => {
-    log.info({ requestId, path: req.url, method: req.method, status: res.statusCode, durationMs: Date.now() - start });
+    log.info({ requestId, path: requestPath(req.url), method: req.method, status: res.statusCode, durationMs: Date.now() - start });
   });
 
   if (req.url === '/health') {

@@ -38,7 +38,8 @@ export function createYouTubeUploadRouter(pool, deps = {}) {
   async function featureAccess(userId) {
     if (!config.enabled) return false;
     const { rows } = await pool.query('SELECT email FROM users WHERE id = $1 LIMIT 1', [userId]);
-    return config.allowedEmails.has(String(rows[0]?.email || '').toLowerCase());
+    // Same normalization as the allowlist parser (trim + lowercase).
+    return config.allowedEmails.has(String(rows[0]?.email || '').trim().toLowerCase());
   }
 
   async function connection(userId) {

@@ -31,7 +31,9 @@ function requireActor(req) {
 async function featureAccess(pool, userId, config) {
   if (!config.enabled) return { allowed: false, reason: 'feature_disabled' };
   const { rows } = await pool.query('SELECT email FROM users WHERE id = $1 LIMIT 1', [userId]);
-  const email = String(rows[0]?.email || '').toLowerCase();
+  // YOUTUBE_TEST_USER_EMAILS is trimmed when parsed; the stored address must
+  // be normalized the same way or a stray space makes a match impossible.
+  const email = String(rows[0]?.email || '').trim().toLowerCase();
   if (!email || !config.allowedEmails.has(email)) return { allowed: false, reason: 'not_allowlisted' };
   return { allowed: true, email };
 }
@@ -39,6 +41,7 @@ async function featureAccess(pool, userId, config) {
 export function createYouTubeRouter(pool, deps = {}) {
   const config = deps.config || youtubeConfig();
   const fetchImpl = deps.fetchImpl || fetch;
+  const log = deps.log || null;
   const oauthState = createOAuthStateStore(pool);
   const vault = createYouTubeVault(pool);
   const appOrigin = config.redirectUri ? new URL(config.redirectUri).origin : 'http://localhost:3000';
@@ -97,20 +100,43 @@ export function createYouTubeRouter(pool, deps = {}) {
       const access = await featureAccess(pool, state.userId, config);
       if (!access.allowed) return fail('youtube_not_available');
 
+      // Tracks which step threw so the redirect says where it broke. The old
+      // bare catch collapsed every failure into one opaque code and logged
+      // nothing, leaving no way to tell a rejected token exchange from a
+      // failed channel lookup.
+      let stage = 'token_exchange';
       try {
         const previous = await vault.getConnection(state.userId);
         const token = await exchangeYouTubeCode(config, code, fetchImpl);
         const credentials = tokenCredentials(token, previous?.credentials || {});
+        stage = 'channel_fetch';
         const channels = await listMyYouTubeChannels(credentials.accessToken, fetchImpl);
         if (!channels.length) return fail('youtube_channel_not_found');
+        stage = 'store';
         const stored = await vault.storeConnection(state.userId, channels[0], credentials, channels);
         if (!stored.ok) return fail(stored.reason === 'already_connected_elsewhere' ? 'account_already_connected' : 'youtube_store_failed');
         const params = new URLSearchParams({ platform: 'youtube', connected: 'true', name: channels[0].name, user_id: channels[0].id });
         const target = finishReturn(req.headers.cookie || '', requestState, new URL(`/dashboard?${params}`, appOrigin));
         clearReturnCookie(res, isHttps);
         return redirect(res, target.toString());
-      } catch {
-        return fail('youtube_callback_failed');
+      } catch (error) {
+        // Provider status/reason only — never the code, state, or any token.
+        // createLogger takes ONE object; it spreads the fields into the JSON
+        // line. Field names avoid the logger's FORBIDDEN_KEYS, and no value
+        // here carries the code, state, or any token.
+        log?.error?.({
+          event: 'youtube_callback_failed',
+          stage,
+          status: error?.status ?? null,
+          providerCode: error?.providerCode ?? null,
+          message: error instanceof Error ? error.message : 'unknown',
+        });
+        const byStage = {
+          token_exchange: 'youtube_token_exchange_failed',
+          channel_fetch: 'youtube_channel_fetch_failed',
+          store: 'youtube_store_failed',
+        };
+        return fail(byStage[stage] || 'youtube_callback_failed');
       }
     }
 

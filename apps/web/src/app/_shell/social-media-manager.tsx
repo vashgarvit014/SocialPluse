@@ -1875,6 +1875,9 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
         youtube_not_configured: 'YouTube is not set up on this server yet — its API credentials are missing. Ask an administrator to add them.',
         youtube_disabled: 'YouTube publishing is switched off on this server',
         youtube_not_available: 'your account is not on the YouTube test-user allowlist yet',
+        youtube_token_exchange_failed: 'Google rejected the sign-in. Check that the YouTube client credentials and callback URL on this server match the Google Cloud configuration.',
+        youtube_channel_fetch_failed: 'YouTube would not return your channel. Try reconnecting; if it repeats, the granted permissions may be incomplete.',
+        youtube_store_failed: 'The channel authorized, but SocialPulse could not save the connection.',
         youtube_channel_not_found: 'that Google account has no YouTube channel — create one, then connect again',
       };
       const friendlyError = errorMessages[error] || error;
