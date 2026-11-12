@@ -3273,6 +3273,8 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       channelThumbnail={channel?.thumbnail}
                       mediaItems={p.mediaItems}
                       generated={p.platformContent.youtube}
+                      publishMode={publishMode}
+                      scheduledAt={p.scheduleDate && p.scheduleTime ? `${p.scheduleDate}T${p.scheduleTime}` : ''}
                       onConnect={() => p.connectPlatform('youtube')}
                     />
                   );

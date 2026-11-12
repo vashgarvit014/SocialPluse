@@ -22,7 +22,8 @@
     "test:moderation-classifier": "node --import tsx ../../infrastructure/scripts/verify-moderation-classifier.mjs",
     "test:moderation:http": "node ../../infrastructure/scripts/verify-moderation.mjs",
     "test:shared-otp-input": "node ../../infrastructure/scripts/verify-shared-otp-input.mjs",
-    "test:phone-countries": "node --import tsx --test ../../tests/phone-countries.test.ts"
+    "test:phone-countries": "node --import tsx --test ../../tests/phone-countries.test.ts",
+    "test:youtube-publisher": "node --import tsx --test ../../tests/youtube-publisher.test.ts"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.64.0",

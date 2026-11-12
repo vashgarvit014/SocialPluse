@@ -503,3 +503,63 @@ test('access-log paths never carry OAuth query parameters, for any provider', as
     assert.ok(!logged.includes(leak), `access log must not retain "${leak}"`);
   }
 });
+
+// --- persistence: the stage the production failure landed in ---------------
+function callbackPool({ insertResult, insertError, existing } = {}) {
+  const pool = new FakePool();
+  if (existing) pool.connection = existing;
+  const inner = pool.query.bind(pool);
+  pool.saved = null;
+  pool.query = async (sql, args) => {
+    if (sql.includes('INSERT INTO platform_connections')) {
+      if (insertError) throw insertError;
+      pool.saved = { userId: args[1], providerUserId: args[2], credentials: JSON.parse(args[4]) };
+      return { rows: insertResult === 'conflict' ? [] : [{ id: args[0], user_id: args[1] }] };
+    }
+    return inner(sql, args);
+  };
+  return pool;
+}
+async function runCallback(pool) {
+  const logged = [];
+  const router = createYouTubeRouter(pool, {
+    config,
+    log: { error: (fields) => logged.push(fields) },
+    fetchImpl: async (url) => (String(url).includes('oauth2.googleapis.com/token')
+      ? Response.json({ access_token: 'access', expires_in: 3600 })
+      : Response.json({ items: [{ id: 'UC_TEST', snippet: { title: 'Test Channel' }, status: { privacyStatus: 'public' } }] })),
+  });
+  const authRes = new FakeResponse();
+  await router('/auth', request('/youtube/auth', { 'x-actor-user-id': 'user-1' }), authRes, { isHttps: false });
+  const state = new URL(authRes.getHeader('location')).searchParams.get('state');
+  const res = new FakeResponse();
+  await router('/callback', request(`/youtube/callback?code=code&state=${state}`), res, { isHttps: false });
+  const target = new URL(res.getHeader('location'));
+  return { error: target.searchParams.get('error'), connected: target.searchParams.get('connected'), logged, pool };
+}
+
+test('a check-constraint violation surfaces as a save failure and is logged at the store stage', async () => {
+  const violation = Object.assign(new Error('new row for relation "platform_connections" violates check constraint "platform_connections_platform_check"'), { code: '23514', constraint: 'platform_connections_platform_check' });
+  const result = await runCallback(callbackPool({ insertError: violation }));
+  assert.equal(result.error, 'youtube_store_failed');
+  assert.equal(result.logged[0].stage, 'store');
+  assert.match(result.logged[0].message, /platform_connections_platform_check/);
+});
+
+test('a channel already owned by another user is refused, never taken over', async () => {
+  const result = await runCallback(callbackPool({ insertResult: 'conflict' }));
+  assert.equal(result.error, 'account_already_connected');
+  assert.equal(result.connected, null, 'a refused save must not report a connection');
+});
+
+test('reconnecting the same user stores the channel and keeps a refresh token Google omitted', async () => {
+  const existing = { id: 'conn-1', user_id: 'user-1', provider_user_id: 'UC_TEST', display_name: 'Test Channel', meta: {}, disconnected_at: null,
+    credentials: { accessToken: 'old', refreshToken: 'kept-refresh', expiresAt: new Date(Date.now() + 3600_000).toISOString(), scope: SCOPES_WITH_WRITE } };
+  const result = await runCallback(callbackPool({ existing }));
+  assert.equal(result.error, null);
+  assert.equal(result.connected, 'true');
+  assert.equal(result.pool.saved.userId, 'user-1');
+  assert.equal(result.pool.saved.providerUserId, 'UC_TEST');
+  assert.equal(result.pool.saved.credentials.refreshToken, 'kept-refresh', 'an omitted refresh_token must not wipe the stored one');
+  assert.equal(result.pool.saved.credentials.accessToken, 'access');
+});
