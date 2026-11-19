@@ -175,6 +175,8 @@ export function createCanvaRouter(pool) {
     if (pathname === '/status' && req.method === 'GET') {
       const userId = requireActor(req);
       if (!userId) return json(res, 401, { error: 'Unauthorized' });
+      // Without app credentials the Canva actions cannot work at all: say so, and the UI hides them.
+      if (!process.env.CANVA_CLIENT_ID || !process.env.CANVA_CLIENT_SECRET) return json(res, 200, { connected: false, configured: false });
       const stored = await vault.getCanvaAuth(userId);
       if (!stored) return json(res, 200, { connected: false });
       try {
@@ -298,7 +300,11 @@ export function createCanvaRouter(pool) {
         const { accessToken, refreshed } = await canva.getValidAccessToken(stored);
         if (refreshed) await vault.updateCanvaCredentials(userId, refreshed);
         const imageBuffer = await canva.exportDesignAsPng(accessToken, designId);
-        await handoffs.takeReadyDesign(userId, readyId);
+        // Consuming the ready id is the server-side guard against a duplicate import (a double click, a
+        // second tab): only the request that actually takes it may save the asset.
+        if (!(await handoffs.takeReadyDesign(userId, readyId))) {
+          return json(res, 409, { error: { code: 'CANVA_ALREADY_IMPORTED', message: 'This Canva design was already imported.' } });
+        }
 
         let asset = null;
         try {

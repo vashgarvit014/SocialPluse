@@ -175,7 +175,7 @@ export interface StudioWorkspaceProps {
   disconnectPlatform: (p: string) => void;
   justConnectedPlatform: string | null;
   // Canva (Connect API - optional editing source for Step 4)
-  canvaConnected: boolean; canvaName: string; canvaSourceImage: string;
+  canvaConnected: boolean; canvaConfigured?: boolean; canvaName: string; canvaSourceImage: string;
   openInCanva: (sourceUrl?: string) => void; isSendingToCanva: boolean;
   createInCanva: () => void; isCreatingInCanva: boolean;
   canvaReadyId: string; importFromCanva: () => void; isImportingFromCanva: boolean;

@@ -185,7 +185,15 @@ export default function PreviewClient() {
     setCarousel(true);
   };
 
+  // Canva states for review: ?canva=off (app not configured on the server), ?canva=connected, default not connected.
+  const canvaParam = search.get('canva');
   const p: Record<string, unknown> = useMemo(() => ({
+    canvaConfigured: canvaParam !== 'off',
+    canvaConnected: canvaParam === 'connected',
+    canvaName: canvaParam === 'connected' ? 'Preview Designer' : '',
+    canvaSourceImage: '', canvaReadyId: '', canvaSession: null,
+    isSendingToCanva: false, isCreatingInCanva: false, isImportingFromCanva: false,
+    openInCanva: noop, createInCanva: noop, importFromCanva: noop, disconnectCanva: noop,
     wizardState,
     setWizardState: (updater: unknown) => setWizardState(prev => (typeof updater === 'function' ? (updater as (v: Record<string, unknown>) => Record<string, unknown>)(prev) : { ...prev, ...(updater as object) })),
     prompt, setPrompt: (v: string) => setPrompt(v),
@@ -295,7 +303,6 @@ export default function PreviewClient() {
     scheduleTime: schedTime, setScheduleTime: setSchedTime,
     schedulePost: async () => { setSchedBusy(true); await new Promise(r => setTimeout(r, 700)); setSchedBusy(false); setDraftSaved(false); },
     isScheduling: schedBusy,
-    openInCanva: noop, isSendingToCanva: false,
     whapiConnected: whapiOn, whapiCanConnect: true, startWhatsAppConnect: () => { setWhapiOn(true); setConnPlats(prev => [...new Set([...prev, 'whatsapp'])]); },
     disconnectPlatform: (pl: string) => setConnPlats(prev => prev.filter(x => x !== pl)), disconnectWhatsApp: () => setWhapiOn(false), whatsappDisconnecting: false, whapiLoading: false,
     refreshWhapiStatus: noop, whapiSelectedDestinations: new Set<string>() as unknown as Set<string>, setWhapiSelectedDestinations: noop, whapiDestinations: [] as unknown[], whapiGroupsLoading: false, whapiGroupsError: '', loadWhapiDestinations: noop, whapiSelectedGroupId: whapiOn ? 'wa-preview-chat' : null, whapiPublishing: false, publishToWhapi: noop, setAccountPageId: noop,

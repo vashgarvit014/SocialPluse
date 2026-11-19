@@ -100,7 +100,7 @@ export async function getConnectionsOverview(): Promise<ConnectionStatus[]> {
       account: canva.rows.map(r => r.displayName).filter(Boolean).slice(0, 5).join(', ') || null,
       detail: canva.users > 0
         ? `${canva.users} user${canva.users === 1 ? '' : 's'} connected`
-        : 'Canva credentials live only in the connecting browser’s cookies and are never persisted server-side — Superadmin has no way to see this status.',
+        : 'No user has connected Canva yet.',
       lastPublishAt: null,
       connectedUsers: canva.users,
     },

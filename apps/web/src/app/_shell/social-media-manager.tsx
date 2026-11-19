@@ -290,6 +290,8 @@ export default function SocialMediaManager({ initialTab = 'dashboard' }: { initi
   const [youtubeScopeUpgrade, setYoutubeScopeUpgrade] = useState(false);
   const [canvaConnected, setCanvaConnected] = useState(false);
   const [canvaName, setCanvaName] = useState('');
+  // Canva actions are offered unless the integrations service reports the app is not configured.
+  const [canvaConfigured, setCanvaConfigured] = useState(true);
   const [isSendingToCanva, setIsSendingToCanva] = useState(false);
   const [isImportingFromCanva, setIsImportingFromCanva] = useState(false);
   const [canvaReadyId, setCanvaReadyId] = useState('');
@@ -1370,6 +1372,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
       const data = await res.json();
       setCanvaConnected(!!data.connected);
       setCanvaName(data.displayName || '');
+      setCanvaConfigured(data.configured !== false);
       return !!data.connected;
     } catch {
       setCanvaConnected(false);
@@ -3870,7 +3873,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             selectedAccountKeys={selectedAccountKeys} toggleAccount={toggleAccount} selectAllAccountsFor={selectAllAccountsFor} clearAccountsFor={clearAccountsFor} connectPlatform={connectPlatform} disconnectPlatform={disconnectPlatform}
             setAccountPageId={setAccountPageId}
             justConnectedPlatform={justConnectedPlatform}
-            canvaConnected={canvaConnected} canvaName={canvaName} canvaSourceImage={canvaSourceImage}
+            canvaConnected={canvaConnected} canvaConfigured={canvaConfigured} canvaName={canvaName} canvaSourceImage={canvaSourceImage}
             openInCanva={openInCanva} isSendingToCanva={isSendingToCanva}
             createInCanva={createInCanva} isCreatingInCanva={isCreatingInCanva}
             canvaReadyId={canvaReadyId} importFromCanva={importFromCanva} isImportingFromCanva={isImportingFromCanva}
@@ -3908,7 +3911,7 @@ wizardState, activeTab, draftId, isCarousel, carouselSlideIds, carouselSlideCoun
             whapiConnected={whapiConnected} whapiChannelStatus={whapiChannelStatus} whapiAccountName={whapiAccountName} whapiPhoneMasked={whapiPhoneMasked}
             whapiGroups={whapiGroups} whapiLoading={whapiLoading} whapiGroupsLoading={whapiGroupsLoading} loadWhapiGroups={loadWhapiGroups} startWhatsAppConnect={startWhatsAppConnect}
             disconnectWhatsApp={disconnectWhatsApp} whatsappDisconnecting={whatsappDisconnecting} whapiCanConnect={whapiCanConnect}
-            canvaConnected={canvaConnected} canvaName={canvaName} disconnectCanva={disconnectCanva} refreshWhapiStatus={refreshWhapiStatus} refreshCanvaStatus={refreshCanvaStatus}
+            canvaConnected={canvaConnected} canvaConfigured={canvaConfigured} canvaName={canvaName} disconnectCanva={disconnectCanva} refreshWhapiStatus={refreshWhapiStatus} refreshCanvaStatus={refreshCanvaStatus}
             platformColors={platformColors} PlatformIcon={PlatformIcon}
           />
           </div>

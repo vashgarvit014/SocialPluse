@@ -360,10 +360,8 @@ const EXTRA_SWATCHES = ['#EC4899', '#10B981', '#F59E0B', '#EF4444', '#14B8A6'];
 // Wizard — presentation only, all logic via props (existing handlers)
 // ---------------------------------------------------------------------------
 export default function StudioWizard(p: StudioWorkspaceProps) {
-  // Canva is "Coming Soon" everywhere (see commit 20b58df) except on a
-  // local dev machine, where the real Create/Edit/Import flow is restored
-  // for testing. Same pattern as connect-platforms.tsx.
-  const isLocalhost = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  // Canva is offered wherever the integrations service has the app configured (status → configured).
+  const canvaAvailable = p.canvaConfigured !== false;
   function field<T>(key: string, initial: T): [T, React.Dispatch<React.SetStateAction<T>>] {
     const value = (p.wizardState[key] === undefined ? initial : p.wizardState[key]) as T;
     return [value, next => p.setWizardState(prev => ({ ...prev, [key]: typeof next === 'function' ? (next as (v: T) => T)((prev[key] === undefined ? initial : prev[key]) as T) : next }))];
@@ -1270,7 +1268,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                     <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, fontSize: 10, color: '#fff', background: 'linear-gradient(0deg,rgba(0,0,0,0.72),transparent)', padding: '14px 6px 5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'left' }}>{item.name}</div>
                     <button onClick={() => p.removeTopicMedia(item.id)} title="Remove image" aria-label={`Remove ${item.name}`} style={{ position: 'absolute', top: 5, right: 5, width: 22, height: 22, borderRadius: '50%', backgroundColor: 'rgba(15,23,42,0.78)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
                     <span title="Added" style={{ position: 'absolute', left: 5, top: 5, minWidth: 20, height: 20, borderRadius: 999, backgroundColor: '#059669', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px', boxShadow: '0 2px 6px rgba(0,0,0,0.25)' }}>✓</span>
-                    {isLocalhost ? (
+                    {canvaAvailable ? (
                       <button onClick={() => p.openInCanva(item.url)} disabled={p.isSendingToCanva} title="Edit this image in Canva" style={{ position: 'absolute', bottom: 5, right: 5, height: 22, padding: '0 8px', borderRadius: 7, backgroundColor: 'rgba(255,255,255,0.92)', color: '#0F172A', border: '1px solid #E2E8F0', cursor: p.isSendingToCanva ? 'wait' : 'pointer', fontSize: 10, fontWeight: 800 }}>🎨 Edit</button>
                     ) : (
                       <button disabled title="Coming Soon — Canva integration is temporarily unavailable." style={{ position: 'absolute', bottom: 5, right: 5, height: 22, padding: '0 8px', borderRadius: 7, backgroundColor: 'rgba(241,245,249,0.92)', color: '#94A3B8', border: '1px solid #E2E8F0', cursor: 'not-allowed', fontSize: 10, fontWeight: 800 }}>🎨 Edit</button>
@@ -2083,7 +2081,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                               {openMenuId === m.id && (
                                 <span onClick={e => e.stopPropagation()} style={{ position: 'absolute', bottom: 64, right: 8, width: 178, backgroundColor: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: '0 12px 32px rgba(15,23,42,0.18)', zIndex: 51, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 4 }}>
                                   <button onClick={() => { p.setMediaCover(m.id); setOpenMenuId(null); }} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>🖼️ Set as cover</button>
-                                  {m.type === 'image' && (isLocalhost ? (
+                                  {m.type === 'image' && (canvaAvailable ? (
                                     <button onClick={() => { p.openInCanva(m.url); setOpenMenuId(null); }} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.ink, background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit' }}>🎨 Edit in Canva</button>
                                   ) : (
                                     <button disabled title="Coming Soon — Canva integration is temporarily unavailable." style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#94A3B8', background: 'none', border: 'none', padding: '8px 10px', borderRadius: 7, cursor: 'not-allowed', fontFamily: 'inherit' }}>🎨 Edit in Canva — Coming Soon</button>
@@ -2190,7 +2188,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                   <div style={{ flex: '1 1 260px', minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Design with Canva</span>
-                      {isLocalhost ? (
+                      {canvaAvailable ? (
                         p.canvaConnected ? (
                           <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0' }}>Canva Connected ✓{p.canvaName ? ` as ${p.canvaName}` : ''}</span>
                         ) : (
@@ -2200,7 +2198,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, color: '#b45309', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>Coming Soon</span>
                       )}
                     </div>
-                    {isLocalhost ? (
+                    {canvaAvailable ? (
                       <>
                         <div style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.6, marginTop: 6 }}>Create or edit a design in Canva, then import it directly into your SocialPulse gallery.</div>
                         {!p.canvaConnected ? (
@@ -2230,7 +2228,7 @@ export default function StudioWizard(p: StudioWorkspaceProps) {
                       <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, backgroundColor: '#F6F1FF', border: `1px solid ${C.primaryBorder}`, fontSize: 12.5, color: C.primaryDark, lineHeight: 1.6 }}>🎨 Your Canva editor is open in another tab. When you finish editing, return here and import the latest version.</div>
                     )}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10 }}>
-                      {isLocalhost ? (
+                      {canvaAvailable ? (
                         <>
                           <button
                             onClick={p.createInCanva}
